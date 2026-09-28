@@ -2,25 +2,15 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
-import { db, j } from "../db";
+import { db } from "../db";
 import { PLANS } from "../engine/taxonomy";
 import { runTick, simulateResponses, logEvent, submit, prepare } from "../engine/agent";
-import { assessReadiness } from "../engine/readiness";
+import { createInvoice } from "../payments/kaspi";
 import { toUSD } from "../engine/fx";
 
-async function readinessFor(userId: string) {
-  const u = await db.user.findUniqueOrThrow({ where: { id: userId }, include: { profile: true, goal: true, facts: true, _count: { select: { stories: true } } } });
-  const p = u.profile!, g = u.goal!;
-  return assessReadiness({
-    profile: { yearsExperience: p.yearsExperience, skills: j(p.skills, []), englishLevel: p.englishLevel, cvText: p.cvText, summary: p.summary, workAuth: j(p.workAuth, []), needsSponsorship: p.needsSponsorship, linkedin: p.linkedin, github: p.github, portfolio: p.portfolio },
-    facts: u.facts, stories: u._count.stories,
-    goal: { primaryRole: g.primaryRole, seniority: g.seniority, minSalary: toUSD(g.minSalary, g.currency), countries: j(g.countries, []), workModes: j(g.workModes, []), dreamCompanies: j(g.dreamCompanies, []), sponsorshipNeeded: g.sponsorshipNeeded },
-  });
-}
-
 /**
- * Test-mode checkout: records a paid Payment (provider "test") and activates a 60-day campaign.
- * A real provider (Kaspi Pay / Stripe) plugs in here; the rest of the flow is unchanged.
+ * Checkout: creates a Kaspi Pay invoice (mock provider) and sends the user to the payment page.
+ * The campaign is activated only by the signed payment webhook — see src/lib/payments/kaspi.ts.
  */
 export async function checkout(form: FormData) {
   const user = await requireUser();
@@ -28,19 +18,8 @@ export async function checkout(form: FormData) {
   if (!user.goal?.primaryRole) redirect("/app/goal?need=goal");
   // One campaign at a time: a double submit or a second tab must not create (and charge for) another one.
   if (await activeCampaign(user.id)) redirect("/app/campaign");
-  const code = String(form.get("partner") ?? user.referredByCode ?? "").trim().toUpperCase();
-  const partner = code ? await db.partner.findUnique({ where: { code } }) : null;
-  const readiness = await readinessFor(user.id);
-  const now = new Date();
-  const campaign = await db.campaign.create({
-    data: { userId: user.id, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: user.goal!.mode, readiness: readiness.score, dailyLimit: plan.dailyLimit, autoSubmit: j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false, startedAt: now, endsAt: new Date(now.getTime() + plan.days * 86400000) },
-  });
-  await db.payment.create({ data: { userId: user.id, campaignId: campaign.id, amount: plan.priceKzt, currency: "KZT", provider: "test", status: "paid", partnerCode: partner?.code ?? null, partnerCut: partner ? Math.round(plan.priceKzt * partner.revShare) : 0 } });
-  await db.user.update({ where: { id: user.id }, data: { careerMode: "active" } });
-  await logEvent(user.id, "campaign_started", `Career Campaign «${plan.label}» запущена на ${plan.days} дней`);
-  await runTick(campaign.id);
-  revalidatePath("/app", "layout");
-  redirect("/app?started=1");
+  const invoice = await createInvoice(user.id, plan.key, String(form.get("partner") ?? ""));
+  redirect(`/pay/kaspi/${invoice.externalId}`);
 }
 
 export async function activeCampaign(userId: string) {

@@ -86,7 +86,7 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
   const now = Date.now();
   const plan = PLANS.international;
   const campaign = await db.campaign.create({ data: { userId: user.id, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: "autonomous", readiness: 78, dailyLimit: 14, startedAt: new Date(now - 9 * 86400000), endsAt: new Date(now + 51 * 86400000) } });
-  await db.payment.create({ data: { userId: user.id, campaignId: campaign.id, amount: plan.priceKzt, provider: "test", partnerCode: "AMASKILLS", partnerCut: Math.round(plan.priceKzt * 0.15), createdAt: new Date(now - 9 * 86400000) } });
+  await db.payment.create({ data: { userId: user.id, campaignId: campaign.id, amount: plan.priceKzt, provider: "kaspi_mock", status: "paid", plan: plan.key, externalId: `KSP-DEMO-${campaign.id.slice(-8)}`, paidAt: new Date(now - 9 * 86400000), partnerCode: "AMASKILLS", partnerCut: Math.round(plan.priceKzt * 0.15), createdAt: new Date(now - 9 * 86400000) } });
   await logEvent(user.id, "campaign_started", "Career Campaign «International» запущена на 60 дней");
 
   // Several agent cycles + simulated employer replies to populate pipeline, inbox and insights.

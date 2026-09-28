@@ -13,6 +13,7 @@ export type CandidateCtx = {
   educationLevel: "none" | "bachelor" | "master" | "phd";
   goal: { primaryRole: string; extraRoles: string[]; seniority: string; minSalary: number; countries: string[]; workModes: string[]; industries: string[]; dreamCompanies: string[]; blockedCompanies: string[]; mode: string };
   allocation: Record<string, number>; // learned segment weights (feedback loop)
+  permissions?: { outsideCountries: boolean; belowSalaryFloor: boolean }; // Agent screen
 };
 
 export type JobCtx = {
@@ -72,7 +73,8 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
   const auth = new Set(c.workAuth);
   const anywhere = targets.has("*");
   const jobInTarget = job.countries.length === 0 || anywhere || job.countries.some((x) => targets.has(x) || x === "*");
-  if (!jobInTarget) blockers.push(`Страна вне цели: ${job.countries.join(", ")}`);
+  if (!jobInTarget) (c.permissions?.outsideCountries ? softGaps : blockers).push(`Страна вне цели: ${job.countries.join(", ")}`);
+  if (salaryFit < 1 && c.permissions && !c.permissions.belowSalaryFloor && job.salaryMax && job.salaryMax < c.goal.minSalary) blockers.push("Зарплата ниже вашего минимума");
 
   const needsPresence = job.remote !== "remote";
   const authorizedForJob = job.countries.some((x) => auth.has(x)) || job.countries.includes("*");

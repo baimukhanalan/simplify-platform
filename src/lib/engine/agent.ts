@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { db, j, s, noNul } from "../db";
 import { isAhead } from "../rounds";
+import { readAutonomy } from "./autonomy";
 import { scoreJob, type CandidateCtx, type MatchResult } from "./matching";
 import { buildPackage, type FactLite, type ProfileLite } from "./personalize";
 import { ensureSeedJobs } from "./ingest";
@@ -10,6 +11,10 @@ import { classifyEmail, CLASS_TO_STATUS, matchCompany } from "./inbox";
 import { buildPackHeuristic } from "./interview";
 import { classifyRole, defaultLanguagesFor, APPLIED_OR_LATER } from "./taxonomy";
 import { toUSD } from "./fx";
+
+export async function notify(userId: string, type: string, title: string, body = "", href = "") {
+  await db.notification.create({ data: { userId, type, title, body, href } });
+}
 
 export async function logEvent(userId: string, type: string, message: string, opportunityId?: string | null, data: object = {}) {
   await db.event.create({ data: { userId, type, message, opportunityId: opportunityId ?? null, data: s(data) } });
@@ -33,13 +38,14 @@ export async function loadCandidate(userId: string) {
     primaryRole: g.primaryRole, extraRoles: j<string[]>(g.extraRoles, []), seniority: g.seniority, minSalary: toUSD(g.minSalary, g.currency), countries: j<string[]>(g.countries, []),
     workModes: j<string[]>(g.workModes, ["remote"]), industries: j<string[]>(g.industries, []), dreamCompanies: j<string[]>(g.dreamCompanies, []), blockedCompanies: j<string[]>(g.blockedCompanies, []), mode: g.mode,
   };
+  const autonomy = readAutonomy(user.autonomy);
   const ctx = (allocation: Record<string, number>): CandidateCtx => ({
     skills: profile.skills, yearsExperience: p.yearsExperience, englishLevel: p.englishLevel,
     languages: [...spokenLanguages, "English"], workAuth: profile.workAuth, needsSponsorship: p.needsSponsorship, relocation: p.relocation,
     educationLevel: /phd|доктор/.test(edu) ? "phd" : /master|магистр|msc/.test(edu) ? "master" : /bachelor|бакалавр|bsc|university|университет/.test(edu) ? "bachelor" : "none",
-    goal, allocation,
+    goal, allocation, permissions: { outsideCountries: autonomy.outsideCountries, belowSalaryFloor: autonomy.belowSalaryFloor },
   });
-  return { user, profile, facts, goal, ctx, stories: user.stories };
+  return { user, profile, facts, goal, ctx, stories: user.stories, autonomy };
 }
 
 const jobLite = (job: { title: string; company: string; roleFamily: string; description: string; technologies: string; requirements: string; countries: string; remote: string; sponsorship: string; salaryMin: number | null; salaryMax: number | null; industry: string }) => ({
@@ -134,8 +140,13 @@ export async function prepare(opportunityId: string) {
   const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true } });
   if (APPLIED_OR_LATER.includes(opp.status)) return { pending: 0 }; // never rewrite a package that was already sent
   const userId = opp.campaign.userId;
-  const { profile, facts } = await loadCandidate(userId);
+  const { profile, facts, autonomy } = await loadCandidate(userId);
   const pkg = await buildPackage(profile, facts, jobLite(opp.job));
+  // Agent screen: standard answers may require the user; sensitive questions may be auto-declined.
+  for (const a of pkg.answers) {
+    if (!autonomy.answerStandard && a.category !== "approval") { a.category = "approval"; a.status = "pending"; a.kind = a.kind ?? "standard"; }
+    if (autonomy.sensitive === "decline" && a.kind === "sensitive" && a.status === "pending") { a.a = "I don't wish to answer"; a.status = "approved"; }
+  }
   let reused = 0;
   for (const a of pkg.answers) {
     if (a.status !== "pending" || !STANDING_KINDS.has(a.kind ?? "")) continue;
@@ -188,17 +199,25 @@ export async function runTick(campaignId: string) {
     await db.campaign.update({ where: { id: campaignId }, data: { status: "expired" } });
     return { skipped: "expired" };
   }
-  const d = await discover(campaignId);
+  const { autonomy } = await loadCandidate(campaign.userId);
+  const d = autonomy.findJobs ? await discover(campaignId) : { found: 0, qualified: 0, blocked: 0 };
   await rerank(campaignId);
   const since = new Date(Date.now() - 86400000);
   const today = await db.opportunity.count({ where: { campaignId, OR: [{ submittedAt: { gte: since } }, { status: "prepared", updatedAt: { gte: since } }] } });
   const budget = Math.max(0, campaign.dailyLimit - today);
-  const queue = await db.opportunity.findMany({ where: { campaignId, status: "qualified" }, orderBy: { priority: "desc" }, take: budget });
+  if (!autonomy.personalizeCv) {
+    await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: new Date() } });
+    await logEvent(campaign.userId, "tick", `Цикл агента: +${d.found} найдено. Персонализация CV выключена в настройках агента`);
+    return { ...d, prepared: 0, submitted: 0, waiting: 0, budget };
+  }
+  // User-confirmed ("apply") and user-delegated ("auto") roles go first; skipped roles never.
+  const queue = await db.opportunity.findMany({ where: { campaignId, status: "qualified", decision: { not: "skip" } }, orderBy: [{ decision: "desc" }, { priority: "desc" }], take: budget });
   let prepared = 0, submitted = 0, waiting = 0;
   for (const o of queue) {
     const r = await prepare(o.id);
     prepared++;
-    if (campaign.autoSubmit && !r.pending) {
+    const allowed = o.decision === "apply" || o.decision === "auto" || (autonomy.submitApplications && (autonomy.autoApplyMinMatch == null || o.match >= autonomy.autoApplyMinMatch));
+    if (campaign.autoSubmit && allowed && !r.pending) {
       const res = await submit(o.id);
       if (res.ok) submitted++; else waiting++;
     } else waiting++;
@@ -231,6 +250,12 @@ export async function ingestEmail(userId: string, msg: { from: string; subject: 
     await logEvent(userId, "inbox", `${opp.job.company}: письмо распознано как «${c.cls}» → ${next}`, oppId, { confidence: c.confidence });
   }
   if (closed) return { message: saved, updated: false };
+  const NOTE: Record<string, { title: string; body: string }> = {
+    interview: { title: "Ты получил интервью", body: `${opp.job.company} · ${opp.job.title}` },
+    assessment: { title: "Ты прошёл на следующий этап", body: `Assessment от ${opp.job.company}` },
+    offer: { title: "YOU GOT THE OFFER", body: `${opp.job.company} · ${opp.job.title}` },
+  };
+  if (NOTE[c.cls] && !closed) await notify(userId, c.cls, NOTE[c.cls].title, NOTE[c.cls].body, c.cls === "offer" ? "/app/offers" : "/app/interviews");
   if (c.cls === "interview" || c.cls === "assessment") await createInterview(userId, oppId, c.cls === "assessment" ? "assessment" : c.round ?? "recruiter", c.deadline);
   if (c.cls === "offer" && !(await db.offer.findFirst({ where: { opportunityId: oppId }, select: { id: true } }))) {
     const job = await db.opportunity.findUniqueOrThrow({ where: { id: oppId }, include: { job: true } });

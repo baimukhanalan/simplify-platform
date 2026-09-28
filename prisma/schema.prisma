@@ -19,6 +19,7 @@ model User {
   careerMode     String   @default("active") // active | passive
   referredByCode String?
   consents       String   @default("{}") // {terms, autoSubmit, emailScan, copilot, analytics}
+  autonomy       String   @default("{}") // agent permissions, see src/lib/engine/autonomy.ts
   createdAt      DateTime @default(now())
 
   profile      Profile?
@@ -35,6 +36,7 @@ model User {
   offers       Offer[]
   snapshots    CareerSnapshot[]
   partner      Partner?
+  notifications Notification[]
 }
 
 model Profile {
@@ -155,6 +157,7 @@ model Campaign {
   endsAt         DateTime?
   lastRunAt      DateTime?
   hiredAt        DateTime?
+  shareToken     String?   @unique // public HIRED journey card
   createdAt      DateTime  @default(now())
 
   opportunities Opportunity[]
@@ -169,8 +172,12 @@ model Payment {
   campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   amount      Int
   currency    String    @default("KZT")
-  provider    String    @default("test")
-  status      String    @default("paid")
+  provider    String    @default("test") // test | kaspi_mock
+  status      String    @default("pending") // pending | paid | failed | expired
+  plan        String    @default("")
+  externalId  String?   @unique // provider invoice id
+  meta        String    @default("{}")
+  paidAt      DateTime?
   partnerCode String?
   partnerCut  Int       @default(0)
   createdAt   DateTime  @default(now())
@@ -225,6 +232,7 @@ model Opportunity {
   priority     Float    @default(0)
   lane         String   @default("standard") // standard | target | mass
   segment      String   @default("other")
+  decision     String   @default("") // "" | apply (user confirmed) | auto (agent may submit) | skip
   status       String   @default("found")
   // found | qualified | prepared | submitted | pending | assessment | recruiter | hiring_manager | technical | final | offer | rejected | skipped | hired
   submittedAt  DateTime?
@@ -382,4 +390,17 @@ model CareerCheck {
   target    String   @default("")
   result    String   @default("{}")
   createdAt DateTime @default(now())
+}
+
+// In-app "push" moments: interview / assessment / offer / hired.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String // interview | assessment | offer | hired | rejection | info
+  title     String
+  body      String    @default("")
+  href      String    @default("")
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
 }
