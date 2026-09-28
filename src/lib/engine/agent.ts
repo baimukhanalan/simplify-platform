@@ -1,0 +1,209 @@
+import "server-only";
+import { db, j, s } from "../db";
+import { scoreJob, type CandidateCtx } from "./matching";
+import { buildPackage, type FactLite, type ProfileLite } from "./personalize";
+import { ensureSeedJobs } from "./ingest";
+import { allocationFrom, reachedInterview } from "./insights";
+import { classifyEmail, CLASS_TO_STATUS, matchCompany } from "./inbox";
+import { buildPackHeuristic } from "./interview";
+import { classifyRole, APPLIED_OR_LATER } from "./taxonomy";
+
+export async function logEvent(userId: string, type: string, message: string, opportunityId?: string | null, data: object = {}) {
+  await db.event.create({ data: { userId, type, message, opportunityId: opportunityId ?? null, data: s(data) } });
+}
+
+export async function loadCandidate(userId: string) {
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId }, include: { profile: true, goal: true, facts: true, stories: true } });
+  const p = user.profile!;
+  const g = user.goal!;
+  const facts: FactLite[] = user.facts.map((f) => ({ id: f.id, kind: f.kind, title: f.title, org: f.org, startDate: f.startDate, endDate: f.endDate, details: f.details, metrics: f.metrics, tech: j<string[]>(f.tech, []), verified: f.verified }));
+  const profile: ProfileLite = {
+    name: user.name, email: user.email, phone: p.phone, location: p.location || p.city, headline: p.headline, summary: p.summary, skills: j<string[]>(p.skills, []),
+    yearsExperience: p.yearsExperience, englishLevel: p.englishLevel, workAuth: j<string[]>(p.workAuth, []), needsSponsorship: p.needsSponsorship, relocation: p.relocation,
+    linkedin: p.linkedin, github: p.github, portfolio: p.portfolio, noticePeriod: p.noticePeriod, salaryExpectation: g.minSalary || p.salaryExpectation, citizenship: p.citizenship,
+  };
+  const edu = user.facts.filter((f) => f.kind === "education").map((f) => f.title.toLowerCase()).join(" ");
+  const goal = {
+    primaryRole: g.primaryRole, extraRoles: j<string[]>(g.extraRoles, []), seniority: g.seniority, minSalary: g.minSalary, countries: j<string[]>(g.countries, []),
+    workModes: j<string[]>(g.workModes, ["remote"]), industries: j<string[]>(g.industries, []), dreamCompanies: j<string[]>(g.dreamCompanies, []), blockedCompanies: j<string[]>(g.blockedCompanies, []), mode: g.mode,
+  };
+  const ctx = (allocation: Record<string, number>): CandidateCtx => ({
+    skills: profile.skills, yearsExperience: p.yearsExperience, englishLevel: p.englishLevel,
+    languages: j<{ lang: string }[]>(p.languages, []).map((l) => l.lang).concat("English"), workAuth: profile.workAuth, needsSponsorship: p.needsSponsorship, relocation: p.relocation,
+    educationLevel: /phd|доктор/.test(edu) ? "phd" : /master|магистр|msc/.test(edu) ? "master" : /bachelor|бакалавр|bsc|university|университет/.test(edu) ? "bachelor" : "none",
+    goal, allocation,
+  });
+  return { user, profile, facts, goal, ctx, stories: user.stories };
+}
+
+const jobLite = (job: { title: string; company: string; roleFamily: string; description: string; technologies: string; requirements: string; countries: string; remote: string; sponsorship: string; salaryMin: number | null; salaryMax: number | null; industry: string }) => ({
+  ...job, technologies: j<string[]>(job.technologies, []), requirements: j<string[]>(job.requirements, []), countries: j<string[]>(job.countries, []),
+});
+
+export const jobCtx = (job: Parameters<typeof jobLite>[0] & { seniority: string; minYears: number; education: string; workAuth: string; languages: string; massHiring: boolean; postedAt: Date }) => ({
+  ...jobLite(job), seniority: job.seniority, minYears: job.minYears, education: job.education, workAuth: j<string[]>(job.workAuth, []), languages: j<string[]>(job.languages, []), massHiring: job.massHiring, postedAt: job.postedAt,
+});
+
+/** Discovery + match/eligibility + ranking for every active job not yet in the campaign. */
+export async function discover(campaignId: string) {
+  const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+  await ensureSeedJobs();
+  const { ctx } = await loadCandidate(campaign.userId);
+  const c = ctx(j<Record<string, number>>(campaign.allocation, {}));
+  const wanted = new Set([c.goal.primaryRole, ...c.goal.extraRoles].map(classifyRole));
+  const known = new Set((await db.opportunity.findMany({ where: { campaignId }, select: { jobId: true } })).map((o) => o.jobId));
+  const jobs = await db.job.findMany({ where: { active: true } });
+  let found = 0, qualified = 0, blocked = 0;
+  for (const job of jobs) {
+    if (known.has(job.id)) continue;
+    const relevant = wanted.has(job.roleFamily) || (c.goal.mode === "mass" && job.massHiring) || c.goal.dreamCompanies.some((d) => d && job.company.toLowerCase().includes(d.toLowerCase()));
+    if (!relevant) continue;
+    const r = scoreJob(c, jobCtx(job));
+    const status = r.eligibility === "blocked" ? "skipped" : r.match >= 55 && r.freshnessDays <= 30 ? "qualified" : "found";
+    await db.opportunity.create({ data: { campaignId, jobId: job.id, match: r.match, matchReasons: s(r.reasons), eligibility: r.eligibility, blockers: s(r.blockers), softGaps: s(r.softGaps), pInterview: r.pInterview, priority: r.priority, lane: r.lane, segment: r.segment, status } });
+    found++;
+    if (status === "qualified") qualified++;
+    if (status === "skipped") blocked++;
+  }
+  if (found) await logEvent(campaign.userId, "discovery", `Найдено ${found} новых вакансий: ${qualified} квалифицировано, ${blocked} с hard blockers`);
+  return { found, qualified, blocked };
+}
+
+/** Re-rank remaining queue with the latest learned allocation (feedback loop). */
+export async function rerank(campaignId: string) {
+  const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+  const opps = await db.opportunity.findMany({ where: { campaignId }, include: { job: true, pkg: { select: { cvVersion: true } }, _count: { select: { interviews: true } } } });
+  const allocation = allocationFrom(opps.map((o) => ({ ...o, reachedInterview: reachedInterview(o.status, o._count.interviews), reachedAssessment: o.status === "assessment" })));
+  await db.campaign.update({ where: { id: campaignId }, data: { allocation: s(allocation) } });
+  const { ctx } = await loadCandidate(campaign.userId);
+  const c = ctx(allocation);
+  for (const o of opps.filter((o) => o.status === "qualified" || o.status === "found")) {
+    const r = scoreJob(c, jobCtx(o.job));
+    await db.opportunity.update({ where: { id: o.id }, data: { pInterview: r.pInterview, priority: r.priority, match: r.match } });
+  }
+  return allocation;
+}
+
+/** Build the application package for one opportunity and route anything sensitive to approvals. */
+export async function prepare(opportunityId: string) {
+  const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true } });
+  const { profile, facts } = await loadCandidate(opp.campaign.userId);
+  const pkg = await buildPackage(profile, facts, jobLite(opp.job));
+  const version = `v${(await db.applicationPackage.count({ where: { opportunity: { campaignId: opp.campaignId } } })) + 1}-${opp.segment}`;
+  await db.applicationPackage.upsert({
+    where: { opportunityId },
+    create: { opportunityId, cvVersion: version, cvText: pkg.cvText, summary: pkg.summary, coverLetter: pkg.coverLetter, skillsOrder: s(pkg.skillsOrder), projects: s(pkg.projects), answers: s(pkg.answers), truthCheck: s(pkg.truthCheck), generatedBy: pkg.by },
+    update: { cvText: pkg.cvText, summary: pkg.summary, coverLetter: pkg.coverLetter, skillsOrder: s(pkg.skillsOrder), projects: s(pkg.projects), answers: s(pkg.answers), truthCheck: s(pkg.truthCheck), generatedBy: pkg.by },
+  });
+  const pending = pkg.answers.filter((a) => a.status === "pending");
+  for (const a of pending) {
+    await db.approval.create({ data: { userId: opp.campaign.userId, opportunityId, kind: a.kind ?? "unknown_question", question: a.q, proposed: a.a } });
+  }
+  await db.opportunity.update({ where: { id: opportunityId }, data: { status: "prepared" } });
+  await logEvent(opp.campaign.userId, "prepared", `Пакет готов: ${opp.job.title} — ${opp.job.company} (CV ${version}${pending.length ? `, ${pending.length} вопрос(а) ждут подтверждения` : ""})`, opportunityId);
+  return { pending: pending.length };
+}
+
+/**
+ * Execution layer. Demo vacancies go through the simulated ATS adapter. Live vacancies are
+ * user-authorized handoffs: the package is ready and the user submits through the official form.
+ */
+export async function submit(opportunityId: string, via: "agent" | "user" = "agent") {
+  const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true, approvals: { where: { status: "pending" } } } });
+  if (opp.approvals.length && via === "agent") return { ok: false, reason: "approvals" };
+  if (opp.job.source !== "demo" && via === "agent") {
+    const exists = await db.approval.findFirst({ where: { opportunityId, kind: "handoff", status: "pending" } });
+    if (!exists) await db.approval.create({ data: { userId: opp.campaign.userId, opportunityId, kind: "handoff", question: `Отправьте заявку в ${opp.job.company} через официальную форму`, proposed: opp.job.url } });
+    return { ok: false, reason: "handoff" };
+  }
+  await db.opportunity.update({ where: { id: opportunityId }, data: { status: "submitted", submittedAt: new Date() } });
+  await db.applicationPackage.update({ where: { opportunityId }, data: { submitMethod: via === "user" ? "user-handoff" : `ats:${opp.job.source}` } });
+  await logEvent(opp.campaign.userId, "submitted", `Заявка отправлена: ${opp.job.title} — ${opp.job.company}`, opportunityId, { method: via });
+  return { ok: true };
+}
+
+/** One agent cycle: discover → re-rank → prepare → submit, within the daily limit. */
+export async function runTick(campaignId: string) {
+  const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+  if (campaign.status !== "active") return { skipped: campaign.status };
+  if (campaign.endsAt && campaign.endsAt < new Date()) {
+    await db.campaign.update({ where: { id: campaignId }, data: { status: "expired" } });
+    return { skipped: "expired" };
+  }
+  const d = await discover(campaignId);
+  await rerank(campaignId);
+  const since = new Date(Date.now() - 86400000);
+  const today = await db.opportunity.count({ where: { campaignId, OR: [{ submittedAt: { gte: since } }, { status: "prepared", updatedAt: { gte: since } }] } });
+  const budget = Math.max(0, campaign.dailyLimit - today);
+  const queue = await db.opportunity.findMany({ where: { campaignId, status: "qualified" }, orderBy: { priority: "desc" }, take: budget });
+  let prepared = 0, submitted = 0, waiting = 0;
+  for (const o of queue) {
+    const r = await prepare(o.id);
+    prepared++;
+    if (campaign.autoSubmit && !r.pending) {
+      const res = await submit(o.id);
+      if (res.ok) submitted++; else waiting++;
+    } else waiting++;
+  }
+  await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: new Date() } });
+  await logEvent(campaign.userId, "tick", `Цикл агента: +${d.found} найдено, ${prepared} подготовлено, ${submitted} отправлено, ${waiting} ждут вас`);
+  return { ...d, prepared, submitted, waiting, budget };
+}
+
+// ——— Inbox Intelligence → pipeline ———
+const ROUND_STATUS: Record<string, string> = { recruiter: "recruiter", hiring_manager: "hiring_manager", technical: "technical", final: "final" };
+
+export async function ingestEmail(userId: string, msg: { from: string; subject: string; body: string; simulated?: boolean; opportunityId?: string }) {
+  const c = classifyEmail(msg.subject, msg.body);
+  const opps = await db.opportunity.findMany({ where: { campaign: { userId }, status: { in: APPLIED_OR_LATER } }, include: { job: { select: { company: true, title: true } } } });
+  const oppId = msg.opportunityId ?? matchCompany(msg.from, msg.subject, msg.body, opps.map((o) => ({ id: o.id, company: o.job.company })));
+  const saved = await db.inboxMessage.create({ data: { userId, opportunityId: oppId, fromAddr: msg.from, subject: msg.subject, body: msg.body, classification: c.cls, confidence: c.confidence, deadline: c.deadline, simulated: Boolean(msg.simulated) } });
+  if (!oppId) return { message: saved, updated: false };
+  const opp = opps.find((o) => o.id === oppId)!;
+  let next = CLASS_TO_STATUS[c.cls];
+  if (c.cls === "interview" && c.round) next = ROUND_STATUS[c.round];
+  if (c.cls === "confirmation" && opp.status !== "submitted") next = null; // never move backwards
+  if (next) {
+    await db.opportunity.update({ where: { id: oppId }, data: { status: next } });
+    await logEvent(userId, "inbox", `${opp.job.company}: письмо распознано как «${c.cls}» → ${next}`, oppId, { confidence: c.confidence });
+  }
+  if (c.cls === "interview" || c.cls === "assessment") await createInterview(userId, oppId, c.cls === "assessment" ? "assessment" : c.round ?? "recruiter", c.deadline);
+  if (c.cls === "offer") {
+    const job = await db.opportunity.findUniqueOrThrow({ where: { id: oppId }, include: { job: true } });
+    const base = Number(msg.body.match(/\$\s?(\d{2,3}),?(\d{3})/)?.slice(1, 3).join("")) || job.job.salaryMin || 60000;
+    await db.offer.create({ data: { userId, opportunityId: oppId, company: job.job.company, role: job.job.title, base, currency: "USD", vacationDays: 24, benefits: s(["Health insurance", "Learning budget"]), remote: job.job.remote } });
+  }
+  return { message: saved, updated: Boolean(next) };
+}
+
+export async function createInterview(userId: string, opportunityId: string, round: string, scheduledAt: Date | null = null) {
+  const existing = await db.interview.findFirst({ where: { opportunityId, round } });
+  if (existing) return existing;
+  const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true } });
+  const { profile, facts, stories } = await loadCandidate(userId);
+  const pack = buildPackHeuristic({
+    name: profile.name, role: opp.job.title, company: opp.job.company, round, jd: opp.job.description, technologies: j<string[]>(opp.job.technologies, []), skills: profile.skills, yearsExperience: profile.yearsExperience,
+    stories: stories.map((x) => ({ ...x, tags: j<string[]>(x.tags, []) })), facts: facts.map((f) => ({ ...f, teamSize: null })),
+  });
+  const iv = await db.interview.create({ data: { userId, opportunityId, round, scheduledAt: scheduledAt ?? new Date(Date.now() + 3 * 86400000), pack: s(pack) } });
+  await logEvent(userId, "interview_room", `Interview Room создан: ${opp.job.company} — ${round}`, opportunityId);
+  return iv;
+}
+
+// ——— Demo: simulated employer responses (only for demo vacancies; clearly labeled in UI) ———
+export async function simulateResponses(userId: string) {
+  const opps = await db.opportunity.findMany({ where: { campaign: { userId }, status: { in: ["submitted", "pending"] }, job: { source: "demo" } }, include: { job: true } });
+  let n = 0;
+  for (const o of opps) {
+    const r = Math.random();
+    const domain = `${o.job.company.toLowerCase().replace(/[^a-z]/g, "")}.example`;
+    const p = Math.min(0.4, o.pInterview * 0.9 + 0.03);
+    let mail: { subject: string; body: string } | null = null;
+    if (o.status === "submitted" && r < 0.35) mail = { subject: `We received your application — ${o.job.title}`, body: `Hi,\n\nThank you for applying to ${o.job.company}! We have received your application for ${o.job.title} and our team will review it shortly.\n\nBest,\n${o.job.company} Talent Team` };
+    else if (r < p * (o.job.massHiring ? 0.6 : 0.25)) mail = { subject: `${o.job.company} — online assessment`, body: `Hi,\n\nThanks for your interest in ${o.job.title}. As a next step, please complete this online assessment on TestGorilla within 5 days.\n\nGood luck!\n${o.job.company} Recruiting` };
+    else if (r < p) mail = { subject: `Interview invitation — ${o.job.title} at ${o.job.company}`, body: `Hi,\n\nWe reviewed your application and would like to invite you to a 30-minute call with our recruiter to learn more about your background. Please pick a time here: calendly.com/${domain}/intro\n\nBest regards,\n${o.job.company}` };
+    else if (r > 0.72) mail = { subject: `Your application to ${o.job.company}`, body: `Hi,\n\nThank you for your interest in ${o.job.title}. Unfortunately, we have decided to move forward with other candidates whose experience more closely matches our needs.\n\nWe wish you the best in your search.\n${o.job.company}` };
+    if (mail) { await ingestEmail(userId, { from: `talent@${domain}`, ...mail, simulated: true, opportunityId: o.id }); n++; }
+  }
+  return n;
+}

@@ -1,0 +1,387 @@
+// Simplify — AI Career Agent. SQLite for local dev; switch provider to "postgresql" for production.
+// JSON-ish fields are stored as String (serialized JSON) for SQLite portability.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  name           String
+  role           String   @default("user") // user | admin | partner
+  careerMode     String   @default("active") // active | passive
+  referredByCode String?
+  consents       String   @default("{}") // {terms, autoSubmit, emailScan, copilot, analytics}
+  createdAt      DateTime @default(now())
+
+  profile      Profile?
+  goal         Goal?
+  facts        Fact[]
+  stories      Story[]
+  miniAnswers  MiniInterviewAnswer[]
+  campaigns    Campaign[]
+  payments     Payment[]
+  events       Event[]
+  approvals    Approval[]
+  inbox        InboxMessage[]
+  interviews   Interview[]
+  offers       Offer[]
+  snapshots    CareerSnapshot[]
+  partner      Partner?
+}
+
+model Profile {
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline          String  @default("")
+  location          String  @default("")
+  city              String  @default("")
+  country           String  @default("KZ")
+  citizenship       String  @default("KZ")
+  workAuth          String  @default("[\"KZ\"]") // country codes with legal work authorization
+  languages         String  @default("[]") // [{lang, level}]
+  englishLevel      String  @default("B2")
+  yearsExperience   Float   @default(0)
+  skills            String  @default("[]") // string[] — verified skills
+  salaryExpectation Int     @default(0) // annual USD
+  remotePref        String  @default("remote") // remote | hybrid | onsite | any
+  relocation        Boolean @default(false)
+  needsSponsorship  Boolean @default(true)
+  phone             String  @default("")
+  linkedin          String  @default("")
+  github            String  @default("")
+  portfolio         String  @default("")
+  summary           String  @default("")
+  cvText            String  @default("")
+  cvFileName        String  @default("")
+  noticePeriod      String  @default("2 weeks")
+  updatedAt         DateTime @updatedAt
+}
+
+// Truth Layer: every verifiable fact about the candidate.
+model Fact {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String // employment | education | project | skill | certification | achievement | authorization | language
+  title     String
+  org       String   @default("")
+  startDate String   @default("")
+  endDate   String   @default("")
+  details   String   @default("")
+  metrics   String   @default("") // measurable outcome, e.g. "activation 18% → 26%"
+  tech      String   @default("[]")
+  teamSize  Int?
+  ownership String   @default("") // led | contributed | executed
+  source    String   @default("cv") // cv | interview | user | linkedin
+  verified  Boolean  @default(false)
+  locked    Boolean  @default(true) // Truth Lock: AI can rephrase, never alter
+  createdAt DateTime @default(now())
+
+  stories     Story[]
+  miniAnswers MiniInterviewAnswer[]
+}
+
+model MiniInterviewAnswer {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  factId    String?
+  fact      Fact?    @relation(fields: [factId], references: [id], onDelete: SetNull)
+  question  String
+  answer    String   @default("")
+  createdAt DateTime @default(now())
+}
+
+// Verified STAR stories — the only material the Interview Copilot may use.
+model Story {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  factId    String?
+  fact      Fact?    @relation(fields: [factId], references: [id], onDelete: SetNull)
+  title     String
+  situation String
+  task      String
+  action    String
+  result    String
+  metric    String   @default("")
+  tags      String   @default("[]") // behavioral themes: conflict, failure, leadership, impact, ...
+  verified  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Goal {
+  id                String  @id @default(cuid())
+  userId            String  @unique
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  primaryRole       String  @default("")
+  extraRoles        String  @default("[]")
+  seniority         String  @default("junior") // intern | junior | middle | senior | lead
+  minSalary         Int     @default(0) // annual, in currency
+  currency          String  @default("USD")
+  countries         String  @default("[]") // ISO codes or regions: EU, US, UK, CA, KZ, CIS, WORLD
+  industries        String  @default("[]")
+  workModes         String  @default("[\"remote\"]")
+  relocation        Boolean @default(false)
+  sponsorshipNeeded Boolean @default(true)
+  dreamCompanies    String  @default("[]")
+  blockedCompanies  String  @default("[]")
+  companySize       String  @default("any") // startup | scaleup | corporate | any
+  mode              String  @default("autonomous") // autonomous | target | mass
+  updatedAt         DateTime @updatedAt
+}
+
+model Campaign {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan           String // local | international
+  priceKzt       Int
+  status         String    @default("draft") // draft | active | paused | hired | expired
+  mode           String    @default("autonomous")
+  readiness      Int       @default(0)
+  dailyLimit     Int       @default(8)
+  autoSubmit     Boolean   @default(true)
+  allocation     String    @default("{}") // segment -> weight, learned by the feedback loop
+  startedAt      DateTime?
+  endsAt         DateTime?
+  lastRunAt      DateTime?
+  hiredAt        DateTime?
+  createdAt      DateTime  @default(now())
+
+  opportunities Opportunity[]
+  payments      Payment[]
+}
+
+model Payment {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId  String?
+  campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  amount      Int
+  currency    String    @default("KZT")
+  provider    String    @default("test")
+  status      String    @default("paid")
+  partnerCode String?
+  partnerCut  Int       @default(0)
+  createdAt   DateTime  @default(now())
+}
+
+model Job {
+  id          String   @id @default(cuid())
+  source      String // greenhouse | lever | remotive | arbeitnow | seed
+  externalId  String
+  dedupeKey   String   @unique
+  company     String
+  title       String
+  roleFamily  String   @default("other")
+  seniority   String   @default("middle")
+  location    String   @default("")
+  countries   String   @default("[]")
+  remote      String   @default("onsite") // remote | hybrid | onsite
+  salaryMin   Int?
+  salaryMax   Int?
+  currency    String   @default("USD")
+  description String   @default("")
+  requirements String  @default("[]")
+  technologies String  @default("[]")
+  minYears    Float    @default(0)
+  education   String   @default("")
+  workAuth    String   @default("[]") // required authorization (country codes); [] = none stated
+  sponsorship String   @default("unknown") // yes | no | unknown
+  languages   String   @default("[\"English\"]")
+  industry    String   @default("")
+  companySize String   @default("")
+  massHiring  Boolean  @default(false)
+  postedAt    DateTime
+  url         String   @default("")
+  active      Boolean  @default(true)
+  fetchedAt   DateTime @default(now())
+
+  opportunities Opportunity[]
+}
+
+model Opportunity {
+  id           String   @id @default(cuid())
+  campaignId   String
+  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  jobId        String
+  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  match        Int      @default(0)
+  matchReasons String   @default("[]") // [{label, ok}]
+  eligibility  String   @default("eligible") // eligible | soft | blocked
+  blockers     String   @default("[]")
+  softGaps     String   @default("[]")
+  pInterview   Float    @default(0)
+  priority     Float    @default(0)
+  lane         String   @default("standard") // standard | target | mass
+  segment      String   @default("other")
+  status       String   @default("found")
+  // found | qualified | prepared | submitted | pending | assessment | recruiter | hiring_manager | technical | final | offer | rejected | skipped | hired
+  submittedAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  pkg        ApplicationPackage?
+  events     Event[]
+  approvals  Approval[]
+  inbox      InboxMessage[]
+  interviews Interview[]
+  offers     Offer[]
+
+  @@unique([campaignId, jobId])
+}
+
+model ApplicationPackage {
+  id            String      @id @default(cuid())
+  opportunityId String      @unique
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  cvVersion     String      @default("v1")
+  cvText        String
+  summary       String
+  coverLetter   String
+  skillsOrder   String      @default("[]")
+  projects      String      @default("[]")
+  answers       String      @default("[]") // [{q, a, category: auto|rule|approval, status: filled|pending|approved}]
+  truthCheck    String      @default("[]") // [{claim, factId, ok}]
+  generatedBy   String      @default("engine") // engine | claude
+  submitMethod  String      @default("")
+  createdAt     DateTime    @default(now())
+}
+
+// Audit trail + activity feed.
+model Event {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  type          String
+  message       String
+  data          String       @default("{}")
+  createdAt     DateTime     @default(now())
+}
+
+// Exception queue: anything the agent must not decide alone.
+model Approval {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  kind          String // legal | sensitive | sponsorship | unknown_question | salary | truth
+  question      String
+  proposed      String       @default("")
+  answer        String       @default("")
+  status        String       @default("pending") // pending | approved | edited | rejected
+  createdAt     DateTime     @default(now())
+  resolvedAt    DateTime?
+}
+
+model InboxMessage {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId  String?
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  fromAddr       String
+  subject        String
+  body           String
+  classification String       @default("unknown") // confirmation | rejection | assessment | interview | offer | info | unknown
+  confidence     Float        @default(0)
+  deadline       DateTime?
+  simulated      Boolean      @default(false)
+  receivedAt     DateTime     @default(now())
+}
+
+model Interview {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  round         String // assessment | recruiter | hiring_manager | technical | final
+  scheduledAt   DateTime?
+  status        String      @default("upcoming") // upcoming | done | passed | failed
+  copilotAllowed Boolean    @default(true)
+  pack          String      @default("{}")
+  debrief       String      @default("{}")
+  createdAt     DateTime    @default(now())
+
+  mocks MockSession[]
+}
+
+model MockSession {
+  id          String    @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  persona     String // recruiter | hiring_manager | technical
+  transcript  String    @default("[]") // [{role, text}]
+  feedback    String    @default("{}")
+  createdAt   DateTime  @default(now())
+}
+
+model Offer {
+  id              String       @id @default(cuid())
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId   String?
+  opportunity     Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  company         String
+  role            String
+  base            Int
+  currency        String       @default("USD")
+  bonus           Int          @default(0)
+  equity          String       @default("")
+  signingBonus    Int          @default(0)
+  benefits        String       @default("[]")
+  vacationDays    Int          @default(0)
+  probationMonths Int          @default(0)
+  remote          String       @default("remote")
+  relocation      String       @default("")
+  noticePeriod    String       @default("")
+  status          String       @default("received") // received | negotiating | accepted | declined
+  negotiation     String       @default("{}")
+  finalBase       Int?
+  createdAt       DateTime     @default(now())
+}
+
+model CareerSnapshot {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  marketValue Int
+  score       Int
+  components  String   @default("{}")
+  createdAt   DateTime @default(now())
+}
+
+model Partner {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  revShare  Float    @default(0.15)
+  audience  Int      @default(0)
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+}
+
+// Free Career Check (anonymous lead magnet).
+model CareerCheck {
+  id        String   @id @default(cuid())
+  cvText    String
+  target    String   @default("")
+  result    String   @default("{}")
+  createdAt DateTime @default(now())
+}

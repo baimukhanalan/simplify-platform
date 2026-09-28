@@ -1,26 +1,84 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Simplify design system — mirrors the landing (simplify-deploy): mint atmosphere,
+   frosted white glass, STK Bureau Serif headlines, PP Supply Mono labels, dark pill CTAs. */
+
+@font-face { font-family: "STK Bureau Serif"; src: url("/fonts/STKBureau-SerifBook.otf") format("opentype"); font-display: swap; }
+@font-face { font-family: "PP Supply Mono"; src: url("/fonts/PPSupplyMono-Regular.otf") format("opentype"); font-display: swap; }
+@font-face { font-family: "PP Supply Sans"; src: url("/fonts/PPSupplySans-Regular.otf") format("opentype"); font-display: swap; }
+
+@theme {
+  --font-sans: var(--font-inter), "Google Sans Flex", system-ui, sans-serif;
+  --font-serif: "STK Bureau Serif", Georgia, serif;
+  --font-mono: "PP Supply Mono", ui-monospace, monospace;
+  --font-num: "PP Supply Sans", var(--font-inter), sans-serif;
+  --font-script: var(--font-pinyon), "Snell Roundhand", cursive;
+
+  --color-ink: #141414;
+  --color-ink-2: rgb(20 20 20 / 0.82);
+  --color-ink-3: rgb(20 20 20 / 0.62);
+  --color-ink-4: rgb(20 20 20 / 0.42);
+  --color-head: #233b3b;
+  --color-teal: rgb(68 97 102);
+  --color-green: #1a6e48;
+  --color-green-soft: rgb(26 110 72 / 0.12);
+  --color-mint: #dcefe6;
+  --color-mint-2: #eef7f2;
+  --color-forest: #2c5647;
+  --color-card: rgb(255 255 255 / 0.74);
+  --color-stroke: rgb(0 0 0 / 0.07);
+  --color-line: rgb(35 59 59 / 0.14);
+  --color-cta: rgb(38 36 36);
+  --color-amber: #9a6b12;
+  --color-amber-soft: rgb(196 140 30 / 0.14);
+  --color-rose: #a3383a;
+  --color-rose-soft: rgb(163 56 58 / 0.1);
+
+  --radius-card: 22px;
+  --shadow-glass: 0 4px 16px rgb(0 0 0 / 0.07), inset 0 1px 0 rgb(255 255 255 / 0.8);
+  --shadow-cta: inset 0 1px 0.5px rgb(255 255 255 / 0.3), inset 0 -1.5px 0.5px rgb(0 0 0 / 0.3), 0 2px 5px rgb(0 0 0 / 0.25);
+
+  --animate-rise: rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-fade: fade 0.5s ease both;
+  --animate-shimmer: shimmer 9s linear infinite;
+  --animate-pulse-dot: pulse-dot 2s ease-in-out infinite;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+@keyframes rise { from { opacity: 0; transform: translateY(14px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@keyframes pulse-dot { 0%, 100% { box-shadow: 0 0 0 3px rgb(26 110 72 / 0.18); } 50% { box-shadow: 0 0 0 7px rgb(26 110 72 / 0.04); } }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+:root { color-scheme: light only; }
+html { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  background-color: #eaf5ef;
+  background-image:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgb(44 86 71 / 0.28), transparent 70%),
+    radial-gradient(ellipse 70% 50% at 100% 110%, rgb(26 110 72 / 0.12), transparent 70%),
+    linear-gradient(180deg, #dcefe6 0%, #eef7f2 45%, #f5faf7 100%);
+  background-attachment: fixed;
+  min-height: 100dvh;
+}
+::selection { background: rgb(26 110 72 / 0.2); }
+
+/* Reusable recipes (also exposed as React primitives in src/components/ui.tsx) */
+@layer components {
+  .glass { background: var(--color-card); border: 1px solid var(--color-stroke); border-radius: var(--radius-card); box-shadow: var(--shadow-glass); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); }
+  .glass-strong { background: rgb(255 255 255 / 0.88); border: 1px solid var(--color-stroke); border-radius: var(--radius-card); box-shadow: var(--shadow-glass); backdrop-filter: blur(18px); }
+  .label { font-family: var(--font-mono); font-size: 11px; line-height: 1.2; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-ink-3); }
+  .h-serif { font-family: var(--font-serif); color: var(--color-head); letter-spacing: -0.01em; line-height: 1.04; font-weight: 400; text-wrap: balance; }
+  .num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+  .script { font-family: var(--font-script); color: var(--color-teal); font-size: 1.18em; line-height: 0.8; padding: 0 0.06em; }
+  .field { width: 100%; border-radius: 14px; border: 1px solid var(--color-line); background: rgb(255 255 255 / 0.8); padding: 11px 14px; font-size: 15px; color: var(--color-ink); outline: none; transition: border-color .2s, box-shadow .2s, background .2s; }
+  .field:focus { border-color: var(--color-green); box-shadow: 0 0 0 4px rgb(26 110 72 / 0.12); background: #fff; }
+  .field::placeholder { color: var(--color-ink-4); }
+  .shimmer-text { background-image: linear-gradient(100deg, var(--color-head) 0 35%, #8fc7ad 50%, var(--color-head) 65% 100%); background-size: 200%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: var(--animate-shimmer); }
+  .scroll-thin { scrollbar-width: thin; scrollbar-color: rgb(35 59 59 / 0.2) transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
