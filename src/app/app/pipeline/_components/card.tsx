@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { DemoBadge, cx } from "@/components/ui";
 import { daysSince } from "@/lib/ops";
-import { LaneChip, StatusMover, matchTone } from "../../opportunities/_components/bits";
+import { LaneChip, matchTone } from "../../opportunities/_components/bits";
+import { LazyStatusMover } from "./lazy-mover";
 
 export type CardOpp = { id: string; status: string; match: number; submittedAt: Date | null; lane: string; job: { company: string; title: string; source: string } };
 
@@ -21,7 +22,7 @@ export function PipelineCard({ o }: { o: CardOpp }) {
         <LaneChip value={o.lane} />
         <span className="text-[11.5px] text-ink-3">{d == null ? "не подано" : d === 0 ? "подано сегодня" : `${d} дн. с подачи`}</span>
       </div>
-      <StatusMover id={o.id} current={o.status} />
+      <LazyStatusMover id={o.id} current={o.status} />
     </article>
   );
 }
