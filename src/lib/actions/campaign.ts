@@ -6,6 +6,7 @@ import { db, j } from "../db";
 import { PLANS } from "../engine/taxonomy";
 import { runTick, simulateResponses, logEvent, submit, prepare } from "../engine/agent";
 import { assessReadiness } from "../engine/readiness";
+import { toUSD } from "../engine/fx";
 
 async function readinessFor(userId: string) {
   const u = await db.user.findUniqueOrThrow({ where: { id: userId }, include: { profile: true, goal: true, facts: true, _count: { select: { stories: true } } } });
@@ -13,7 +14,7 @@ async function readinessFor(userId: string) {
   return assessReadiness({
     profile: { yearsExperience: p.yearsExperience, skills: j(p.skills, []), englishLevel: p.englishLevel, cvText: p.cvText, summary: p.summary, workAuth: j(p.workAuth, []), needsSponsorship: p.needsSponsorship, linkedin: p.linkedin, github: p.github, portfolio: p.portfolio },
     facts: u.facts, stories: u._count.stories,
-    goal: { primaryRole: g.primaryRole, seniority: g.seniority, minSalary: g.minSalary, countries: j(g.countries, []), workModes: j(g.workModes, []), dreamCompanies: j(g.dreamCompanies, []), sponsorshipNeeded: g.sponsorshipNeeded },
+    goal: { primaryRole: g.primaryRole, seniority: g.seniority, minSalary: toUSD(g.minSalary, g.currency), countries: j(g.countries, []), workModes: j(g.workModes, []), dreamCompanies: j(g.dreamCompanies, []), sponsorshipNeeded: g.sponsorshipNeeded },
   });
 }
 
@@ -25,6 +26,8 @@ export async function checkout(form: FormData) {
   const user = await requireUser();
   const plan = PLANS[String(form.get("plan")) as keyof typeof PLANS] ?? PLANS.local;
   if (!user.goal?.primaryRole) redirect("/app/goal?need=goal");
+  // One campaign at a time: a double submit or a second tab must not create (and charge for) another one.
+  if (await activeCampaign(user.id)) redirect("/app/campaign");
   const code = String(form.get("partner") ?? user.referredByCode ?? "").trim().toUpperCase();
   const partner = code ? await db.partner.findUnique({ where: { code } }) : null;
   const readiness = await readinessFor(user.id);
@@ -102,7 +105,7 @@ export async function markHired(form: FormData) {
       await db.offer.update({ where: { id: offerId }, data: { status: "accepted" } });
       if (offer.opportunityId) await db.opportunity.update({ where: { id: offer.opportunityId }, data: { status: "hired" } });
       const p = await db.profile.findUnique({ where: { userId: user.id } });
-      if (p) await db.profile.update({ where: { userId: user.id }, data: { salaryExpectation: offer.finalBase ?? offer.base } });
+      if (p) await db.profile.update({ where: { userId: user.id }, data: { salaryExpectation: toUSD(offer.finalBase ?? offer.base, offer.currency) } }); // profile salary is USD
     }
   }
   if (c) await db.campaign.update({ where: { id: c.id }, data: { status: "hired", hiredAt: new Date() } });

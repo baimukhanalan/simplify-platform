@@ -7,6 +7,7 @@ import { jobCtx } from "./engine/agent";
 import { ensureSeedJobs } from "./engine/ingest";
 import { buildPackageHeuristic, type FactLite, type ProfileLite } from "./engine/personalize";
 import { ROLE_FAMILIES, classifyRole, seniorityFromYears } from "./engine/taxonomy";
+import { toUSD } from "./engine/fx";
 
 /* ——————————————————————————— Onboarding wizard ——————————————————————————— */
 
@@ -43,7 +44,7 @@ export function resumeStep(done: Set<number>, hints: { hasCv: boolean; hasGoal: 
 
 type UserForReadiness = {
   profile: { yearsExperience: number; skills: string; englishLevel: string; cvText: string; summary: string; workAuth: string; needsSponsorship: boolean; linkedin: string; github: string; portfolio: string } | null;
-  goal: { primaryRole: string; seniority: string; minSalary: number; countries: string; workModes: string; dreamCompanies: string; sponsorshipNeeded: boolean } | null;
+  goal: { primaryRole: string; seniority: string; minSalary: number; currency?: string; countries: string; workModes: string; dreamCompanies: string; sponsorshipNeeded: boolean } | null;
   facts: { kind: string; metrics: string; verified: boolean }[];
 };
 
@@ -57,7 +58,7 @@ export function readinessInputFor(u: UserForReadiness, stories: number): Readine
     facts: u.facts,
     stories,
     goal: {
-      primaryRole: g?.primaryRole ?? "", seniority: g?.seniority ?? "junior", minSalary: g?.minSalary ?? 0, countries: j(g?.countries, []),
+      primaryRole: g?.primaryRole ?? "", seniority: g?.seniority ?? "junior", minSalary: toUSD(g?.minSalary ?? 0, g?.currency), countries: j(g?.countries, []),
       workModes: j(g?.workModes, ["remote"]), dreamCompanies: j(g?.dreamCompanies, []), sponsorshipNeeded: g?.sponsorshipNeeded ?? true,
     },
   };

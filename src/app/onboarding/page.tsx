@@ -8,6 +8,7 @@ import { miniInterviewQuestions } from "@/lib/engine/profile";
 import { REGIONS, ROLE_FAMILIES, classifyRole, seniorityFromYears } from "@/lib/engine/taxonomy";
 import { suggestAdjacentRoles } from "@/lib/engine/readiness";
 import { marketRange } from "@/lib/engine/market";
+import { toUSD } from "@/lib/engine/fx";
 import { Label } from "@/components/ui";
 import { SiteHeader } from "../_components/site-header";
 import { StepRail } from "./_components/step-rail";
@@ -71,6 +72,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
       <StepPrefs
         initial={{
           citizenship: profile?.citizenship ?? "KZ", workAuth: j<string[]>(profile?.workAuth, ["KZ"]), needsSponsorship: profile?.needsSponsorship ?? true, relocation: profile?.relocation ?? false,
+          languages: j<{ lang: string }[]>(profile?.languages, []).map((l) => l.lang),
           englishLevel: profile?.englishLevel ?? "B1", remotePref: profile?.remotePref ?? "remote", salaryExpectation: profile?.salaryExpectation ?? 0, city: profile?.city ?? "",
           noticePeriod: profile?.noticePeriod ?? "2 weeks", linkedin: profile?.linkedin ?? "", github: profile?.github ?? "", portfolio: profile?.portfolio ?? "",
         }}
@@ -102,7 +104,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
       const r = await readinessForUser(user.id);
       const countries = j<string[]>(goal.countries, []);
       const range = marketRange(classifyRole(goal.primaryRole), goal.seniority, countries);
-      body = <StepReadiness r={r} goal={{ role: goal.primaryRole, seniority: goal.seniority, minSalary: goal.minSalary, hasRemote: j<string[]>(goal.workModes, []).includes("remote"), intl: countries.some((c) => !["KZ", "CIS"].includes(c)) }} marketMid={range.mid} />;
+      body = <StepReadiness r={r} goal={{ role: goal.primaryRole, seniority: goal.seniority, minSalary: toUSD(goal.minSalary, goal.currency), hasRemote: j<string[]>(goal.workModes, []).includes("remote"), intl: countries.some((c) => !["KZ", "CIS"].includes(c)) }} marketMid={range.mid} />;
     }
   } else {
     body = goal?.primaryRole ? <StepPlan partner={user.referredByCode ?? ""} activeCampaign={Boolean(campaign)} /> : <NeedGoal />;

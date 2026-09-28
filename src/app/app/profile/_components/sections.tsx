@@ -137,7 +137,7 @@ export function CvSection({ profile: p }: { profile: Profile }) {
         <div className="grid size-10 place-items-center rounded-xl bg-teal/10 text-teal"><FileText className="size-5" strokeWidth={1.7} aria-hidden /></div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[15px] text-head">{p.cvFileName || (p.cvText ? "Текст CV" : "CV не загружено")}</div>
-          <div className="text-[12.5px] text-ink-3"><span className="num">{p.cvText.length.toLocaleString("ru-RU")}</span> символов · обновлено {p.updatedAt.toLocaleDateString("ru-RU")}</div>
+          <div className="text-[12.5px] text-ink-3"><span className="num">{p.cvText.length.toLocaleString("ru-RU")}</span> символов · обновлено {p.updatedAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}</div>
         </div>
         {p.cvText && <Chip tone="green">исходник сохранён</Chip>}
       </div>

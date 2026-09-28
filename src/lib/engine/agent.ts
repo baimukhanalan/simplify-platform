@@ -1,12 +1,15 @@
 import "server-only";
-import { db, j, s } from "../db";
-import { scoreJob, type CandidateCtx } from "./matching";
+import { Prisma } from "@prisma/client";
+import { db, j, s, noNul } from "../db";
+import { isAhead } from "../rounds";
+import { scoreJob, type CandidateCtx, type MatchResult } from "./matching";
 import { buildPackage, type FactLite, type ProfileLite } from "./personalize";
 import { ensureSeedJobs } from "./ingest";
 import { allocationFrom, reachedInterview } from "./insights";
 import { classifyEmail, CLASS_TO_STATUS, matchCompany } from "./inbox";
 import { buildPackHeuristic } from "./interview";
-import { classifyRole, APPLIED_OR_LATER } from "./taxonomy";
+import { classifyRole, defaultLanguagesFor, APPLIED_OR_LATER } from "./taxonomy";
+import { toUSD } from "./fx";
 
 export async function logEvent(userId: string, type: string, message: string, opportunityId?: string | null, data: object = {}) {
   await db.event.create({ data: { userId, type, message, opportunityId: opportunityId ?? null, data: s(data) } });
@@ -20,16 +23,19 @@ export async function loadCandidate(userId: string) {
   const profile: ProfileLite = {
     name: user.name, email: user.email, phone: p.phone, location: p.location || p.city, headline: p.headline, summary: p.summary, skills: j<string[]>(p.skills, []),
     yearsExperience: p.yearsExperience, englishLevel: p.englishLevel, workAuth: j<string[]>(p.workAuth, []), needsSponsorship: p.needsSponsorship, relocation: p.relocation,
-    linkedin: p.linkedin, github: p.github, portfolio: p.portfolio, noticePeriod: p.noticePeriod, salaryExpectation: g.minSalary || p.salaryExpectation, citizenship: p.citizenship,
+    linkedin: p.linkedin, github: p.github, portfolio: p.portfolio, noticePeriod: p.noticePeriod, salaryExpectation: g.minSalary ? toUSD(g.minSalary, g.currency) : p.salaryExpectation, citizenship: p.citizenship,
   };
+  // Onboarding may not have recorded languages yet; assume the citizenship's usual ones rather than hard-blocking (e.g. Russian for KZ).
+  const recordedLanguages = j<{ lang: string }[]>(p.languages, []).map((l) => l.lang).filter(Boolean);
+  const spokenLanguages = recordedLanguages.length ? recordedLanguages : defaultLanguagesFor(p.citizenship);
   const edu = user.facts.filter((f) => f.kind === "education").map((f) => f.title.toLowerCase()).join(" ");
   const goal = {
-    primaryRole: g.primaryRole, extraRoles: j<string[]>(g.extraRoles, []), seniority: g.seniority, minSalary: g.minSalary, countries: j<string[]>(g.countries, []),
+    primaryRole: g.primaryRole, extraRoles: j<string[]>(g.extraRoles, []), seniority: g.seniority, minSalary: toUSD(g.minSalary, g.currency), countries: j<string[]>(g.countries, []),
     workModes: j<string[]>(g.workModes, ["remote"]), industries: j<string[]>(g.industries, []), dreamCompanies: j<string[]>(g.dreamCompanies, []), blockedCompanies: j<string[]>(g.blockedCompanies, []), mode: g.mode,
   };
   const ctx = (allocation: Record<string, number>): CandidateCtx => ({
     skills: profile.skills, yearsExperience: p.yearsExperience, englishLevel: p.englishLevel,
-    languages: j<{ lang: string }[]>(p.languages, []).map((l) => l.lang).concat("English"), workAuth: profile.workAuth, needsSponsorship: p.needsSponsorship, relocation: p.relocation,
+    languages: [...spokenLanguages, "English"], workAuth: profile.workAuth, needsSponsorship: p.needsSponsorship, relocation: p.relocation,
     educationLevel: /phd|доктор/.test(edu) ? "phd" : /master|магистр|msc/.test(edu) ? "master" : /bachelor|бакалавр|bsc|university|университет/.test(edu) ? "bachelor" : "none",
     goal, allocation,
   });
@@ -43,6 +49,9 @@ const jobLite = (job: { title: string; company: string; roleFamily: string; desc
 export const jobCtx = (job: Parameters<typeof jobLite>[0] & { seniority: string; minYears: number; education: string; workAuth: string; languages: string; massHiring: boolean; postedAt: Date }) => ({
   ...jobLite(job), seniority: job.seniority, minYears: job.minYears, education: job.education, workAuth: j<string[]>(job.workAuth, []), languages: j<string[]>(job.languages, []), massHiring: job.massHiring, postedAt: job.postedAt,
 });
+
+const statusFor = (r: MatchResult) => (r.eligibility === "blocked" ? "skipped" : r.match >= 55 && r.freshnessDays <= 30 ? "qualified" : "found");
+const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
 /** Discovery + match/eligibility + ranking for every active job not yet in the campaign. */
 export async function discover(campaignId: string) {
@@ -59,8 +68,13 @@ export async function discover(campaignId: string) {
     const relevant = wanted.has(job.roleFamily) || (c.goal.mode === "mass" && job.massHiring) || c.goal.dreamCompanies.some((d) => d && job.company.toLowerCase().includes(d.toLowerCase()));
     if (!relevant) continue;
     const r = scoreJob(c, jobCtx(job));
-    const status = r.eligibility === "blocked" ? "skipped" : r.match >= 55 && r.freshnessDays <= 30 ? "qualified" : "found";
-    await db.opportunity.create({ data: { campaignId, jobId: job.id, match: r.match, matchReasons: s(r.reasons), eligibility: r.eligibility, blockers: s(r.blockers), softGaps: s(r.softGaps), pInterview: r.pInterview, priority: r.priority, lane: r.lane, segment: r.segment, status } });
+    const status = statusFor(r);
+    try {
+      await db.opportunity.create({ data: { campaignId, jobId: job.id, match: r.match, matchReasons: s(r.reasons), eligibility: r.eligibility, blockers: s(r.blockers), softGaps: s(r.softGaps), pInterview: r.pInterview, priority: r.priority, lane: r.lane, segment: r.segment, status } });
+    } catch (e) {
+      if (isUniqueViolation(e)) continue; // an overlapping run already added this job to the campaign
+      throw e;
+    }
     found++;
     if (status === "qualified") qualified++;
     if (status === "skipped") blocked++;
@@ -69,26 +83,65 @@ export async function discover(campaignId: string) {
   return { found, qualified, blocked };
 }
 
-/** Re-rank remaining queue with the latest learned allocation (feedback loop). */
+/**
+ * Re-rank remaining queue with the latest learned allocation (feedback loop) and re-check eligibility:
+ * the goal may have changed since discovery (stop-list, countries, languages…).
+ */
 export async function rerank(campaignId: string) {
   const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
-  const opps = await db.opportunity.findMany({ where: { campaignId }, include: { job: true, pkg: { select: { cvVersion: true } }, _count: { select: { interviews: true } } } });
-  const allocation = allocationFrom(opps.map((o) => ({ ...o, reachedInterview: reachedInterview(o.status, o._count.interviews), reachedAssessment: o.status === "assessment" })));
+  const opps = await db.opportunity.findMany({ where: { campaignId }, include: { job: true, pkg: { select: { cvVersion: true } }, interviews: { select: { round: true } } } });
+  // An assessment is not an interview: only real rounds count as interview success for allocation.
+  const allocation = allocationFrom(opps.map((o) => ({
+    ...o,
+    reachedInterview: reachedInterview(o.status, o.interviews.filter((i) => i.round !== "assessment").length),
+    reachedAssessment: o.status === "assessment" || o.interviews.some((i) => i.round === "assessment"),
+  })));
   await db.campaign.update({ where: { id: campaignId }, data: { allocation: s(allocation) } });
   const { ctx } = await loadCandidate(campaign.userId);
   const c = ctx(allocation);
-  for (const o of opps.filter((o) => o.status === "qualified" || o.status === "found")) {
+
+  // Skips the user made (manual move or a rejected approval) are never undone; only eligibility skips are.
+  const skippedIds = opps.filter((o) => o.status === "skipped").map((o) => o.id);
+  const manualSkips = new Set(
+    skippedIds.length
+      ? (await db.event.findMany({ where: { userId: campaign.userId, opportunityId: { in: skippedIds }, type: { in: ["status_change", "approval"] } }, select: { opportunityId: true, data: true } }))
+          .filter((e) => { const d = j<{ to?: string; decision?: string }>(e.data, {}); return d.to === "skipped" || d.decision === "reject"; })
+          .map((e) => e.opportunityId)
+      : [],
+  );
+  const autoSkipped = (o: (typeof opps)[number]) => o.status === "skipped" && !manualSkips.has(o.id) && j<string[]>(o.blockers, []).length > 0;
+
+  let nowBlocked = 0, unblocked = 0;
+  for (const o of opps.filter((o) => o.status === "qualified" || o.status === "found" || autoSkipped(o))) {
     const r = scoreJob(c, jobCtx(o.job));
-    await db.opportunity.update({ where: { id: o.id }, data: { pInterview: r.pInterview, priority: r.priority, match: r.match } });
+    const status = o.status === "skipped" ? (r.eligibility === "blocked" ? "skipped" : statusFor(r)) : r.eligibility === "blocked" ? "skipped" : o.status;
+    if (status === "skipped" && o.status !== "skipped") nowBlocked++;
+    if (status !== "skipped" && o.status === "skipped") unblocked++;
+    await db.opportunity.update({
+      where: { id: o.id },
+      data: { pInterview: r.pInterview, priority: r.priority, match: r.match, matchReasons: s(r.reasons), eligibility: r.eligibility, blockers: s(r.blockers), softGaps: s(r.softGaps), status },
+    });
   }
+  if (nowBlocked || unblocked) await logEvent(campaign.userId, "rerank", `Переоценка очереди: ${nowBlocked} вакансий теперь с hard blockers, ${unblocked} вернулись в очередь`);
   return allocation;
 }
+
+// Questions a human must answer once; afterwards the latest approved answer is reused as a standing answer.
+const STANDING_KINDS = new Set(["sensitive", "legal", "sponsorship"]);
 
 /** Build the application package for one opportunity and route anything sensitive to approvals. */
 export async function prepare(opportunityId: string) {
   const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true } });
-  const { profile, facts } = await loadCandidate(opp.campaign.userId);
+  if (APPLIED_OR_LATER.includes(opp.status)) return { pending: 0 }; // never rewrite a package that was already sent
+  const userId = opp.campaign.userId;
+  const { profile, facts } = await loadCandidate(userId);
   const pkg = await buildPackage(profile, facts, jobLite(opp.job));
+  let reused = 0;
+  for (const a of pkg.answers) {
+    if (a.status !== "pending" || !STANDING_KINDS.has(a.kind ?? "")) continue;
+    const prior = await db.approval.findFirst({ where: { userId, question: a.q, kind: a.kind, status: { in: ["approved", "edited"] }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
+    if (prior) { a.a = prior.answer; a.status = "approved"; reused++; }
+  }
   const version = `v${(await db.applicationPackage.count({ where: { opportunity: { campaignId: opp.campaignId } } })) + 1}-${opp.segment}`;
   await db.applicationPackage.upsert({
     where: { opportunityId },
@@ -97,10 +150,11 @@ export async function prepare(opportunityId: string) {
   });
   const pending = pkg.answers.filter((a) => a.status === "pending");
   for (const a of pending) {
-    await db.approval.create({ data: { userId: opp.campaign.userId, opportunityId, kind: a.kind ?? "unknown_question", question: a.q, proposed: a.a } });
+    const open = await db.approval.findFirst({ where: { opportunityId, question: a.q, status: "pending" }, select: { id: true } });
+    if (!open) await db.approval.create({ data: { userId, opportunityId, kind: a.kind ?? "unknown_question", question: a.q, proposed: a.a } });
   }
   await db.opportunity.update({ where: { id: opportunityId }, data: { status: "prepared" } });
-  await logEvent(opp.campaign.userId, "prepared", `Пакет готов: ${opp.job.title} — ${opp.job.company} (CV ${version}${pending.length ? `, ${pending.length} вопрос(а) ждут подтверждения` : ""})`, opportunityId);
+  await logEvent(userId, "prepared", `Пакет готов: ${opp.job.title} — ${opp.job.company} (CV ${version}${pending.length ? `, ${pending.length} вопрос(а) ждут подтверждения` : ""}${reused ? `, ${reused} ответ(а) взяты из ранее подтверждённых` : ""})`, opportunityId, { reused });
   return { pending: pending.length };
 }
 
@@ -109,14 +163,18 @@ export async function prepare(opportunityId: string) {
  * user-authorized handoffs: the package is ready and the user submits through the official form.
  */
 export async function submit(opportunityId: string, via: "agent" | "user" = "agent") {
-  const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true, approvals: { where: { status: "pending" } } } });
+  const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true, pkg: { select: { id: true } }, approvals: { where: { status: "pending" } } } });
+  if (APPLIED_OR_LATER.includes(opp.status)) return { ok: false, reason: "already-submitted" };
+  if (!opp.pkg) return { ok: false, reason: "no-package" }; // nothing may be written for an unprepared opportunity
   if (opp.approvals.length && via === "agent") return { ok: false, reason: "approvals" };
   if (opp.job.source !== "demo" && via === "agent") {
     const exists = await db.approval.findFirst({ where: { opportunityId, kind: "handoff", status: "pending" } });
     if (!exists) await db.approval.create({ data: { userId: opp.campaign.userId, opportunityId, kind: "handoff", question: `Отправьте заявку в ${opp.job.company} через официальную форму`, proposed: opp.job.url } });
     return { ok: false, reason: "handoff" };
   }
-  await db.opportunity.update({ where: { id: opportunityId }, data: { status: "submitted", submittedAt: new Date() } });
+  // Conditional write: an overlapping run that already submitted wins, this one becomes a no-op.
+  const moved = await db.opportunity.updateMany({ where: { id: opportunityId, status: { notIn: APPLIED_OR_LATER } }, data: { status: "submitted", submittedAt: new Date() } });
+  if (!moved.count) return { ok: false, reason: "already-submitted" };
   await db.applicationPackage.update({ where: { opportunityId }, data: { submitMethod: via === "user" ? "user-handoff" : `ats:${opp.job.source}` } });
   await logEvent(opp.campaign.userId, "submitted", `Заявка отправлена: ${opp.job.title} — ${opp.job.company}`, opportunityId, { method: via });
   return { ok: true };
@@ -153,22 +211,28 @@ export async function runTick(campaignId: string) {
 // ——— Inbox Intelligence → pipeline ———
 const ROUND_STATUS: Record<string, string> = { recruiter: "recruiter", hiring_manager: "hiring_manager", technical: "technical", final: "final" };
 
+const CLOSED = new Set(["hired", "rejected"]);
+
 export async function ingestEmail(userId: string, msg: { from: string; subject: string; body: string; simulated?: boolean; opportunityId?: string }) {
+  msg = { ...msg, from: noNul(msg.from), subject: noNul(msg.subject), body: noNul(msg.body) };
   const c = classifyEmail(msg.subject, msg.body);
   const opps = await db.opportunity.findMany({ where: { campaign: { userId }, status: { in: APPLIED_OR_LATER } }, include: { job: { select: { company: true, title: true } } } });
   const oppId = msg.opportunityId ?? matchCompany(msg.from, msg.subject, msg.body, opps.map((o) => ({ id: o.id, company: o.job.company })));
   const saved = await db.inboxMessage.create({ data: { userId, opportunityId: oppId, fromAddr: msg.from, subject: msg.subject, body: msg.body, classification: c.cls, confidence: c.confidence, deadline: c.deadline, simulated: Boolean(msg.simulated) } });
-  if (!oppId) return { message: saved, updated: false };
-  const opp = opps.find((o) => o.id === oppId)!;
+  const opp = oppId ? opps.find((o) => o.id === oppId) : undefined;
+  if (!oppId || !opp) return { message: saved, updated: false };
+  const closed = CLOSED.has(opp.status); // hired / rejected are final: mail never reopens them
   let next = CLASS_TO_STATUS[c.cls];
   if (c.cls === "interview" && c.round) next = ROUND_STATUS[c.round];
-  if (c.cls === "confirmation" && opp.status !== "submitted") next = null; // never move backwards
+  // The pipeline only moves forward; a rejection can end any stage that is not final.
+  if (next && (closed || (next !== "rejected" && !isAhead(next, opp.status)))) next = null;
   if (next) {
     await db.opportunity.update({ where: { id: oppId }, data: { status: next } });
     await logEvent(userId, "inbox", `${opp.job.company}: письмо распознано как «${c.cls}» → ${next}`, oppId, { confidence: c.confidence });
   }
+  if (closed) return { message: saved, updated: false };
   if (c.cls === "interview" || c.cls === "assessment") await createInterview(userId, oppId, c.cls === "assessment" ? "assessment" : c.round ?? "recruiter", c.deadline);
-  if (c.cls === "offer") {
+  if (c.cls === "offer" && !(await db.offer.findFirst({ where: { opportunityId: oppId }, select: { id: true } }))) {
     const job = await db.opportunity.findUniqueOrThrow({ where: { id: oppId }, include: { job: true } });
     const base = Number(msg.body.match(/\$\s?(\d{2,3}),?(\d{3})/)?.slice(1, 3).join("")) || job.job.salaryMin || 60000;
     await db.offer.create({ data: { userId, opportunityId: oppId, company: job.job.company, role: job.job.title, base, currency: "USD", vacationDays: 24, benefits: s(["Health insurance", "Learning budget"]), remote: job.job.remote } });

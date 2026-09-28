@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { ArrowLeft, ArrowRight, MapPin, SlidersHorizontal } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { db, j } from "@/lib/db";
+import { db, j, insensitive } from "@/lib/db";
 import { currentCampaign } from "@/lib/ops-data";
 import { APPLIED_OR_LATER, PIPELINE } from "@/lib/engine/taxonomy";
 import { ELIGIBILITY, REMOTE_LABEL, SOURCE_LABEL, ago, daysAgo, salaryLabel } from "@/lib/ops";
@@ -52,7 +52,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     ...(["standard", "target", "mass"].includes(lane) ? { lane } : {}),
     ...(status === "active" ? { status: { not: "skipped" } } : status === "applied" ? { status: { in: APPLIED_OR_LATER } } : status ? { status } : {}),
     ...(source || q
-      ? { job: { ...(source ? { source } : {}), ...(q ? { OR: [{ title: { contains: q } }, { company: { contains: q } }, { location: { contains: q } }] } : {}) } }
+      ? { job: { ...(source ? { source } : {}), ...(q ? { OR: [{ title: { contains: q, ...insensitive } }, { company: { contains: q, ...insensitive } }, { location: { contains: q, ...insensitive } }] } : {}) } }
       : {}),
   };
   const orderBy: Prisma.OpportunityOrderByWithRelationInput[] =

@@ -6,14 +6,13 @@ import { Card, Chip, Field, Label, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { benchmarkOffer, negotiationPlan, type Aggressiveness } from "@/lib/engine/offer";
 import { fmtMoney } from "@/lib/engine/taxonomy";
+import { fxToUsd } from "@/lib/engine/fx";
 import { markHired } from "@/lib/actions/campaign";
 import { declineOffer, recordFinal, saveNegotiation } from "@/lib/actions/offer";
 import { CopyButton } from "../../interviews/_components/copy-button";
 import { EditTermsForm } from "./offer-forms";
 import { RangeBar } from "./range-bar";
 
-// Indicative FX to USD for benchmarking only (the market model is in USD).
-const TO_USD: Record<string, number> = { USD: 1, EUR: 1.08, GBP: 1.27, CAD: 0.73, AED: 0.27, KZT: 1 / 500 };
 
 const STATUS: Record<string, { label: string; tone: "neutral" | "amber" | "green" | "rose" }> = {
   received: { label: "Получен", tone: "neutral" },
@@ -27,7 +26,7 @@ const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["
 type Props = { offer: Offer; level: Aggressiveness; roleFamily: string; seniority: string; regions: string[]; strengths: string[]; name: string };
 
 export function OfferCard({ offer: o, level, roleFamily, seniority, regions, strengths, name }: Props) {
-  const fx = TO_USD[o.currency] ?? 1;
+  const fx = fxToUsd(o.currency); // indicative FX: the market model is in USD
   const bm = benchmarkOffer({ base: Math.round(o.base * fx), roleFamily, seniority, regions });
   // Range back in the offer's currency so the plan and email speak the same money.
   const range = { low: Math.round(bm.range.low / fx), mid: Math.round(bm.range.mid / fx), high: Math.round(bm.range.high / fx) };
@@ -185,7 +184,7 @@ export function OfferCard({ offer: o, level, roleFamily, seniority, regions, str
               </Field>
               <div className="flex flex-wrap items-center gap-3">
                 <SubmitButton size="sm" variant="glass" pendingText="Сохраняем…">Сохранить план ({LEVEL_LABEL[level].toLowerCase()})</SubmitButton>
-                {saved.savedAt && <span className="text-[12px] text-ink-3">Сохранено {new Date(saved.savedAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })} · ask {money(saved.ask ?? 0)}</span>}
+                {saved.savedAt && <span className="text-[12px] text-ink-3">Сохранено {new Date(saved.savedAt).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short" })} · ask {money(saved.ask ?? 0)}</span>}
               </div>
             </form>
             <form action={recordFinal} className="flex flex-col gap-3">

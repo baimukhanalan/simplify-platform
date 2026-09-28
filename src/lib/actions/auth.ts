@@ -1,5 +1,6 @@
 "use server";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { createSession, destroySession, hashPassword, verifyPassword, safeNext } from "../auth";
 import { rateLimit } from "../rate-limit";
@@ -35,13 +36,20 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
   if (form.get("terms") !== "on") return { error: "Нужно согласие с условиями и политикой данных" };
   if (await db.user.findUnique({ where: { email } })) return { error: "Аккаунт с таким email уже есть — войдите" };
   const partner = ref ? await db.partner.findUnique({ where: { code: ref } }) : null;
-  const user = await db.user.create({
-    data: {
-      name, email, passwordHash: await hashPassword(password), referredByCode: partner?.code ?? null,
-      consents: JSON.stringify({ terms: true, autoSubmit: true, emailScan: false, copilot: true, analytics: form.get("analytics") === "on", at: new Date().toISOString() }),
-      profile: { create: {} }, goal: { create: {} },
-    },
-  });
+  let user: { id: string };
+  try {
+    user = await db.user.create({
+      data: {
+        name, email, passwordHash: await hashPassword(password), referredByCode: partner?.code ?? null,
+        consents: JSON.stringify({ terms: true, autoSubmit: true, emailScan: false, copilot: true, analytics: form.get("analytics") === "on", at: new Date().toISOString() }),
+        profile: { create: {} }, goal: { create: {} },
+      },
+    });
+  } catch (e) {
+    // Concurrent double-submit: the unique email index wins the race.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") return { error: "Аккаунт с таким email уже есть — войдите" };
+    throw e;
+  }
   await db.event.create({ data: { userId: user.id, type: "signup", message: "Аккаунт создан" } });
   await createSession(user.id);
   const plan = String(form.get("plan") ?? "");

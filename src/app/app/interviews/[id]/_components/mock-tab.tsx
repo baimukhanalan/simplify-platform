@@ -23,7 +23,7 @@ export function MockTab({ interviewId, round, mocks, skills, jdTerms }: { interv
                   <Ring value={fb.overall ?? 0} size={56} stroke={5} />
                   <div className="flex min-w-0 flex-col gap-1">
                     <Chip tone="teal" className="self-start">{ROUND_LABEL[m.persona] ?? m.persona}</Chip>
-                    <span className="text-[12.5px] text-ink-3">{m.createdAt.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {fb.answered ?? transcript.filter((t) => t.role === "candidate").length} ответов</span>
+                    <span className="text-[12.5px] text-ink-3">{m.createdAt.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {fb.answered ?? transcript.filter((t) => t.role === "candidate").length} ответов</span>
                   </div>
                 </div>
                 {fb.plan && fb.plan.length > 0 && (

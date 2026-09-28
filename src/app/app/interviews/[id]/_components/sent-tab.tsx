@@ -20,7 +20,7 @@ export function SentTab({ pkg, company, submittedAt }: { pkg: ApplicationPackage
           <Chip tone="dark">CV {pkg.cvVersion}</Chip>
           <Chip tone={pkg.generatedBy === "claude" ? "green" : "teal"}>{pkg.generatedBy}</Chip>
           <Chip>{method}</Chip>
-          {submittedAt && <Chip>{submittedAt.toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</Chip>}
+          {submittedAt && <Chip>{submittedAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short" })}</Chip>}
         </div>
       </Card>
 

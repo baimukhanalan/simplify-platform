@@ -10,7 +10,8 @@ const INTENTS: [Intent, RegExp][] = [
   ["closing", /any questions for (me|us)|questions for us|вопросы к нам/i],
   ["weakness", /weakness|area (of|for) (improvement|growth)|слаб(ые|ая)/i],
   ["strengths", /strength|what are you (best|good) at|сильн(ые|ая)/i],
-  ["leadership", /\b(lead|led|manage[d]?|mentor|conflict|team of|people management|disagree|конфликт|руковод)/i],
+  // Unicode-aware start boundary: `\b` never fires before Cyrillic, so "конфликт"/"руковод…" were missed.
+  ["leadership", /(?<![\p{L}\p{N}_])(lead|led|manage[d]?|mentor|conflict|team of|people management|disagree|конфликт|руковод)/iu],
   ["behavioral", /tell me about a time|describe a (time|situation)|give (me )?an example|failure|mistake|challenge|difficult|pressure|deadline|ошибк|сложн/i],
   ["motivation", /why (do you want|us|our company|this (role|company|position))|what (attracts|interests) you|почему (мы|наша|эта)/i],
   ["case", /how would you (estimate|approach|size|prioriti[sz]e|improve)|case|metric (would|to) (track|use)|drop in|decline in/i],
@@ -164,7 +165,8 @@ export const MOCK_QUESTIONS: Record<string, string[]> = {
   technical: ["How would you find the top 3 customers by revenue per month in SQL?", "How would you design an A/B test for a new onboarding flow?", "Explain the difference between a LEFT JOIN and an INNER JOIN.", "Daily active users dropped 15% yesterday — how do you investigate?", "How do you make sure your analysis is correct?"],
 };
 
-const FILLERS = /\b(um+|uh+|like|you know|basically|actually|sort of|kind of|ну|типа|как бы|короче|в общем)\b/gi;
+// Lookarounds instead of `\b`, which does not work next to Cyrillic ("ну", "типа" never matched).
+const FILLERS = /(?<![\p{L}\p{N}_])(um+|uh+|like|you know|basically|actually|sort of|kind of|ну|типа|как бы|короче|в общем)(?![\p{L}\p{N}_])/giu;
 
 export function scoreAnswer(question: string, answer: string, ctx: { skills: string[]; jdTerms: string[] }) {
   const words = answer.trim().split(/\s+/).filter(Boolean);
@@ -178,7 +180,7 @@ export function scoreAnswer(question: string, answer: string, ctx: { skills: str
   const lengthScore = n < 40 ? 40 : n <= 220 ? 100 : n <= 320 ? 70 : 45;
   const clarity = Math.max(0, 100 - fillers * 12 - (answer.match(/[^.!?]{220,}/g)?.length ?? 0) * 15);
   const structure = intent === "behavioral" || intent === "leadership" ? Math.round(starScore * 100) : /first|second|then|finally|во-первых|затем/i.test(answer) ? 85 : 60;
-  const confidence = Math.max(20, 100 - (answer.match(/\b(i think maybe|i guess|not sure|probably|наверное|не уверен)\b/gi)?.length ?? 0) * 20 - fillers * 5);
+  const confidence = Math.max(20, 100 - (answer.match(/(?<![\p{L}\p{N}_])(i think maybe|i guess|not sure|probably|наверное|не уверен)(?![\p{L}\p{N}_])/giu)?.length ?? 0) * 20 - fillers * 5);
   const content = Math.min(100, 45 + (hasNumber ? 25 : 0) + relevance * 10 + (/\bi\b|я /i.test(answer) ? 10 : 0));
   const overall = Math.round((content * 0.3 + structure * 0.2 + clarity * 0.15 + lengthScore * 0.15 + confidence * 0.1 + Math.min(100, relevance * 25) * 0.1));
   const tips: string[] = [];

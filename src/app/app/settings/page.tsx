@@ -39,7 +39,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
       <div className="flex flex-col gap-12">
         <section aria-labelledby="consents-h">
-          <SectionTitle eyebrow="01 · Consents" title={<span id="consents-h">Согласия</span>} sub={consents.at ? `Последнее изменение: ${new Date(consents.at).toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" })}` : undefined} />
+          <SectionTitle eyebrow="01 · Consents" title={<span id="consents-h">Согласия</span>} sub={consents.at ? `Последнее изменение: ${new Date(consents.at).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", dateStyle: "medium", timeStyle: "short" })}` : undefined} />
           <Card>
             <ActionForm action={updateConsents} className="flex flex-col gap-4">
               <ul className="flex flex-col divide-y divide-line">
@@ -106,7 +106,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <ol className="flex flex-col divide-y divide-line">
                 {slice.map((e) => (
                   <li key={e.id} className="grid gap-x-4 gap-y-1 px-5 py-3.5 sm:grid-cols-[150px_1fr_auto] sm:items-center sm:px-6">
-                    <time dateTime={e.createdAt.toISOString()} className="num text-[12.5px] text-ink-3">{e.createdAt.toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</time>
+                    <time dateTime={e.createdAt.toISOString()} className="num text-[12.5px] text-ink-3">{e.createdAt.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", dateStyle: "short", timeStyle: "short" })}</time>
                     <span className="text-[14px] text-ink-2">{e.message}</span>
                     <span className="font-mono text-[10.5px] uppercase tracking-[.06em] text-ink-4">{e.type}</span>
                   </li>
@@ -134,7 +134,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </Card>
         </section>
       </div>
-      <p className="mt-10 flex items-center gap-2 text-[12.5px] text-ink-4"><History className="size-3.5" strokeWidth={1.7} aria-hidden />Аккаунт создан {user.createdAt.toLocaleDateString("ru-RU")}</p>
+      <p className="mt-10 flex items-center gap-2 text-[12.5px] text-ink-4"><History className="size-3.5" strokeWidth={1.7} aria-hidden />Аккаунт создан {user.createdAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}</p>
     </>
   );
 }

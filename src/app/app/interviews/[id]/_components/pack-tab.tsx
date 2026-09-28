@@ -38,7 +38,7 @@ export function PackTab({ id, pack, round }: { id: string; pack: (Pack & { gener
         <div className="flex flex-wrap items-center gap-2 text-[13px] text-ink-3">
           <Chip tone={by === "claude" ? "green" : "teal"}>{by === "claude" ? "Сгенерировано Claude" : "Сгенерировано engine"}</Chip>
           <span>Раунд: {ROUND_LABEL[round] ?? round}</span>
-          {pack.generatedAt && <span>· {new Date(pack.generatedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}
+          {pack.generatedAt && <span>· {new Date(pack.generatedAt).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}
           {!aiEnabled() && <span className="basis-full text-[12px] text-ink-4">AI-ключ не настроен — пакет собирает детерминированный engine из ваших фактов.</span>}
         </div>
         {regenerate}

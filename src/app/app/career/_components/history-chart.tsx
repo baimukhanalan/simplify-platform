@@ -12,7 +12,7 @@ export function HistoryChart({ points }: { points: { at: Date; score: number; ma
   const line = points.map((p, i) => `${i ? "L" : "M"}${x(i)},${y(p.score)}`).join(" ");
   const area = `${line} L${x(points.length - 1)},100 L${x(0)},100 Z`;
   const ticks = [min, Math.round((min + max) / 2), max];
-  const fmt = (d: Date) => d.toLocaleDateString("ru-RU", { month: "short", year: "2-digit" });
+  const fmt = (d: Date) => d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", month: "short", year: "2-digit" });
   const last = points[points.length - 1];
 
   return (
@@ -59,7 +59,7 @@ export function HistoryChart({ points }: { points: { at: Date; score: number; ma
       <table className="sr-only">
         <thead><tr><th>Дата</th><th>Career Score</th><th>Market value, USD</th></tr></thead>
         <tbody>
-          {points.map((p, i) => <tr key={i}><td>{p.at.toLocaleDateString("ru-RU")}</td><td>{p.score}</td><td>{p.marketValue}</td></tr>)}
+          {points.map((p, i) => <tr key={i}><td>{p.at.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}</td><td>{p.score}</td><td>{p.marketValue}</td></tr>)}
         </tbody>
       </table>
     </figure>

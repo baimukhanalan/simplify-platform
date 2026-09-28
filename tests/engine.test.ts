@@ -163,6 +163,14 @@ describe("inbox.classifyEmail", () => {
       assert.ok(r.confidence > 0 && r.confidence <= 0.99);
     });
 
+  test("rejection overrides confirmation even when confirmation phrases outweigh a single 'unfortunately'", () => {
+    const r = classifyEmail(
+      "Application received",
+      "Thank you for your application. We have received your application for the Data Analyst role. Unfortunately, the role was closed.",
+    );
+    assert.equal(r.cls, "rejection");
+  });
+
   test("interview email carries a round; technical round detected", () => {
     const r = classifyEmail("Technical interview", "We'd like to invite you to an interview: a live coding session with the team.");
     assert.equal(r.cls, "interview");

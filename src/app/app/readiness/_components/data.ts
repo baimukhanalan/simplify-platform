@@ -1,6 +1,7 @@
 import "server-only";
 import { db, j } from "@/lib/db";
 import { assessReadiness } from "@/lib/engine/readiness";
+import { toUSD } from "@/lib/engine/fx";
 import { marketRange } from "@/lib/engine/market";
 import { classifyRole, seniorityFromYears } from "@/lib/engine/taxonomy";
 
@@ -21,7 +22,7 @@ export async function loadReadiness(userId: string) {
     profile: { yearsExperience: p.yearsExperience, skills: j(p.skills, []), englishLevel: p.englishLevel, cvText: p.cvText, summary: p.summary, workAuth: j(p.workAuth, []), needsSponsorship: p.needsSponsorship, linkedin: p.linkedin, github: p.github, portfolio: p.portfolio },
     facts: u.facts,
     stories: u._count.stories,
-    goal,
+    goal: { ...goal, minSalary: toUSD(goal.minSalary, g.currency) }, // the readiness model is in USD
   });
   const family = classifyRole(g.primaryRole);
   const range = marketRange(family, g.seniority, goal.countries);

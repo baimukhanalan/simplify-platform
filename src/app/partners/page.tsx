@@ -42,7 +42,7 @@ function months(dates: Date[], n = 6) {
   return Array.from({ length: n }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (n - 1 - i), 1);
     const count = dates.filter((x) => x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth()).length;
-    return { key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString("ru-RU", { month: "short" }), count };
+    return { key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", month: "short" }), count };
   });
 }
 

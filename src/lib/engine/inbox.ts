@@ -36,7 +36,10 @@ function detectDeadline(text: string): Date | null {
   const within = text.match(/within (\d{1,2}) (days|hours)/i);
   if (within) return new Date(Date.now() + Number(within[1]) * (within[2].toLowerCase() === "days" ? 86400000 : 3600000));
   const date = text.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-  if (date) return new Date(date[1]);
+  if (date) {
+    const d = new Date(date[1]);
+    if (!Number.isNaN(d.getTime())) return d; // "2026-13-45" is Invalid Date — Prisma would reject it
+  }
   return null;
 }
 
@@ -51,7 +54,8 @@ export function matchCompany(from: string, subject: string, body: string, compan
     const name = c.company.toLowerCase();
     const slug = name.replace(/[^a-z0-9]/g, "");
     let score = 0;
-    if (domain && (domain === slug || slug.includes(domain) || domain.includes(slug))) score += 3;
+    // Non-Latin names ("Каспи") slug to "" and would contain every domain: require a meaningful slug.
+    if (domain.length >= 3 && slug.length >= 3 && (domain === slug || slug.includes(domain) || domain.includes(slug))) score += 3;
     if (text.includes(name)) score += 2;
     if (!best || score > best.score) best = { id: c.id, score };
   }

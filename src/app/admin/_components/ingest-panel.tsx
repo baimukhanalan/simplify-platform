@@ -21,7 +21,7 @@ export function IngestPanel() {
         {state?.error && <p role="alert" className="rounded-xl bg-rose-soft px-3 py-2 text-[13.5px] text-rose">{state.error}</p>}
         {state?.report && (
           <div className="rounded-2xl border border-line bg-white/60 p-4">
-            <div className="label mb-3 !text-[10px]">Отчёт · {new Date(state.at!).toLocaleTimeString("ru-RU")}</div>
+            <div className="label mb-3 !text-[10px]">Отчёт · {new Date(state.at!).toLocaleTimeString("ru-RU", { timeZone: "Asia/Almaty" })}</div>
             <ul className="grid gap-2 sm:grid-cols-2">
               {Object.entries(state.report).map(([src, v]) => (
                 <li key={src} className="flex items-baseline justify-between gap-3 text-[13.5px]">

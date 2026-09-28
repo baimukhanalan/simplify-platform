@@ -2,11 +2,12 @@
 import { useId, useState, type ReactNode } from "react";
 import { savePreferences, type FormState } from "@/lib/actions/onboarding";
 import { cx } from "@/components/ui";
+import { LANGUAGE_OPTIONS, defaultLanguagesFor, normalizeLanguage } from "@/lib/engine/taxonomy";
 import { useActionForm } from "../../_components/use-action-form";
 import { BackLink, FieldErr, FormAlert } from "./shared";
 
 type Prefs = {
-  citizenship: string; workAuth: string[]; needsSponsorship: boolean; relocation: boolean; englishLevel: string; remotePref: string;
+  citizenship: string; workAuth: string[]; languages: string[]; needsSponsorship: boolean; relocation: boolean; englishLevel: string; remotePref: string;
   salaryExpectation: number; city: string; noticePeriod: string; linkedin: string; github: string; portfolio: string;
 };
 
@@ -31,6 +32,8 @@ export function StepPrefs({ initial, euCountries }: { initial: Prefs; euCountrie
   const listed = new Set(AUTH.map(([c]) => c));
   const extras = initial.workAuth.filter((c) => !listed.has(c) && !(hasEU && euCountries.includes(c)));
   const monthly = Number(salary.replace(/\D/g, "")) / 12;
+  const known = initial.languages.map(normalizeLanguage).filter((l) => l !== "English");
+  const langs = new Set(known.length ? known : defaultLanguagesFor(initial.citizenship));
 
   return (
     <form action={formAction} onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
@@ -77,6 +80,13 @@ export function StepPrefs({ initial, euCountries }: { initial: Prefs; euCountrie
             ))}
           </div>
           <FieldErr id={`${id}-en`}>{f.englishLevel}</FieldErr>
+        </fieldset>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="label mb-2">Другие языки (рабочий уровень)</legend>
+          <div className="flex flex-wrap gap-2">
+            {LANGUAGE_OPTIONS.map(([v, l]) => <ChipCheck key={v} name="languages" value={v} defaultChecked={langs.has(v)}>{l}</ChipCheck>)}
+          </div>
+          <span className="text-[12px] text-ink-3">Часть вакансий требует русский или немецкий — без отметки агент считает такие вакансии недоступными.</span>
         </fieldset>
         <fieldset>
           <legend className="label mb-2">Предпочтительный формат</legend>

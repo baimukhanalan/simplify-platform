@@ -57,7 +57,7 @@ export function parseCVHeuristic(text: string): ParsedCV {
   const english = text.match(/\b(A1|A2|B1|B2|C1|C2)\b/)?.[1] ?? (/(fluent|advanced english|свободн)/i.test(text) ? "C1" : "B1");
   const name = lines[0] && lines[0].length < 60 && !lines[0].includes("@") ? lines[0] : "";
   const headline = lines[1] && lines[1].length < 90 && !RANGE.test(lines[1]) && !lines[1].includes("@") ? lines[1] : "";
-  const location = text.match(/\b(Almaty|Astana|Алматы|Астана|Shymkent|Шымкент|Tashkent|Bishkek|Karaganda|Караганда)\b/i)?.[0] ?? "";
+  const location = text.match(/(?<![\p{L}\p{N}_])(Almaty|Astana|Алматы|Астана|Shymkent|Шымкент|Tashkent|Bishkek|Karaganda|Караганда)(?![\p{L}\p{N}_])/iu)?.[0] ?? "";
 
   let section: "exp" | "edu" | "proj" | "other" = "other";
   const facts: ParsedCV["facts"] = [];
@@ -65,17 +65,17 @@ export function parseCVHeuristic(text: string): ParsedCV {
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const low = line.toLowerCase();
-    if (/^(experience|work experience|employment|опыт работы|опыт)\b/.test(low)) { section = "exp"; continue; }
-    if (/^(education|образование)\b/.test(low)) { section = "edu"; continue; }
-    if (/^(projects|проекты|pet projects)\b/.test(low)) { section = "proj"; continue; }
-    if (/^(skills|навыки|languages|языки|certifications|сертификаты|summary|about|о себе)\b/.test(low)) { section = "other"; if (/^(certifications|сертификаты)/.test(low)) section = "other"; continue; }
+    if (/^(experience|work experience|employment|опыт работы|опыт)(?![\p{L}\p{N}_])/u.test(low)) { section = "exp"; continue; }
+    if (/^(education|образование)(?![\p{L}\p{N}_])/u.test(low)) { section = "edu"; continue; }
+    if (/^(projects|проекты|pet projects)(?![\p{L}\p{N}_])/u.test(low)) { section = "proj"; continue; }
+    if (/^(skills|навыки|languages|языки|certifications|сертификаты|summary|about|о себе)(?![\p{L}\p{N}_])/u.test(low)) { section = "other"; if (/^(certifications|сертификаты)/.test(low)) section = "other"; continue; }
 
     const range = line.match(RANGE);
     if (range && (section === "exp" || section === "edu" || section === "other")) {
       const head = line.replace(RANGE, "").replace(/[()|,·•]+\s*$/g, "").trim().replace(/[\s,|–—-]+$/, "");
       const [title, org] = splitTitleOrg(head || lines[i - 1] || "");
       const details: string[] = [];
-      for (let k = i + 1; k < lines.length && !RANGE.test(lines[k]) && !/^(experience|education|projects|skills|опыт|образование|проекты|навыки)\b/i.test(lines[k]); k++) details.push(lines[k].replace(/^[-•*·]\s*/, ""));
+      for (let k = i + 1; k < lines.length && !RANGE.test(lines[k]) && !/^(experience|education|projects|skills|опыт|образование|проекты|навыки)(?![\p{L}\p{N}_])/iu.test(lines[k]); k++) details.push(lines[k].replace(/^[-•*·]\s*/, ""));
       const detailText = details.join("\n");
       const kind = section === "edu" || /(university|университет|bachelor|master|бакалавр|магистр|college)/i.test(head) ? "education" : "employment";
       const a = toMonths(range[1]);

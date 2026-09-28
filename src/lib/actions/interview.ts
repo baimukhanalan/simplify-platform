@@ -122,7 +122,7 @@ export async function saveDebrief(_: DebriefState, form: FormData): Promise<Debr
         ? next
           ? `Следующий раунд — ${ROUND_LABEL[next]}. Создайте Interview Room и пройдите Mock Interview (${next === "technical" ? "Technical" : next === "hiring_manager" ? "Hiring Manager" : "Recruiter"}).`
           : "Final пройден — ожидайте оффер. Подготовьте Offer Desk: Salary Benchmark и Negotiation Assistant."
-        : `Отправьте thank-you письмо сегодня.${answerBy ? ` Если ответа не будет до ${new Date(answerBy).toLocaleDateString("ru-RU")}, отправьте вежливый follow-up.` : " Если ответа нет 5 рабочих дней — вежливый follow-up."}`;
+        : `Отправьте thank-you письмо сегодня.${answerBy ? ` Если ответа не будет до ${new Date(answerBy).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}, отправьте вежливый follow-up.` : " Если ответа нет 5 рабочих дней — вежливый follow-up."}`;
 
   const debrief: Debrief = { questions, hard, interviewerSaid, nextSteps, answerBy, salaryDiscussed: form.get("salaryDiscussed") === "yes", selfRating, outcome, followUpEmail, followUpBy, nextSuggestion, savedAt: new Date().toISOString() };
   await db.interview.update({ where: { id: iv.id }, data: { debrief: s(debrief), status: outcome } });

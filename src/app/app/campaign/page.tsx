@@ -34,7 +34,7 @@ function campaignClock(startedAt: Date | null, endsAt: Date | null, days: number
   const left = endsAt ? Math.max(0, Math.ceil((endsAt.getTime() - now) / DAY)) : total - elapsed;
   return { total, elapsed, left };
 }
-const date = (d: Date | null | undefined) => (d ? d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" }) : "—");
+const date = (d: Date | null | undefined) => (d ? d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", year: "numeric" }) : "—");
 
 export default async function CampaignPage() {
   const user = await requireUser();
@@ -226,7 +226,7 @@ function ActiveCampaign({ c, autoSubmitConsent }: { c: { id: string; plan: strin
             </form>
           )}
         </div>
-        {c.lastRunAt && <p className="-mt-3 text-[12.5px] text-ink-3">Последний цикл: {c.lastRunAt.toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" })}</p>}
+        {c.lastRunAt && <p className="-mt-3 text-[12.5px] text-ink-3">Последний цикл: {c.lastRunAt.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", dateStyle: "medium", timeStyle: "short" })}</p>}
         <Disclosure tone="ghost" summary="Что входит в кампанию">
           <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
             {INCLUDED.map((f) => <li key={f} className="flex items-start gap-2 text-[13.5px] text-ink-2"><Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={2.2} aria-hidden />{f}</li>)}

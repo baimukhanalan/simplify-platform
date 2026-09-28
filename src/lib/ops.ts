@@ -22,7 +22,7 @@ export function ago(date: Date | null | undefined, now: number = Date.now()) {
 }
 
 export const fmtDate = (d: Date | null | undefined, withTime = false) =>
-  d ? d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }) : "—";
+  d ? d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}) }) : "—";
 
 export const fmtDateTime = (d: Date | null | undefined) => fmtDate(d, true);
 

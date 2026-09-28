@@ -79,9 +79,19 @@ export function classifyRole(title: string): string {
   return "other";
 }
 
+/**
+ * Unicode-aware word boundaries. JS `\b` only knows [A-Za-z0-9_], so `\bалматы\b` never matches.
+ * `wordRe("a|b")` ≈ /\b(?:a|b)\b/iu, `wordRe("a|b", { end: false })` ≈ /\b(?:a|b)/iu (prefix match).
+ */
+export function wordRe(alternation: string, { flags = "iu", end = true }: { flags?: string; end?: boolean } = {}) {
+  return new RegExp(`(?<![\\p{L}\\p{N}_])(?:${alternation})${end ? "(?![\\p{L}\\p{N}_])" : ""}`, flags.includes("u") ? flags : `${flags}u`);
+}
+
+const INTERN_RE = wordRe("intern|internship|trainee|стаж\\p{L}*"); // стажёр, стажировка; not "internal"
+
 export function seniorityFromTitle(title: string): Seniority | null {
   const t = title.toLowerCase();
-  if (/\b(intern|internship|trainee|стаж)/.test(t)) return "intern";
+  if (INTERN_RE.test(t)) return "intern";
   if (/\b(junior|jr\.?|entry|graduate|associate)\b/.test(t)) return "junior";
   if (/\b(lead|principal|staff|head|director)\b/.test(t)) return "lead";
   if (/\b(senior|sr\.?)\b/.test(t)) return "senior";
@@ -96,6 +106,35 @@ export function extractSkills(text: string): string[] {
     return lower.includes(k);
   });
 }
+
+/* ——— Languages ——— */
+
+// Canonical English names; Russian names and common variants map onto them so "Русский" satisfies "Russian".
+const LANG_ALIASES: [RegExp, string][] = [
+  [/^(english|англ|ағылшын)/i, "English"], [/^(russian|русск|орыс)/i, "Russian"], [/^(kazakh|qazaq|казах|қазақ)/i, "Kazakh"],
+  [/^(uzbek|o['ʻ’]?zbek|узбек|өзбек)/i, "Uzbek"], [/^(kyrgyz|kirghiz|киргиз|кыргыз)/i, "Kyrgyz"], [/^(tajik|таджик)/i, "Tajik"],
+  [/^(german|deutsch|немец)/i, "German"], [/^(french|fran[cç]ais|француз)/i, "French"], [/^(spanish|espa[nñ]ol|испан)/i, "Spanish"],
+  [/^(turkish|t[uü]rk[cç]e|турец)/i, "Turkish"], [/^(chinese|mandarin|китай)/i, "Chinese"], [/^(arabic|араб)/i, "Arabic"],
+  [/^(ukrainian|украин)/i, "Ukrainian"], [/^(armenian|армян)/i, "Armenian"], [/^(georgian|грузин)/i, "Georgian"], [/^(azerbaijani|azeri|азербайдж)/i, "Azerbaijani"],
+  [/^(polish|польск)/i, "Polish"], [/^(italian|итальян)/i, "Italian"], [/^(korean|корей)/i, "Korean"], [/^(japanese|япон)/i, "Japanese"],
+];
+export const normalizeLanguage = (name: string) => {
+  const n = name.trim();
+  return LANG_ALIASES.find(([re]) => re.test(n))?.[1] ?? n;
+};
+
+/** Reasonable default languages by citizenship, used when the profile has none recorded. */
+export const CITIZENSHIP_LANGUAGES: Record<string, string[]> = {
+  KZ: ["Russian", "Kazakh"], UZ: ["Uzbek", "Russian"], KG: ["Kyrgyz", "Russian"], TJ: ["Tajik", "Russian"], TM: ["Russian"], RU: ["Russian"], BY: ["Russian"],
+  UA: ["Ukrainian", "Russian"], AM: ["Armenian", "Russian"], GE: ["Georgian", "Russian"], AZ: ["Azerbaijani", "Russian"], MN: ["Russian"], TR: ["Turkish"],
+  DE: ["German"], AT: ["German"], PL: ["Polish"], FR: ["French"], ES: ["Spanish"], IT: ["Italian"], AE: ["Arabic"],
+};
+/** Languages offered as chips in onboarding (English is covered by the CEFR level). */
+export const LANGUAGE_OPTIONS: [string, string][] = [
+  ["Russian", "Русский"], ["Kazakh", "Казахский"], ["Uzbek", "Узбекский"], ["Kyrgyz", "Кыргызский"], ["German", "Немецкий"],
+  ["French", "Французский"], ["Spanish", "Испанский"], ["Turkish", "Турецкий"], ["Chinese", "Китайский"], ["Arabic", "Арабский"],
+];
+export const defaultLanguagesFor = (citizenship: string) => CITIZENSHIP_LANGUAGES[citizenship.toUpperCase()] ?? [];
 
 export const fmtMoney = (n: number, cur = "USD") =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n);

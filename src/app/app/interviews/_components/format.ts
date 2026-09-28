@@ -1,5 +1,5 @@
 export const fmtDate = (d: Date | null | undefined) =>
-  d ? d.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Дата не назначена";
+  d ? d.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Дата не назначена";
 
 export function relDays(d: Date | null | undefined, now = Date.now()) {
   if (!d) return "";

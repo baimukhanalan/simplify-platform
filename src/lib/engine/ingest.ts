@@ -1,23 +1,28 @@
 import "server-only";
-import { db, s } from "../db";
-import { classifyRole, seniorityFromTitle, extractSkills, MASS_HIRING_FAMILIES } from "./taxonomy";
+import { db, s, noNul } from "../db";
+import { classifyRole, seniorityFromTitle, extractSkills, wordRe, MASS_HIRING_FAMILIES } from "./taxonomy";
 import { SEED_JOBS } from "./seed-jobs";
 
 // ——— Normalization: every source is mapped to one vacancy structure ———
 export type RawJob = { source: string; externalId: string; company: string; title: string; location: string; description: string; url: string; postedAt: Date; remoteHint?: boolean; salaryText?: string; tags?: string[]; industry?: string };
 
-const COUNTRY_WORDS: [RegExp, string][] = [
-  [/\b(united states|usa|u\.s\.|\bus\b|new york|san francisco|seattle|austin|boston|chicago|remote - us|americas)\b/i, "US"],
-  [/\b(united kingdom|\buk\b|london|manchester|england)\b/i, "GB"], [/\b(canada|toronto|vancouver|montreal)\b/i, "CA"],
-  [/\b(germany|deutschland|berlin|munich|münchen|hamburg|frankfurt|köln|cologne)\b/i, "DE"], [/\b(netherlands|amsterdam|rotterdam)\b/i, "NL"],
-  [/\b(poland|warsaw|kraków|krakow|wroclaw)\b/i, "PL"], [/\b(spain|madrid|barcelona)\b/i, "ES"], [/\b(france|paris)\b/i, "FR"], [/\b(ireland|dublin)\b/i, "IE"],
-  [/\b(portugal|lisbon|porto)\b/i, "PT"], [/\b(estonia|tallinn)\b/i, "EE"], [/\b(austria|vienna|wien)\b/i, "AT"], [/\b(sweden|stockholm)\b/i, "SE"],
-  [/\b(kazakhstan|almaty|astana|алматы|астана)\b/i, "KZ"], [/\b(uzbekistan|tashkent)\b/i, "UZ"], [/\b(uae|dubai|abu dhabi)\b/i, "AE"],
-  [/\b(worldwide|anywhere|global)\b/i, "*"], [/\b(europe|emea|eu)\b/i, "EU*"],
-];
+// Unicode-aware boundaries (wordRe): `\b` does not work next to Cyrillic, so "Алматы" never matched.
+const COUNTRY_WORDS: [RegExp, string][] = ([
+  ["united states|usa|u\\.s\\.|us|new york|san francisco|seattle|austin|boston|chicago|remote - us|americas", "US"],
+  ["united kingdom|uk|london|manchester|england", "GB"], ["canada|toronto|vancouver|montreal", "CA"],
+  ["germany|deutschland|berlin|munich|münchen|hamburg|frankfurt|köln|cologne", "DE"], ["netherlands|amsterdam|rotterdam", "NL"],
+  ["poland|warsaw|kraków|krakow|wroclaw", "PL"], ["spain|madrid|barcelona", "ES"], ["france|paris", "FR"], ["ireland|dublin", "IE"],
+  ["portugal|lisbon|porto", "PT"], ["estonia|tallinn", "EE"], ["austria|vienna|wien", "AT"], ["sweden|stockholm", "SE"],
+  ["kazakhstan|almaty|astana|алматы|астана", "KZ"], ["uzbekistan|tashkent", "UZ"], ["uae|dubai|abu dhabi", "AE"],
+  ["worldwide|anywhere|global", "*"], ["europe|emea|eu", "EU*"],
+] as const).map(([words, code]) => [wordRe(words), code]);
 const EU = ["DE", "NL", "PL", "ES", "FR", "IE", "PT", "SE", "EE", "LT", "CZ", "AT", "BE", "DK", "FI", "IT"];
 
-export function normalize(r: RawJob) {
+const dedupeKeyOf = (company: string, title: string, location: string) => `${company}|${title}|${location}`.toLowerCase().replace(/\s+/g, " ").slice(0, 190);
+
+export function normalize(raw: RawJob) {
+  // External feeds occasionally carry NUL bytes, which Postgres rejects in text columns.
+  const r = { ...raw, company: noNul(raw.company), title: noNul(raw.title), location: noNul(raw.location ?? ""), description: noNul(raw.description ?? ""), salaryText: raw.salaryText && noNul(raw.salaryText), industry: raw.industry && noNul(raw.industry) };
   const text = `${r.title}\n${r.location}\n${r.description}`;
   const plain = stripHtml(r.description);
   const loc = r.location || "";
@@ -38,19 +43,33 @@ export function normalize(r: RawJob) {
   }
   const languages = ["English"];
   for (const [lang, re] of [["German", /(fluent|native|business[- ]level|c1|c2)[^.]{0,40}german|german[^.]{0,30}(fluent|native|required|c1|c2)/i], ["French", /(fluent|native)[^.]{0,40}french|french[^.]{0,30}(fluent|native|required)/i], ["Russian", /(fluent|native)[^.]{0,40}russian|russian[^.]{0,30}(fluent|native|required)/i]] as const) if (re.test(plain)) languages.push(lang);
-  const sal = (r.salaryText || plain).match(/\$\s?(\d{2,3})(?:[,.]?(\d{3}))?\s?(k)?\s?(?:-|–|to)\s?\$?\s?(\d{2,3})(?:[,.]?(\d{3}))?\s?(k)?/i);
-  const toNum = (a?: string, b?: string, k?: string) => (a ? (b ? Number(a + b) : Number(a) * (k || Number(a) < 1000 ? 1000 : 1)) : null);
-  let salaryMin = sal ? toNum(sal[1], sal[2], sal[3]) : null;
-  let salaryMax = sal ? toNum(sal[4], sal[5], sal[6]) : null;
-  if (salaryMin && salaryMin < 15000) salaryMin = salaryMax = null; // hourly/monthly noise
+  const [salaryMin, salaryMax] = parseSalary(r.salaryText || plain);
   const massHiring = MASS_HIRING_FAMILIES.includes(roleFamily) && (seniority === "junior" || seniority === "intern" || /hiring multiple|high[- ]volume|several positions|cohort|graduate program|no experience/i.test(plain)) || /graduate program|internship program/i.test(r.title);
   return {
-    source: r.source, externalId: r.externalId, dedupeKey: `${r.company}|${r.title}|${loc}`.toLowerCase().replace(/\s+/g, " ").slice(0, 190),
+    source: r.source, externalId: r.externalId, dedupeKey: dedupeKeyOf(r.company, r.title, loc),
     company: r.company, title: r.title.trim(), roleFamily, seniority, location: loc, countries: s(countries), remote,
     salaryMin, salaryMax, currency: "USD", description: plain.slice(0, 12000), requirements: s(bulletLines(plain).slice(0, 10)),
     technologies: s(extractSkills(text).slice(0, 10)), minYears, education: /(master'?s|phd)[^.]{0,30}required/i.test(plain) ? "Master's required" : "",
     workAuth: s(workAuth), sponsorship, languages: s(languages), industry: r.industry ?? "", companySize: "", massHiring, postedAt: r.postedAt, url: /^https?:\/\//i.test(r.url) ? r.url : "",
   };
+}
+
+// "$60,000 – $80,000", "$60k-80k", "$60 - $80k". Bare 2–3 digit numbers are only thousands when a "k" says so.
+const SALARY_RE = /\$\s?(\d{1,3})(?:[,.]?(\d{3}))?\s?(k\b)?\s?(?:-|–|to)\s?\$?\s?(\d{1,3})(?:[,.]?(\d{3}))?\s?(k\b)?/i;
+const PERIOD_AFTER = /^\s*(?:usd\s*)?(?:\/\s*|per\s+|an?\s+|each\s+)?(?:hour|hr|h|month|mo)\b|^\s*(?:hourly|monthly)\b/i;
+const PERIOD_BEFORE = /(?:hourly|monthly|per hour|per month)\b[^$\n]{0,20}$/i;
+
+/** Annual USD range, or nulls when absent, hourly/monthly, or ambiguous. */
+export function parseSalary(text: string): [number | null, number | null] {
+  const m = SALARY_RE.exec(text);
+  if (!m) return [null, null];
+  const end = m.index + m[0].length;
+  if (PERIOD_AFTER.test(text.slice(end, end + 24)) || PERIOD_BEFORE.test(text.slice(Math.max(0, m.index - 40), m.index))) return [null, null];
+  const k = Boolean(m[3] || m[6]); // "$60-80k": one k covers both ends
+  const num = (a: string, b?: string) => (b ? Number(a + b) : k ? Number(a) * 1000 : null);
+  const lo = num(m[1], m[2]), hi = num(m[4], m[5]);
+  if (!lo || !hi || lo < 15000 || hi < lo) return [null, null]; // still not an annual salary
+  return [lo, hi];
 }
 
 function stripHtml(h: string) {
@@ -103,8 +122,8 @@ export async function upsertJobs(raw: RawJob[]) {
     if (existing) await db.job.update({ where: { id: existing.id }, data: { active: true, fetchedAt: new Date() } });
     else { await db.job.create({ data: n }); added++; }
   }
-  // Freshness: anything older than 60 days is retired.
-  await db.job.updateMany({ where: { postedAt: { lt: new Date(Date.now() - 60 * 86400000) } }, data: { active: false } });
+  // Freshness: anything older than 60 days is retired. Demo rows are kept fresh by reanchorDemoJobs instead.
+  await db.job.updateMany({ where: { source: { not: "demo" }, postedAt: { lt: new Date(Date.now() - 60 * 86400000) } }, data: { active: false } });
   return added;
 }
 
@@ -121,9 +140,29 @@ export async function ingestLive(query = "") {
   return report;
 }
 
+// SEED_JOBS repeats some company|title|location combos, so the corpus holds fewer rows than entries.
+const DEMO_KEYS = new Set(SEED_JOBS.map((j) => dedupeKeyOf(j.company, j.title, j.location))).size;
+const demoIndex = (externalId: string) => Number(externalId.replace(/^demo-/, ""));
+
 /** Demo corpus: always present so a campaign can run offline. Dates are re-anchored to "now". */
 export async function ensureSeedJobs() {
   const count = await db.job.count({ where: { source: "demo" } });
-  if (count >= SEED_JOBS.length) return 0;
-  return upsertJobs(SEED_JOBS.map((j, i) => ({ ...j, source: "demo", externalId: `demo-${i}`, url: `https://jobs.example.com/demo-${i}`, postedAt: new Date(Date.now() - j.ageHours * 3600000) })));
+  const added = count >= DEMO_KEYS ? 0 : await upsertJobs(SEED_JOBS.map((j, i) => ({ ...j, source: "demo", externalId: `demo-${i}`, url: `https://jobs.example.com/demo-${i}`, postedAt: new Date(Date.now() - j.ageHours * 3600000) })));
+  await reanchorDemoJobs();
+  return added;
+}
+
+/**
+ * Demo vacancies keep their seeded relative ages (1h … ~50 days) but slide forward with the calendar;
+ * otherwise after ~30 days every demo job is stale (and after 60 retired) and campaigns stop qualifying anything.
+ */
+async function reanchorDemoJobs() {
+  const newest = await db.job.findFirst({ where: { source: "demo" }, orderBy: { postedAt: "desc" }, select: { postedAt: true } });
+  if (!newest || Date.now() - newest.postedAt.getTime() <= 86400000) return;
+  const now = Date.now();
+  const rows = await db.job.findMany({ where: { source: "demo" }, select: { id: true, externalId: true } });
+  await db.$transaction(rows.map((r) => {
+    const ageHours = SEED_JOBS[demoIndex(r.externalId)]?.ageHours ?? 24;
+    return db.job.update({ where: { id: r.id }, data: { postedAt: new Date(now - ageHours * 3600000), active: true } });
+  }));
 }

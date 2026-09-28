@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
-import { db, j, s } from "../db";
+import { db, j, s, noNul } from "../db";
 import { parseCV } from "../engine/profile";
 import { logEvent } from "../engine/agent";
 import { ROLE_FAMILIES, REGIONS, SENIORITY, classifyRole, seniorityFromYears } from "../engine/taxonomy";
@@ -249,7 +249,7 @@ export async function deleteStory(form: FormData) {
 
 export async function reparseCV(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  const text = String(form.get("cvText") ?? "").trim().slice(0, 30000);
+  const text = noNul(String(form.get("cvText") ?? "")).trim().slice(0, 30000);
   if (text.length < 200) return fail("Вставьте полный текст CV — минимум 200 символов.");
   const { data: parsed, by } = await parseCV(text);
   const existing = await db.fact.findMany({ where: { userId: user.id }, select: { kind: true, title: true, org: true } });
@@ -261,7 +261,7 @@ export async function reparseCV(_: FormState, form: FormData): Promise<FormState
       data: fresh.slice(0, 40).map((f) => ({ userId: user.id, kind: f.kind, title: f.title.slice(0, 160), org: f.org.slice(0, 120), startDate: f.startDate, endDate: f.endDate, details: f.details.slice(0, 2000), metrics: f.metrics.slice(0, 240), tech: s(f.tech), source: "cv", verified: false })),
     });
   }
-  const fileName = `Вставленный текст · ${new Date().toLocaleDateString("ru-RU")}`;
+  const fileName = `Вставленный текст · ${new Date().toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}`;
   await db.profile.upsert({ where: { userId: user.id }, update: { cvText: text, cvFileName: fileName }, create: { userId: user.id, cvText: text, cvFileName: fileName } });
   await logEvent(user.id, "cv_reparsed", `CV разобран заново (${by}): добавлено ${fresh.length} новых фактов`);
   refresh();

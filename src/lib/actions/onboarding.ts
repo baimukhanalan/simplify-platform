@@ -3,10 +3,10 @@ import { rateLimit } from "../rate-limit";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
-import { db, j, s } from "../db";
+import { db, j, s, noNul } from "../db";
 import { parseCV } from "../engine/profile";
 import { marketRange } from "../engine/market";
-import { REGIONS, SENIORITY, classifyRole, extractSkills } from "../engine/taxonomy";
+import { REGIONS, SENIORITY, LANGUAGE_OPTIONS, classifyRole, extractSkills, normalizeLanguage } from "../engine/taxonomy";
 import { buildCareerCheck, markStepDone, readinessForUser, LAST_STEP } from "../onboarding";
 
 export type FormState = { error?: string; ok?: boolean; message?: string; fields?: Record<string, string> } | undefined;
@@ -30,7 +30,7 @@ function go(step: number): never {
 /* ——————————————————————————— Free Career Check (anonymous) ——————————————————————————— */
 
 export async function runCareerCheck(_: FormState, form: FormData): Promise<FormState> {
-  const cvText = String(form.get("cvText") ?? "").slice(0, 30000);
+  const cvText = noNul(String(form.get("cvText") ?? "")).slice(0, 30000);
   const target = str(form, "target", 120);
   const rl = await rateLimit("career-check", 6, 60 * 60 * 1000);
   if (!rl.ok) return { error: `Слишком много проверок. Попробуйте через ${Math.ceil((rl.retryAfter ?? 60) / 60)} мин.`, fields: { target } };
@@ -51,7 +51,7 @@ export async function runCareerCheck(_: FormState, form: FormData): Promise<Form
 
 export async function saveCV(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  const cvText = String(form.get("cvText") ?? "").slice(0, 30000);
+  const cvText = noNul(String(form.get("cvText") ?? "")).slice(0, 30000);
   const cvFileName = str(form, "cvFileName", 200);
   if (cvText.trim().length < 120) return { error: "Добавьте CV: загрузите PDF или вставьте текст целиком." };
 
@@ -207,10 +207,18 @@ export async function savePreferences(_: FormState, form: FormData): Promise<For
   const auth = Array.from(new Set([citizenship, ...workAuth.flatMap((c) => (c === "EU" ? REGIONS.EU.countries : [c]))]));
   const needsSponsorship = form.get("needsSponsorship") === "on";
   const relocation = form.get("relocation") === "on";
+  // Chips replace the offered languages; anything else already in the profile (English level lines, rarer languages) is kept.
+  const offered = new Set(LANGUAGE_OPTIONS.map(([k]) => k));
+  const prevLangs = j<{ lang: string; level: string }[]>(user.profile?.languages, []);
+  const picked = list(form, "languages", 12).map(normalizeLanguage).filter((l) => offered.has(l));
+  const languages = [
+    ...prevLangs.filter((l) => !offered.has(normalizeLanguage(l.lang))),
+    ...picked.map((lang) => prevLangs.find((l) => normalizeLanguage(l.lang) === lang) ?? { lang, level: "—" }),
+  ];
   await db.profile.update({
     where: { userId: user.id },
     data: {
-      citizenship, country: citizenship, workAuth: s(auth), needsSponsorship, relocation, englishLevel,
+      citizenship, country: citizenship, workAuth: s(auth), needsSponsorship, relocation, englishLevel, languages: s(languages),
       remotePref: ["remote", "hybrid", "onsite", "any"].includes(remotePref) ? remotePref : "remote",
       salaryExpectation: salary, city: str(form, "city", 80), noticePeriod: str(form, "noticePeriod", 40) || "2 weeks", ...links,
     },

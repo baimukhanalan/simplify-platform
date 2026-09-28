@@ -11,7 +11,9 @@
     "db:push": "prisma db push",
     "postinstall": "prisma generate",
     "db:pg": "node scripts/pg-schema.mjs",
-    "vercel-build": "node scripts/pg-schema.mjs && prisma generate --schema prisma/postgres/schema.prisma && prisma db push --schema prisma/postgres/schema.prisma --skip-generate && next build"
+    "vercel-build": "node scripts/pg-schema.mjs && prisma generate --schema prisma/postgres/schema.prisma && prisma db push --schema prisma/postgres/schema.prisma --skip-generate && next build",
+    "test": "tsx --conditions=react-server --test tests/*.test.ts",
+    "stress": "node tests/stress.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

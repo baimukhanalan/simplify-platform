@@ -1,4 +1,6 @@
-import { REGIONS, ROLE_FAMILIES, seniorityIndex, seniorityFromYears, classifyRole } from "./taxonomy";
+import { REGIONS, ROLE_FAMILIES, seniorityIndex, seniorityFromYears, classifyRole, normalizeLanguage, wordRe } from "./taxonomy";
+
+const ADVANCED_DEGREE = wordRe("master|phd|магистр", { end: false });
 
 export type CandidateCtx = {
   skills: string[];
@@ -89,9 +91,11 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
     else softGaps.push(`Формат ${job.remote} вне предпочтений`);
   }
   const en = EN[c.englishLevel] ?? 3;
-  if (job.languages.some((l) => /english/i.test(l)) && en < 3) blockers.push("Требуется английский B1+");
-  for (const l of job.languages.filter((l) => !/english/i.test(l))) if (!c.languages.some((x) => x.toLowerCase().startsWith(l.toLowerCase().slice(0, 4)))) blockers.push(`Требуется язык: ${l}`);
-  if (/\b(master|phd|магистр)/i.test(job.education) && (c.educationLevel === "none" || c.educationLevel === "bachelor")) blockers.push(`Обязательное образование: ${job.education}`);
+  const jobLangs = job.languages.map(normalizeLanguage);
+  if (jobLangs.includes("English") && en < 3) blockers.push("Требуется английский B1+");
+  const spoken = new Set(c.languages.map(normalizeLanguage)); // "Русский" ≡ "Russian"
+  for (const l of jobLangs.filter((l) => l !== "English")) if (!spoken.has(l)) blockers.push(`Требуется язык: ${l}`);
+  if (ADVANCED_DEGREE.test(job.education) && (c.educationLevel === "none" || c.educationLevel === "bachelor")) blockers.push(`Обязательное образование: ${job.education}`);
   if (senGap >= 2) blockers.push(`Уровень ${job.seniority} недостижим с текущим опытом`);
   if (c.goal.blockedCompanies.some((b) => b && job.company.toLowerCase().includes(b.toLowerCase()))) blockers.push("Компания в вашем стоп-листе");
 
