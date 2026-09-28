@@ -124,7 +124,7 @@ export function AuthExperience({ initialMode, refCode, next }: { initialMode: Mo
             <p className="max-w-md text-[15.5px] text-ink-2">Tell us what job you want. We handle the rest — поиск, адаптация CV, заявки, трекинг и подготовка к интервью.</p>
           </div>
           <AgentPreview className="animate-rise [animation-delay:120ms] lg:max-w-[520px]" />
-          <p className="hidden max-w-md text-[12.5px] text-ink-3 lg:block">Агент работает только с фактами, которые вы подтвердили. AI может перефразировать — но никогда не придумывает опыт.</p>
+          <p className="hidden max-w-md text-[12.5px] text-ink-3 lg:block">Один профиль — десятки персональных заявок. Вы подключаетесь только там, где нужно ваше решение.</p>
         </section>
 
         {/* Form */}

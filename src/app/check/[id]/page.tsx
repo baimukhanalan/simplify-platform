@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { Check, X, ArrowRight, MapPin, Lightbulb, ShieldCheck, TrendingUp, AlertTriangle } from "lucide-react";
+import { Check, X, ArrowRight, MapPin, TrendingUp, AlertTriangle } from "lucide-react";
 import { db, j } from "@/lib/db";
 import type { CheckResult } from "@/lib/onboarding";
 import { Card, Label, H, Script, Chip, Ring, Progress, ButtonLink, Divider, cx } from "@/components/ui";
@@ -45,7 +45,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
               <Chip>English {r.english}</Chip>
             </div>
             <p className="max-w-2xl text-[14.5px] text-ink-2">
-              Распознано {r.skills.length} навыков и {r.factsCount} фактов опыта, из них {r.metricsCount} с измеримым результатом. Это оценка по одному CV — до проверки фактов в Truth Layer и мини-интервью.
+              Распознано {r.skills.length} навыков и {r.factsCount} фактов опыта, из них {r.metricsCount} с измеримым результатом. Это оценка по одному CV — до мини-интервью по опыту.
             </p>
           </div>
           <Card strong className="flex items-center gap-5 md:flex-col md:px-8">
@@ -177,7 +177,6 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
           <section className="flex flex-col gap-3">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <H size="m">Как агент <Script>переупакует</Script> CV</H>
-              <Chip tone="green"><ShieldCheck className="size-3" /> Truth Lock</Chip>
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <Card className="flex flex-col gap-3">
@@ -198,18 +197,6 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                 </div>
               </Card>
             </div>
-            <Card className="flex flex-col gap-3">
-              <Label>Truth check · каждое утверждение сверено с CV</Label>
-              <ul className="flex flex-col gap-2">
-                {r.positioning.truth.map((t) => (
-                  <li key={t.claim} className="flex items-start gap-2.5 text-[13.5px]">
-                    {t.ok ? <Check className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={2.2} aria-label="подтверждено" /> : <X className="mt-0.5 size-4 shrink-0 text-rose" strokeWidth={2.2} aria-label="не подтверждено" />}
-                    <span><span className="text-head">{t.claim}</span> <span className="text-ink-3">— {t.note}</span></span>
-                  </li>
-                ))}
-              </ul>
-              <p className="flex items-start gap-2 text-[12.5px] text-ink-3"><Lightbulb className="mt-0.5 size-3.5 shrink-0" />AI может перефразировать и расставлять акценты — но никогда не добавляет опыт, навыки или цифры, которых нет в ваших фактах.</p>
-            </Card>
           </section>
         )}
 

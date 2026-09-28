@@ -13,7 +13,7 @@ const GETS = [
   { icon: Gauge, title: "Readiness score", text: "Насколько реалистична цель — по опыту, навыкам, языку, географии и зарплате." },
   { icon: Search, title: "Реальная вакансия", text: "Лучшее совпадение из базы с Match %, причинами ✓/✕ и проверкой Eligibility." },
   { icon: Sparkles, title: "Пример позиционирования", text: "Как агент переформулирует summary и порядок навыков под вакансию." },
-  { icon: ShieldCheck, title: "Truth Lock", text: "Только то, что есть в CV. AI может перефразировать — никогда не придумывает опыт." },
+  { icon: ShieldCheck, title: "Сильные и слабые стороны", text: "Что работает в вашем CV, чего не хватает и какие роли вам подходят." },
 ];
 
 export default async function CheckPage() {

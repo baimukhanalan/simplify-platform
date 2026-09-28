@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+
 import { verifyAllFacts } from "@/lib/actions/onboarding";
 import { SubmitButton } from "@/components/client";
 import { Label, Progress } from "@/components/ui";
@@ -16,14 +16,6 @@ export function StepFacts({ facts, skills }: { facts: FactView[]; skills: string
   const verified = facts.filter((f) => f.verified).length;
   return (
     <div className="flex flex-col gap-5">
-      <div className="glass flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:gap-6 sm:p-6">
-        <div className="grid size-12 shrink-0 place-items-center rounded-2xl bg-green text-white shadow-(--shadow-cta)"><ShieldCheck className="size-6" strokeWidth={1.6} /></div>
-        <div className="flex flex-1 flex-col gap-1">
-          <div className="text-[15.5px] font-medium text-head">Truth Lock</div>
-          <p className="text-[13.5px] leading-relaxed text-ink-2">AI может перефразировать и расставлять акценты под вакансию — но никогда не придумывает опыт, навыки, цифры или даты. Неподтверждённые факты агент не использует в заявках.</p>
-        </div>
-      </div>
-
       {facts.length ? (
         <>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

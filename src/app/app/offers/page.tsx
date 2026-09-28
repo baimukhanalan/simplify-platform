@@ -8,7 +8,7 @@ import { regionsFor } from "@/lib/regions";
 import { OfferCard } from "./_components/offer-card";
 import { AddOfferForm } from "./_components/offer-forms";
 
-export const metadata = { title: "Offer Desk — Simplify" };
+export const metadata = { title: "Offer Desk" };
 
 const LEVELS: Aggressiveness[] = ["soft", "balanced", "assertive"];
 

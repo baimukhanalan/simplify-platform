@@ -78,7 +78,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <Timer className="size-5 text-teal" strokeWidth={1.7} aria-hidden />
             <h3 className="h-serif text-[19px]">Хранение</h3>
             <ul className="flex flex-col gap-1.5 text-[13.5px] text-ink-3">
-              <li>Профиль и Truth Layer — пока аккаунт активен.</li>
+              <li>Профиль и опыт — пока аккаунт активен.</li>
               <li>Заявки и переписка кампании — 12 месяцев после её окончания, затем обезличиваются.</li>
               <li>Транскрипты mock- и Copilot-сессий — 90 дней.</li>
               <li>Платёжные записи — по требованию бухгалтерского учёта.</li>

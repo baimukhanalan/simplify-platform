@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Check, ChevronDown, ExternalLink, ShieldAlert, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ExternalLink, X } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { prepareOpportunity, submitOpportunity } from "@/lib/actions/campaign";
@@ -14,7 +14,7 @@ import { SubmitButton } from "@/components/client";
 import { EligibilityChip, LaneChip, MatchReasons, Metric, SkipButton, StatusChip, StatusMover, matchTone } from "../_components/bits";
 import { AuditTrail, type AuditItem } from "./_components/audit-trail";
 
-export const metadata = { title: "Вакансия — Simplify" };
+export const metadata = { title: "Вакансия" };
 
 const DAY = 86400000;
 
@@ -112,7 +112,6 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
   audit.sort((a, b) => a.at.getTime() - b.at.getTime());
 
   const answers = pkg ? j<Answer[]>(pkg.answers, []) : [];
-  const truth = pkg ? j<{ claim: string; ok: boolean; note: string }[]>(pkg.truthCheck, []) : [];
   const skillsOrder = pkg ? j<string[]>(pkg.skillsOrder, []) : [];
   const projects = pkg ? j<string[]>(pkg.projects, []) : [];
 
@@ -298,7 +297,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                                   <div className={cx("mt-0.5 text-[13.5px]", a.a ? "text-ink-2" : "italic text-ink-4")}>{a.a || "ответ не дан — ждёт вашего решения"}</div>
                                 </div>
                                 <div className="flex flex-wrap items-start gap-1.5 sm:justify-end">
-                                  {a.kind && a.kind !== "salary" && <Chip tone={a.kind === "truth" ? "teal" : "neutral"}>{a.kind}</Chip>}
+                                  {a.kind && a.kind !== "salary" && <Chip>{a.kind}</Chip>}
                                   <Chip tone={st.tone}>{st.label}</Chip>
                                 </div>
                               </li>
@@ -308,18 +307,6 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                       </div>
                     );
                   })}
-                </section>
-                <section className="flex flex-col gap-2">
-                  <span className="label !text-[9.5px]">Truth Check</span>
-                  <ul className="flex flex-col gap-1.5">
-                    {truth.map((t, i) => (
-                      <li key={`${t.claim}-${i}`} className={cx("flex items-start gap-2.5 rounded-xl px-3 py-2 text-[13.5px]", t.ok ? "bg-green-soft/60" : "bg-rose-soft")}>
-                        {t.ok ? <Check className="mt-0.5 size-4 shrink-0 text-green" aria-label="подтверждено" /> : <ShieldAlert className="mt-0.5 size-4 shrink-0 text-rose" aria-label="проблема" />}
-                        <span><span className="text-head">{t.claim}</span> <span className="text-ink-3">— {t.note}</span></span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-[12px] text-ink-3">Truth Lock: AI может перефразировать факты, но не придумывает новые. Всё, что не сходится с Truth Layer, помечается здесь.</p>
                 </section>
               </>
             )}

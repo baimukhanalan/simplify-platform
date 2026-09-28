@@ -26,13 +26,13 @@ export function StepInterview({ items }: { items: Item[] }) {
     <div className="flex flex-col gap-5">
       {items.length ? (
         <>
-          <div className="flex items-center gap-2 text-[13px] text-ink-3"><MessageSquareQuote className="size-4 text-teal" aria-hidden />Отвечено {answered} из {items.length}. Можно коротко — 1–2 предложения. Всё, что вы напишете, считается вашими словами, не выдумкой AI.</div>
+          <div className="flex items-center gap-2 text-[13px] text-ink-3"><MessageSquareQuote className="size-4 text-teal" aria-hidden />Отвечено {answered} из {items.length}. Можно коротко — 1–2 предложения.</div>
           {items.map((it, i) => <InterviewCard key={it.fact.id} item={it} index={i} />)}
         </>
       ) : (
         <div className="glass flex flex-col items-start gap-3 p-6">
           <div className="h-serif text-[22px]">Нет позиций для интервью</div>
-          <p className="text-[14px] text-ink-3">Добавьте опыт работы или проект на шаге Truth Layer — и вернитесь сюда.</p>
+          <p className="text-[14px] text-ink-3">Добавьте опыт работы или проект на шаге «Опыт» — и вернитесь сюда.</p>
           <Link href="/onboarding?step=2" className="text-[14px] text-head underline decoration-line underline-offset-4 hover:decoration-teal">К фактам</Link>
         </div>
       )}

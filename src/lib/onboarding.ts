@@ -12,7 +12,7 @@ import { ROLE_FAMILIES, classifyRole, seniorityFromYears } from "./engine/taxono
 
 export const ONBOARDING_STEPS = [
   { n: 1, key: "cv", label: "CV", title: "Загрузите CV" },
-  { n: 2, key: "facts", label: "Truth Layer", title: "Проверьте факты" },
+  { n: 2, key: "facts", label: "Опыт", title: "Проверьте опыт" },
   { n: 3, key: "interview", label: "Мини-интервью", title: "Усильте опыт" },
   { n: 4, key: "prefs", label: "Право на работу", title: "Предпочтения и авторизация" },
   { n: 5, key: "goal", label: "Career Goal", title: "Цель кампании" },
@@ -89,7 +89,7 @@ export type CheckResult = {
     title: string; company: string; location: string; remote: string; salary: string | null; industry: string;
     match: number; reasons: MatchResult["reasons"]; eligibility: MatchResult["eligibility"]; blockers: string[]; softGaps: string[]; pInterview: number;
   };
-  positioning: null | { before: string; headline: string; after: string; skillsBefore: string[]; skillsAfter: string[]; truth: { claim: string; ok: boolean; note: string }[] };
+  positioning: null | { before: string; headline: string; after: string; skillsBefore: string[]; skillsAfter: string[] };
 };
 
 const EN_IDX: Record<string, number> = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 };
@@ -136,7 +136,7 @@ export async function buildCareerCheck(cvText: string, targetRaw: string): Promi
   const strengths: string[] = [];
   const weaknesses: string[] = [];
   for (const c of readiness.checks) {
-    if (c.key === "stories" || c.key === "experience") continue; // not meaningful before the Truth Layer is verified
+    if (c.key === "stories" || c.key === "experience") continue; // not meaningful before facts are reviewed
     (c.status === "ok" ? strengths : weaknesses).push(`${c.label}: ${c.note}`);
   }
   if (cv.skills.length >= 5) strengths.unshift(`${cv.skills.length} hard skills распознано в CV`);
@@ -181,7 +181,6 @@ export async function buildCareerCheck(cvText: string, targetRaw: string): Promi
       after: pkg.summary,
       skillsBefore: cv.skills.slice(0, 10),
       skillsAfter: pkg.skillsOrder.slice(0, 10),
-      truth: pkg.truthCheck.slice(0, 5),
     };
   }
 

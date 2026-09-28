@@ -13,7 +13,7 @@ import { APPROVAL_KIND, EVENT_LABEL, ago, fmtDateTime, pct, pctLabel } from "@/l
 import { Button, ButtonLink, Card, Chip, Empty, Label, PageHeader, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 
-export const metadata = { title: "Обзор кампании — Simplify" };
+export const metadata = { title: "Обзор кампании" };
 
 const DAY = 86400000;
 
@@ -312,7 +312,7 @@ function NeedBlock({ icon: Icon, title, href, cta, children }: { icon: LucideIco
 async function NoCampaign({ userId, firstName, hasGoal, hasCv }: { userId: string; firstName: string; hasGoal: boolean; hasCv: boolean }) {
   const facts = await db.fact.count({ where: { userId } });
   const steps = [
-    { n: "01", title: "Career Profile", sub: "Загрузите CV — агент разберёт его в проверяемые факты (Truth Layer).", href: "/app/profile", done: hasCv || facts > 0 },
+    { n: "01", title: "Career Profile", sub: "Загрузите CV — агент разберёт опыт, навыки и достижения.", href: "/app/profile", done: hasCv || facts > 0 },
     { n: "02", title: "Цель", sub: "Роль, страны, формат, минимальная зарплата, компании мечты.", href: "/app/goal", done: hasGoal },
     { n: "03", title: "Readiness", sub: "Проверим, готов ли профиль к рынку, до того как тратить заявки.", href: "/app/readiness", done: false },
   ];

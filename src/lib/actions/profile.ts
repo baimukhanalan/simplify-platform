@@ -122,7 +122,7 @@ export async function removeSkill(form: FormData) {
   refresh();
 }
 
-/* ───────────── Truth Layer facts ───────────── */
+/* ───────────── Profile facts ───────────── */
 
 export async function saveFact(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
@@ -148,11 +148,11 @@ export async function saveFact(_: FormState, form: FormData): Promise<FormState>
     await db.fact.update({ where: { id }, data });
     await logEvent(user.id, "fact_updated", `Факт обновлён: ${title}`);
   } else {
-    await db.fact.create({ data: { ...data, userId: user.id, source: "user", verified: bool(form, "verified"), locked: true } });
+    await db.fact.create({ data: { ...data, userId: user.id, source: "user", verified: bool(form, "verified") } });
     await logEvent(user.id, "fact_added", `Добавлен факт: ${title}`);
   }
   refresh();
-  return done(id ? "Факт обновлён" : "Факт добавлен в Truth Layer");
+  return done(id ? "Факт обновлён" : "Факт добавлен");
 }
 
 export async function deleteFact(form: FormData) {
@@ -258,14 +258,14 @@ export async function reparseCV(_: FormState, form: FormData): Promise<FormState
   const fresh = parsed.facts.filter((f) => f.title.trim() && !seen.has(key(f)) && seen.add(key(f)));
   if (fresh.length) {
     await db.fact.createMany({
-      data: fresh.slice(0, 40).map((f) => ({ userId: user.id, kind: f.kind, title: f.title.slice(0, 160), org: f.org.slice(0, 120), startDate: f.startDate, endDate: f.endDate, details: f.details.slice(0, 2000), metrics: f.metrics.slice(0, 240), tech: s(f.tech), source: "cv", verified: false, locked: true })),
+      data: fresh.slice(0, 40).map((f) => ({ userId: user.id, kind: f.kind, title: f.title.slice(0, 160), org: f.org.slice(0, 120), startDate: f.startDate, endDate: f.endDate, details: f.details.slice(0, 2000), metrics: f.metrics.slice(0, 240), tech: s(f.tech), source: "cv", verified: false })),
     });
   }
   const fileName = `Вставленный текст · ${new Date().toLocaleDateString("ru-RU")}`;
   await db.profile.upsert({ where: { userId: user.id }, update: { cvText: text, cvFileName: fileName }, create: { userId: user.id, cvText: text, cvFileName: fileName } });
   await logEvent(user.id, "cv_reparsed", `CV разобран заново (${by}): добавлено ${fresh.length} новых фактов`);
   refresh();
-  return done(fresh.length ? `Добавлено ${fresh.length} новых фактов — они помечены как Unverified. Проверьте и подтвердите их.` : "Новых фактов не найдено — всё уже есть в Truth Layer.");
+  return done(fresh.length ? `Добавлено ${fresh.length} новых фактов — они помечены как Unverified. Проверьте и подтвердите их.` : "Новых фактов не найдено — всё уже есть в профиле.");
 }
 
 /* ───────────── Goal ───────────── */

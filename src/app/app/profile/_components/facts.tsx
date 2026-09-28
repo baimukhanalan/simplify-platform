@@ -1,6 +1,6 @@
 import type { Fact, MiniInterviewAnswer } from "@prisma/client";
-import { Award, BadgeCheck, Briefcase, CircleDashed, FolderGit2, GraduationCap, Languages, Lock, MessageSquareText, Pencil, Plus, ShieldCheck, Sparkles, Trash2, TrendingUp, Trophy, Users, Wrench } from "lucide-react";
-import { Card, Chip, Field, cx } from "@/components/ui";
+import { Award, BadgeCheck, Briefcase, CircleDashed, FolderGit2, GraduationCap, Languages, MessageSquareText, Pencil, Plus, ShieldCheck, Sparkles, Trash2, TrendingUp, Trophy, Users, Wrench } from "lucide-react";
+import { Card, Chip, Field } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { j } from "@/lib/db";
 import { miniInterviewQuestions } from "@/lib/engine/profile";
@@ -25,13 +25,13 @@ const OWNERSHIP: Record<string, string> = { led: "Вёл сам", contributed: "
 
 type FactWithAnswers = Fact & { miniAnswers: MiniInterviewAnswer[] };
 
-export function TruthLayer({ facts }: { facts: FactWithAnswers[] }) {
+export function FactsList({ facts }: { facts: FactWithAnswers[] }) {
   const groups = KINDS.map((k) => ({ ...k, items: facts.filter((f) => f.kind === k.key) })).filter((g) => g.items.length);
   return (
     <div className="flex flex-col gap-4">
       {groups.length === 0 && (
         <Card className="text-center">
-          <p className="text-[14px] text-ink-3">Truth Layer пуст. Вставьте CV ниже или добавьте первый факт вручную.</p>
+          <p className="text-[14px] text-ink-3">Фактов пока нет. Вставьте CV ниже или добавьте первый факт вручную.</p>
         </Card>
       )}
       {groups.map((g, gi) => {
@@ -63,7 +63,7 @@ export function TruthLayer({ facts }: { facts: FactWithAnswers[] }) {
           <ActionForm action={saveFact} resetOnSuccess closeDetailsOnSuccess className="flex flex-col gap-4">
             <FactFields />
             <Check name="verified" label="Подтверждаю, что это правда" hint="Неподтверждённые факты агент не использует в заявках без вашего согласия." />
-            <div><FormSubmit pendingText="Сохраняем…">Добавить в Truth Layer</FormSubmit></div>
+            <div><FormSubmit pendingText="Сохраняем…">Добавить факт</FormSubmit></div>
           </ActionForm>
         </Card>
       </Disclosure>
@@ -83,12 +83,6 @@ function FactRow({ fact: f }: { fact: FactWithAnswers }) {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            {f.locked && (
-              <span title="Truth Lock: AI может переформулировать, но не изменить факт" className="text-teal">
-                <Lock className="size-3.5" strokeWidth={1.9} aria-hidden />
-                <span className="sr-only">Truth Lock включён</span>
-              </span>
-            )}
             <div className="text-[16px] font-medium text-head">{f.title}</div>
           </div>
           {(f.org || dates) && <div className="mt-0.5 text-[13.5px] text-ink-3">{[f.org, dates].filter(Boolean).join(" · ")}</div>}
@@ -133,7 +127,7 @@ function FactRow({ fact: f }: { fact: FactWithAnswers }) {
           <Disclosure summary={<><Sparkles className="size-3.5 text-green" strokeWidth={1.7} aria-hidden />Мини-интервью <span className="num text-ink-3">{answered.length}/{asked.length}</span></>}>
             <div className="flex flex-col gap-4 rounded-2xl border border-line bg-white/55 p-4 sm:p-5">
               <p className="text-[13px] text-ink-3">
-                AI задаёт уточняющие вопросы, чтобы превратить короткий пункт CV в конкретный факт. Отвечайте только правду — ответы становятся частью Truth Layer.
+                AI задаёт уточняющие вопросы, чтобы превратить короткий пункт CV в конкретный факт. Ответы дополняют ваш профиль.
               </p>
               {asked.map((q) => {
                 const prev = f.miniAnswers.find((a) => a.question === q);
@@ -226,52 +220,3 @@ export function FactFields({ fact }: { fact?: Fact }) {
   );
 }
 
-export function TruthExplainer() {
-  const never = [
-    "увеличивать стаж или даты работы",
-    "придумывать работодателей и должности",
-    "добавлять навыки, которых нет в Truth Layer",
-    "выдумывать образование и сертификаты",
-    "сочинять достижения и метрики",
-    "менять статус права на работу и визы",
-  ];
-  return (
-    <Card strong className="grid gap-6 lg:grid-cols-[1.35fr_1fr]">
-      <div className="flex flex-col gap-4">
-        <div className="label">Facts vs Positioning</div>
-        <p className="text-[14.5px] text-ink-2">Факт фиксирован. Меняется только подача — какой смысл факта подчеркнуть для конкретной роли.</p>
-        <div className="flex flex-col gap-2.5">
-          <div className="flex items-center gap-2.5 rounded-2xl border border-line bg-white/80 px-4 py-3">
-            <Lock className="size-4 shrink-0 text-teal" strokeWidth={1.8} aria-hidden />
-            <div>
-              <div className="label !text-[10px]">Факт · locked</div>
-              <div className="text-[15px] text-head">«Работал с пользовательскими данными»</div>
-            </div>
-          </div>
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            <div className="rounded-2xl border border-green/15 bg-green-soft/50 px-4 py-3">
-              <div className="label !text-[10px] !text-green">Product Analyst</div>
-              <div className="mt-1 text-[14px] text-ink-2">«Анализировал поведение пользователей, чтобы находить точки роста продукта»</div>
-            </div>
-            <div className="rounded-2xl border border-teal/15 bg-teal/5 px-4 py-3">
-              <div className="label !text-[10px] !text-teal">Marketing Analyst</div>
-              <div className="mt-1 text-[14px] text-ink-2">«Анализировал данные клиентов для сегментации и таргетинга кампаний»</div>
-            </div>
-          </div>
-          <p className="text-[13px] text-ink-3">Смысл усилен под роль — факт не изменён.</p>
-        </div>
-      </div>
-      <div className="flex flex-col gap-3 rounded-2xl bg-cta/[.03] p-4 sm:p-5">
-        <div className="label">Simplify никогда не будет</div>
-        <ul className="flex flex-col gap-2">
-          {never.map((n) => (
-            <li key={n} className="flex items-start gap-2.5 text-[14px] text-ink-2">
-              <span className={cx("mt-[7px] size-1.5 shrink-0 rounded-full bg-rose")} aria-hidden />
-              {n}
-            </li>
-          ))}
-        </ul>
-      </div>
-    </Card>
-  );
-}

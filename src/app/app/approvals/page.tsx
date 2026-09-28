@@ -7,9 +7,9 @@ import { APPROVAL_KIND, ago } from "@/lib/ops";
 import { Button, ButtonLink, Card, Chip, DemoBadge, Empty, Label, PageHeader, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 
-export const metadata = { title: "Подтверждения — Simplify" };
+export const metadata = { title: "Подтверждения" };
 
-const ORDER = ["handoff", "sponsorship", "legal", "sensitive", "salary", "unknown_question", "truth"];
+const ORDER = ["handoff", "sponsorship", "legal", "sensitive", "salary", "unknown_question"];
 
 const QUICK: Record<string, string[]> = {
   sensitive: ["I don't wish to answer"],

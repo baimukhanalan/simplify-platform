@@ -92,8 +92,8 @@ export async function prepare(opportunityId: string) {
   const version = `v${(await db.applicationPackage.count({ where: { opportunity: { campaignId: opp.campaignId } } })) + 1}-${opp.segment}`;
   await db.applicationPackage.upsert({
     where: { opportunityId },
-    create: { opportunityId, cvVersion: version, cvText: pkg.cvText, summary: pkg.summary, coverLetter: pkg.coverLetter, skillsOrder: s(pkg.skillsOrder), projects: s(pkg.projects), answers: s(pkg.answers), truthCheck: s(pkg.truthCheck), generatedBy: pkg.by },
-    update: { cvText: pkg.cvText, summary: pkg.summary, coverLetter: pkg.coverLetter, skillsOrder: s(pkg.skillsOrder), projects: s(pkg.projects), answers: s(pkg.answers), truthCheck: s(pkg.truthCheck), generatedBy: pkg.by },
+    create: { opportunityId, cvVersion: version, cvText: pkg.cvText, summary: pkg.summary, coverLetter: pkg.coverLetter, skillsOrder: s(pkg.skillsOrder), projects: s(pkg.projects), answers: s(pkg.answers), generatedBy: pkg.by },
+    update: { cvText: pkg.cvText, summary: pkg.summary, coverLetter: pkg.coverLetter, skillsOrder: s(pkg.skillsOrder), projects: s(pkg.projects), answers: s(pkg.answers), generatedBy: pkg.by },
   });
   const pending = pkg.answers.filter((a) => a.status === "pending");
   for (const a of pending) {

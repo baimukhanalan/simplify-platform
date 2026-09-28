@@ -1,4 +1,4 @@
-import { Sparkles, Lock, AlertTriangle } from "lucide-react";
+import { Sparkles, AlertTriangle } from "lucide-react";
 import { Card, Chip, Empty, Label } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { regeneratePack } from "@/lib/actions/interview";
@@ -30,7 +30,7 @@ export function PackTab({ id, pack, round }: { id: string; pack: (Pack & { gener
       </SubmitButton>
     </form>
   );
-  if (!pack || !pack.tellMeAboutYourself) return <Empty title="Interview Pack ещё не собран" sub="Соберём его из вашего Truth Layer и описания вакансии." action={regenerate} />;
+  if (!pack || !pack.tellMeAboutYourself) return <Empty title="Interview Pack ещё не собран" sub="Соберём его из вашего профиля и описания вакансии." action={regenerate} />;
 
   return (
     <div className="flex flex-col gap-4">
@@ -42,11 +42,6 @@ export function PackTab({ id, pack, round }: { id: string; pack: (Pack & { gener
           {!aiEnabled() && <span className="basis-full text-[12px] text-ink-4">AI-ключ не настроен — пакет собирает детерминированный engine из ваших фактов.</span>}
         </div>
         {regenerate}
-      </div>
-
-      <div className="flex items-start gap-2.5 rounded-2xl border border-green/15 bg-green-soft/60 px-4 py-3 text-[13px] text-green">
-        <Lock className="mt-0.5 size-4 shrink-0" strokeWidth={1.7} />
-        Truth Lock: behavioral-ответы собраны только из подтверждённых STAR-историй. Ничего не придумано.
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

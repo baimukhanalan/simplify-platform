@@ -1,6 +1,6 @@
-import { Play, AlertTriangle, ShieldAlert } from "lucide-react";
+import { Play, ShieldAlert } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
-import { db, j } from "@/lib/db";
+import { db } from "@/lib/db";
 import { Card, Chip, Label, PageHeader, Progress, Script, Stat, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { adminRunTick } from "@/lib/actions/admin";
@@ -8,7 +8,7 @@ import { APPLIED_OR_LATER, fmtKzt } from "@/lib/engine/taxonomy";
 import { reachedInterview } from "@/lib/engine/insights";
 import { IngestPanel } from "./_components/ingest-panel";
 
-export const metadata = { title: "Operations — Simplify" };
+export const metadata = { title: "Operations" };
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 const DAY = 86400000;
@@ -53,8 +53,7 @@ export default async function AdminPage() {
       take: 60,
     }),
     db.applicationPackage.findMany({
-      where: { truthCheck: { contains: '"ok":false' } },
-      select: { id: true, cvVersion: true, generatedBy: true, truthCheck: true, createdAt: true, opportunity: { select: { job: { select: { company: true, title: true } } } } },
+      select: { id: true, cvVersion: true, generatedBy: true, summary: true, coverLetter: true, createdAt: true, opportunity: { select: { job: { select: { company: true, title: true } } } } },
       take: 200,
       orderBy: { createdAt: "desc" },
     }),
@@ -98,7 +97,7 @@ export default async function AdminPage() {
   const pendingByUser = approvals.reduce<Record<string, number>>((a, x) => ({ ...a, [x.userId]: (a[x.userId] ?? 0) + 1 }), {});
 
   // ——— CV quality sample ———
-  const cvSample = sample(pkgPool, 5).map((p) => ({ ...p, issues: j<{ claim: string; ok: boolean; note?: string }[]>(p.truthCheck, []).filter((t) => !t.ok) }));
+  const cvSample = sample(pkgPool, 5);
 
   // ——— Jobs ———
   const sources = [...new Set(jobGroups.map((g) => g.source))].sort();
@@ -220,7 +219,7 @@ export default async function AdminPage() {
                   {approvals.map((a) => (
                     <li key={a.id} className="flex flex-col gap-1 py-3 first:pt-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Chip tone={a.kind === "legal" || a.kind === "truth" ? "rose" : a.kind === "sensitive" ? "amber" : "neutral"}>{a.kind}</Chip>
+                        <Chip tone={a.kind === "legal" ? "rose" : a.kind === "sensitive" ? "amber" : "neutral"}>{a.kind}</Chip>
                         <span className="text-[12px] text-ink-4">{maskEmail(a.user.email)}{a.opportunity?.job.company ? ` · ${a.opportunity.job.company}` : ""} · {since(a.createdAt, now)}</span>
                       </div>
                       <p className="text-[13.5px] text-ink-2">{a.question}</p>
@@ -240,7 +239,7 @@ export default async function AdminPage() {
                 <Chip>{cvSample.length} из {pkgPool.length}</Chip>
               </div>
               {cvSample.length === 0 ? (
-                <p className="text-[14px] text-ink-3">Нет пакетов с замечаниями Truth Check. Отлично.</p>
+                <p className="text-[14px] text-ink-3">Пакетов пока нет.</p>
               ) : (
                 <ul className="flex flex-col gap-3">
                   {cvSample.map((p) => (
@@ -252,19 +251,16 @@ export default async function AdminPage() {
                         <Chip tone="dark">{p.cvVersion}</Chip>
                         <Chip tone={p.generatedBy === "claude" ? "green" : "teal"}>{p.generatedBy}</Chip>
                       </div>
-                      <ul className="flex flex-col gap-1">
-                        {p.issues.map((t, i) => (
-                          <li key={i} className="flex gap-2 text-[13px] text-ink-2">
-                            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber" strokeWidth={1.8} />
-                            <span>{t.claim}{t.note && <span className="text-ink-4"> — {t.note}</span>}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <p className="line-clamp-3 text-[13px] leading-relaxed text-ink-2">{p.summary}</p>
+                      <details className="mt-2">
+                        <summary className="cursor-pointer text-[12.5px] text-teal">Cover letter</summary>
+                        <p className="mt-2 whitespace-pre-line text-[12.5px] leading-relaxed text-ink-3">{p.coverLetter}</p>
+                      </details>
                     </li>
                   ))}
                 </ul>
               )}
-              <p className="mt-4 text-[12px] text-ink-4">Случайные 5 пакетов с замечаниями Truth Check — при каждой загрузке страницы новая выборка.</p>
+              <p className="mt-4 text-[12px] text-ink-4">Случайные 5 пакетов для ручной проверки качества — при каждой загрузке новая выборка.</p>
             </Card>
           </section>
         </div>

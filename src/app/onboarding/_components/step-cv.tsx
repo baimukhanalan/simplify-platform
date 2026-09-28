@@ -20,7 +20,7 @@ export function StepCV({ hasCv, cvText, cvFileName, factCount }: { hasCv: boolea
             <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-white text-green"><FileText className="size-5" strokeWidth={1.7} /></div>
             <div className="min-w-0 flex-1">
               <div className="truncate text-[14.5px] font-medium text-head">{cvFileName || "CV загружено"}</div>
-              <div className="text-[12.5px] text-ink-3">{factCount} фактов в Truth Layer</div>
+              <div className="text-[12.5px] text-ink-3">{factCount} фактов опыта</div>
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -39,7 +39,7 @@ export function StepCV({ hasCv, cvText, cvFileName, factCount }: { hasCv: boolea
             <button type="submit" disabled={pending || chars < 120} className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-cta px-6 text-[15px] font-medium text-white shadow-(--shadow-cta) transition-all hover:bg-[#2f2c2c] active:scale-[.98] disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">
               {pending ? <><span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />Разбираем CV…</> : "Разобрать CV →"}
             </button>
-            <span className="text-[12.5px] text-ink-3" aria-live="polite">{pending ? "Извлекаем опыт, навыки и контакты" : chars < 120 ? "Добавьте CV, чтобы продолжить" : "Ничего не придумываем — только то, что написано в CV"}</span>
+            <span className="text-[12.5px] text-ink-3" aria-live="polite">{pending ? "Извлекаем опыт, навыки и контакты" : chars < 120 ? "Добавьте CV, чтобы продолжить" : "Готово к разбору"}</span>
           </div>
         </form>
       )}

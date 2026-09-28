@@ -42,9 +42,9 @@ export function OfferCard({ offer: o, level, roleFamily, seniority, regions, str
     ["Signing", o.signingBonus ? money(o.signingBonus) : "—"],
     ["Equity", o.equity || "—"],
     ["Отпуск", o.vacationDays ? `${o.vacationDays} дн.` : "—"],
-    ["Испытательный", o.probationMonths ? `${o.probationMonths} мес.` : "—"],
+    ["Проба", o.probationMonths ? `${o.probationMonths} мес.` : "—"],
     ["Формат", o.remote],
-    ["Relocation", o.relocation || "—"],
+    ["Переезд", o.relocation || "—"],
     ["Notice", o.noticePeriod || "—"],
   ];
   const levelHref = (l: Aggressiveness) => `/app/offers?level=${l}#offer-${o.id}`;
@@ -78,10 +78,10 @@ export function OfferCard({ offer: o, level, roleFamily, seniority, regions, str
               <div className="num text-[22px] leading-none text-ink-2">{money(firstYear)}</div>
             </div>
           </div>
-          <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
+          <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-3 xl:grid-cols-4">
             {terms.map(([k, v]) => (
               <div key={k} className="flex min-w-0 flex-col gap-0.5">
-                <dt className="label !text-[10px]">{k}</dt>
+                <dt className="label truncate !text-[10px]">{k}</dt>
                 <dd className="truncate text-[14px] text-head" title={v}>{v}</dd>
               </div>
             ))}
@@ -118,7 +118,7 @@ export function OfferCard({ offer: o, level, roleFamily, seniority, regions, str
           <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <Label className="mb-1.5">Negotiation Assistant</Label>
-              <p className="text-[13.5px] text-ink-3">Аргументы — только из подтверждённых результатов в Truth Layer.</p>
+              <p className="text-[13.5px] text-ink-3">Аргументы — из результатов в вашем профиле.</p>
             </div>
             <nav aria-label="Стиль переговоров" className="glass inline-flex self-start !rounded-full p-1">
               {(["soft", "balanced", "assertive"] as Aggressiveness[]).map((l) => (

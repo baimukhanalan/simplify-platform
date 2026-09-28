@@ -9,7 +9,7 @@ import { ELIGIBILITY, REMOTE_LABEL, SOURCE_LABEL, ago, daysAgo, salaryLabel } fr
 import { ButtonLink, Chip, DemoBadge, Empty, PageHeader, cx } from "@/components/ui";
 import { EligibilityChip, LaneChip, MatchReasons, Metric, StatusChip, matchTone } from "./_components/bits";
 
-export const metadata = { title: "Вакансии — Simplify" };
+export const metadata = { title: "Вакансии" };
 
 const PER_PAGE = 30;
 const STALE_DAYS = 30;

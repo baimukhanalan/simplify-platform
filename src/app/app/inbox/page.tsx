@@ -8,7 +8,7 @@ import { Card, Chip, DemoBadge, Empty, Label, PageHeader, cx } from "@/component
 import { SubmitButton } from "@/components/client";
 import { PasteEmail } from "./_components/paste-email";
 
-export const metadata = { title: "Inbox Intelligence — Simplify" };
+export const metadata = { title: "Inbox Intelligence" };
 
 const MAPPING = [
   { phrase: "Thank you for applying…", cls: "confirmation" },

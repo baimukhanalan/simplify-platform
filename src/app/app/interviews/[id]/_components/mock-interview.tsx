@@ -26,7 +26,7 @@ const DIMS: { key: keyof MockFeedback["dims"]; label: string }[] = [
   { key: "confidence", label: "Уверенность" },
 ];
 const DIM_ADVICE: Record<keyof MockFeedback["dims"], string> = {
-  content: "Каждый ответ — с одной цифрой результата из вашего Truth Layer.",
+  content: "Каждый ответ — с одной цифрой результата из вашего опыта.",
   structure: "Отвечайте по STAR: 1 фраза контекста, 1 — задача, 2–3 — ваши действия, 1 — результат.",
   clarity: "Короткие предложения и паузы вместо слов-паразитов.",
   length: "Держите ответ в 60–120 секунд (≈ 80–220 слов).",

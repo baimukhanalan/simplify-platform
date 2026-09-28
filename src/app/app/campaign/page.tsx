@@ -11,7 +11,7 @@ import { Disclosure } from "../profile/_components/bits";
 export const metadata: Metadata = { title: "Career Campaign" };
 
 const INCLUDED = [
-  "Career Profile и Truth Layer", "Career Goal Builder", "Поиск вакансий (discovery)", "Matching и Eligibility", "Ранжирование по вероятности интервью",
+  "Career Profile", "Career Goal Builder", "Поиск вакансий (discovery)", "Matching и Eligibility", "Ранжирование по вероятности интервью",
   "Персонализация CV под вакансию", "Cover letters", "Подача заявок (application execution)", "Ответы на screening-вопросы", "Tracking и Pipeline",
   "Оптимизация стратегии по откликам", "Подготовка к assessment", "Interview Pack", "Mock interviews", "AI Interview Copilot",
   "Разбор после интервью", "Базовая помощь с оффером и переговорами",

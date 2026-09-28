@@ -95,7 +95,7 @@ export async function saveCV(_: FormState, form: FormData): Promise<FormState> {
   go(2);
 }
 
-/* ——————————————————————————— Step 2 · Truth Layer ——————————————————————————— */
+/* ——————————————————————————— Step 2 · Facts ——————————————————————————— */
 
 export async function setFactVerified(factId: string, verified: boolean) {
   const user = await requireUser();

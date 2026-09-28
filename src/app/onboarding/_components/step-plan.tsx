@@ -7,7 +7,7 @@ import { BackLink } from "./shared";
 import { PlanButton } from "./plan-button";
 
 const COPY = {
-  local: { note: "Казахстан и СНГ", features: ["Поиск по KZ и СНГ", "До 6 заявок в день", "CV под каждую вакансию · Truth Lock", "Pipeline, Inbox, Interview Room", "Interview Copilot"] },
+  local: { note: "Казахстан и СНГ", features: ["Поиск по KZ и СНГ", "До 6 заявок в день", "CV под каждую вакансию", "Pipeline, Inbox, Interview Room", "Interview Copilot"] },
   international: { note: "EU, UK, US, Canada, MENA, remote по миру", features: ["Всё из Local / CIS", "До 10 заявок в день", "Проверка права на работу и спонсорства", "Interview Copilot", "Offer Desk: переговоры по офферу"] },
 } as const;
 

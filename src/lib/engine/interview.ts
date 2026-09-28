@@ -67,28 +67,11 @@ export function retrieveStories(q: string, stories: StoryLite[], k = 2) {
     .map((x) => x.s);
 }
 
-// ——— Truth guard: claims in the question the profile cannot back ———
-export function truthGuard(q: string, facts: FactLite[], yearsExperience: number, skills: string[]): string | null {
-  const team = q.match(/(?:team|group|people|org)\s*of\s*(\d+)|(\d+)[- ](?:person|people|member)/i);
-  if (team) {
-    const n = Number(team[1] ?? team[2]);
-    const maxTeam = Math.max(0, ...facts.map((f) => f.teamSize ?? 0));
-    if (n > maxTeam) return `Не заявляйте, что управляли ${n} людьми. Подтверждённый максимум — ${maxTeam || "не указан"}. Расскажите о максимальном реальном масштабе и сделайте акцент на релевантном leadership-опыте.`;
-  }
-  const yrs = q.match(/(\d+)\+?\s*years/i);
-  if (yrs && Number(yrs[1]) > yearsExperience) return `В профиле ${yearsExperience} г. опыта — не округляйте вверх. Покажите глубину через конкретный результат.`;
-  const tech = q.match(/(?:experience with|worked with|used|know)\s+([A-Z][\w.+#-]+)/);
-  if (tech && !skills.some((s) => s.toLowerCase() === tech[1].toLowerCase())) return `«${tech[1]}» нет в подтверждённых навыках. Честно скажите, что не работали, и назовите ближайший аналог, который знаете.`;
-  if (/have you ever (managed|led) (a )?(team|people)/i.test(q) && !facts.some((f) => (f.teamSize ?? 0) > 1 && /lead|manag|руковод/i.test(f.details))) return "Формального менеджмента в профиле нет. Опишите неформальное лидерство: менторинг, владение проектом, координацию.";
-  return null;
-}
-
-export type Scaffold = { intent: Intent; strategy: string; opener: string; bullets: string[]; keyNumber: string; warning: string | null; storyId: string | null };
+export type Scaffold = { intent: Intent; strategy: string; opener: string; bullets: string[]; keyNumber: string; storyId: string | null };
 
 /** Build the on-screen scaffold: 3–5 bullets, one number, one opener. Deterministic → instant. */
 export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite[]; skills: string[]; yearsExperience: number; company: string; role: string; salary?: { low: number; high: number } }): Scaffold {
   const intent = detectIntent(q);
-  const warning = truthGuard(q, ctx.facts, ctx.yearsExperience, ctx.skills);
   const [story] = retrieveStories(q, ctx.stories, 1);
   const topFact = ctx.facts.find((f) => f.kind === "employment" && f.metrics) ?? ctx.facts.find((f) => f.kind === "employment");
   const short = (s: string, n = 70) => (s.length > n ? `${s.slice(0, n - 1).trim()}…` : s);
@@ -133,7 +116,7 @@ export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite
       } else bullets = ["Pick your strongest verified example", "Your specific action", "Outcome + lesson"];
       if (intent === "behavioral" || intent === "leadership") bullets.push("Close with the lesson learned");
   }
-  return { intent, strategy: INTENT_STRATEGY[intent], opener, bullets: bullets.slice(0, 5), keyNumber, warning, storyId: story?.id ?? null };
+  return { intent, strategy: INTENT_STRATEGY[intent], opener, bullets: bullets.slice(0, 5), keyNumber, storyId: story?.id ?? null };
 }
 
 // ——— Interview Pack ———

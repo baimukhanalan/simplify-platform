@@ -17,7 +17,7 @@ const ROLES = [
 const SEQ: Kind[] = ["match", "tailored", "applied", "invite"];
 const META: Record<Kind, (r: (typeof ROLES)[number]) => string> = {
   match: (r) => r.where,
-  tailored: () => "Summary и порядок навыков · Truth check ✓",
+  tailored: () => "Summary и порядок навыков под вакансию",
   applied: () => "Заявка подана · Greenhouse",
   invite: () => "Recruiter screen · чт, 15:00",
 };

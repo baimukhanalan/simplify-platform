@@ -1,7 +1,7 @@
 // Shared vocabularies: role families, skills, regions, seniority, statuses.
 
 export const ROLE_FAMILIES: Record<string, { label: string; keywords: string[]; skills: string[] }> = {
-  data_analyst: { label: "Data Analyst", keywords: ["data analyst", "bi analyst", "analytics analyst", "reporting analyst", "business intelligence"], skills: ["SQL", "Excel", "Python", "Tableau", "Power BI", "Statistics", "Looker"] },
+  data_analyst: { label: "Data Analyst", keywords: ["data analyst", "bi analyst", "analytics analyst", "reporting analyst", "business intelligence", "analytics"], skills: ["SQL", "Excel", "Python", "Tableau", "Power BI", "Statistics", "Looker"] },
   product_analyst: { label: "Product Analyst", keywords: ["product analyst", "growth analyst", "product analytics"], skills: ["SQL", "Python", "A/B testing", "Amplitude", "Mixpanel", "Statistics"] },
   data_scientist: { label: "Data Scientist", keywords: ["data scientist", "machine learning", "ml engineer", "applied scientist"], skills: ["Python", "SQL", "Machine Learning", "Statistics", "scikit-learn", "PyTorch"] },
   data_engineer: { label: "Data Engineer", keywords: ["data engineer", "analytics engineer", "etl"], skills: ["SQL", "Python", "dbt", "Airflow", "Spark", "BigQuery"] },

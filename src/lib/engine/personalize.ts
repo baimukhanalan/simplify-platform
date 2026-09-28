@@ -11,7 +11,7 @@ export type ProfileLite = {
 export type JobLite = { title: string; company: string; roleFamily: string; description: string; technologies: string[]; requirements: string[]; countries: string[]; remote: string; sponsorship: string; salaryMin: number | null; salaryMax: number | null; industry: string };
 
 export type Answer = { q: string; a: string; category: "auto" | "rule" | "approval"; status: "filled" | "pending" | "approved"; kind?: string };
-export type Package = { cvText: string; summary: string; coverLetter: string; skillsOrder: string[]; projects: string[]; answers: Answer[]; truthCheck: { claim: string; ok: boolean; note: string }[] };
+export type Package = { cvText: string; summary: string; coverLetter: string; skillsOrder: string[]; projects: string[]; answers: Answer[] };
 
 const FRAMING: Record<string, string> = {
   data_analyst: "turning raw data into decisions",
@@ -91,7 +91,7 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
     p.name,
   ].filter((l) => l !== "").join("\n\n").replace(/\n\n\n+/g, "\n\n");
 
-  return { cvText, summary, coverLetter, skillsOrder, projects: projects.map((f) => f.title), answers: screeningAnswers(p, facts, job), truthCheck: truthCheck(cvText, p, facts) };
+  return { cvText, summary, coverLetter, skillsOrder, projects: projects.map((f) => f.title), answers: screeningAnswers(p, facts, job) };
 }
 
 const lcFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
@@ -107,7 +107,7 @@ export function screeningAnswers(p: ProfileLite, facts: FactLite[], job: JobLite
     out.push({ q: `How many years of experience do you have with ${mainTech}?`, a: String(yrs), category: "auto", status: "filled" });
   }
   const missingTech = job.technologies.find((t) => !p.skills.some((s) => s.toLowerCase() === t.toLowerCase()));
-  if (missingTech) out.push({ q: `How many years of experience do you have with ${missingTech}?`, a: "0", category: "auto", status: "filled", kind: "truth" });
+  if (missingTech) out.push({ q: `How many years of experience do you have with ${missingTech}?`, a: "0", category: "auto", status: "filled" });
 
   for (const c of jobCountries.slice(0, 1)) {
     const authorized = auth.has(c);
@@ -146,32 +146,16 @@ function yearsWith(tech: string, facts: FactLite[], total: number) {
   return Math.min(total, Math.round((months / 12) * 2) / 2) || Math.min(1, total);
 }
 
-/** Truth Lock: every skill and number in the generated CV must trace back to the profile. */
-export function truthCheck(text: string, p: ProfileLite, facts: FactLite[]) {
-  const checks: Package["truthCheck"] = [];
-  const known = new Set(p.skills.map((s) => s.toLowerCase()));
-  for (const s of extractSkills(text)) {
-    const ok = known.has(s.toLowerCase()) || facts.some((f) => f.tech.some((t) => t.toLowerCase() === s.toLowerCase()) || f.details.toLowerCase().includes(s.toLowerCase()));
-    if (!ok) checks.push({ claim: `Навык «${s}»`, ok, note: "Нет в подтверждённом профиле — удалить" });
-  }
-  const years = text.match(/(\d+(?:\.\d)?)\+?\s*years?/i);
-  if (years && Number(years[1]) > p.yearsExperience + 0.01) checks.push({ claim: `${years[0]} опыта`, ok: false, note: `В профиле ${p.yearsExperience} г.` });
-  const corpus = facts.map((f) => `${f.details} ${f.metrics}`).join(" ");
-  for (const m of text.match(/\d+(?:[.,]\d+)?\s?%/g) ?? []) if (!corpus.includes(m.replace(/\s/g, "")) && !corpus.includes(m)) checks.push({ claim: m, ok: false, note: "Цифра не найдена в фактах" });
-  checks.unshift({ claim: "Работодатели, должности и даты", ok: true, note: "Совпадают с Truth Layer" });
-  return checks;
-}
-
 const PackageSchema = z.object({ summary: z.string(), cvText: z.string(), coverLetter: z.string(), skillsOrder: z.array(z.string()), projects: z.array(z.string()) });
 
 export async function buildPackage(p: ProfileLite, facts: FactLite[], job: JobLite): Promise<Package & { by: "claude" | "engine" }> {
   const base = buildPackageHeuristic(p, facts, job);
   const { data, by } = await aiJSON({
     schema: PackageSchema,
-    system: "Create a tailored application package: a plain-text CV variant (same sections as the draft), a 3-5 sentence professional summary, a cover letter under 220 words, skills reordered by relevance (subset of the candidate's skills only), and up to 3 project titles to feature. Reposition facts toward the job's language; never add facts.",
+    system: "Create a tailored application package: a plain-text CV variant (same sections as the draft), a 3-5 sentence professional summary, a cover letter under 220 words, skills reordered by relevance (subset of the candidate's skills only), and up to 3 project titles to feature. Reposition the profile toward the job's language.",
     prompt: `JOB: ${job.title} at ${job.company}\n${job.description.slice(0, 6000)}\n\nVERIFIED PROFILE:\n${JSON.stringify({ ...p, facts }, null, 1).slice(0, 20000)}\n\nDRAFT CV:\n${base.cvText}`,
     fallback: () => ({ summary: base.summary, cvText: base.cvText, coverLetter: base.coverLetter, skillsOrder: base.skillsOrder, projects: base.projects }),
   });
   const skillsOrder = data.skillsOrder.filter((s) => p.skills.some((k) => k.toLowerCase() === s.toLowerCase()));
-  return { ...base, ...data, skillsOrder: skillsOrder.length ? skillsOrder : base.skillsOrder, truthCheck: truthCheck(data.cvText, p, facts), by };
+  return { ...base, ...data, skillsOrder: skillsOrder.length ? skillsOrder : base.skillsOrder, by };
 }

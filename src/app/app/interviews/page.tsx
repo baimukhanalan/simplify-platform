@@ -6,7 +6,7 @@ import { ButtonLink, Card, Chip, Empty, Label, PageHeader, Script, cx } from "@/
 import { ROUND_CHAIN, ROUND_LABEL, ROUND_TONE, IV_STATUS_LABEL, IV_STATUS_TONE } from "@/lib/rounds";
 import { fmtDate, nowMs, relDays } from "./_components/format";
 
-export const metadata = { title: "Интервью — Simplify" };
+export const metadata = { title: "Интервью" };
 
 type Row = Awaited<ReturnType<typeof load>>[number];
 const load = (userId: string) =>

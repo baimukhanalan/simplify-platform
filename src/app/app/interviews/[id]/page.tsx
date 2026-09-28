@@ -23,7 +23,7 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
-export const metadata = { title: "Interview Room — Simplify" };
+export const metadata = { title: "Interview Room" };
 
 export default async function InterviewRoom({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const [{ id }, sp] = await Promise.all([params, searchParams]);

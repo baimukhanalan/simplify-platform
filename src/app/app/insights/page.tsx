@@ -7,7 +7,7 @@ import { REGIONS } from "@/lib/engine/taxonomy";
 import { pctLabel } from "@/lib/ops";
 import { ButtonLink, Card, Chip, Empty, Label, PageHeader, Script, Stat, cx } from "@/components/ui";
 
-export const metadata = { title: "Стратегия — Simplify" };
+export const metadata = { title: "Стратегия" };
 
 const VERDICT: Record<SegmentStat["verdict"], { label: string; tone: "green" | "teal" | "amber" | "rose" | "neutral" }> = {
   scale: { label: "Scale", tone: "green" },

@@ -7,7 +7,7 @@ import { PIPELINE } from "@/lib/engine/taxonomy";
 import { ButtonLink, Empty, PageHeader, cx } from "@/components/ui";
 import { PipelineCard, type CardOpp } from "./_components/card";
 
-export const metadata = { title: "Pipeline — Simplify" };
+export const metadata = { title: "Pipeline" };
 
 const GROUPS = [
   { key: "prep", label: "Prep", hint: "найдено и готовится" },

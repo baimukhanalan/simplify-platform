@@ -14,11 +14,7 @@ export const aiEnabled = () => Boolean(process.env.ANTHROPIC_API_KEY || process.
 let client: Anthropic | null = null;
 const getClient = () => (client ??= new Anthropic());
 
-export const TRUTH_RULES = `You work inside Simplify, an AI career agent. Truth Lock rules (non-negotiable):
-- Use ONLY facts present in the candidate's verified profile. You may rephrase and emphasize, never invent.
-- Never increase years of experience, invent employers, titles, degrees, certifications, skills, metrics or work authorization.
-- If the job asks for something the candidate lacks, do not claim it; bridge with the closest verified experience.
-- Write concisely, concrete verbs, measurable results only when they exist in the facts.`;
+export const BASE_RULES = `You work inside Simplify, an AI career agent. Build everything from the candidate's profile data. Write concisely, with concrete verbs and measurable results where the profile has them.`;
 
 export async function aiJSON<S extends z.ZodType>(opts: {
   schema: S;
@@ -32,7 +28,7 @@ export async function aiJSON<S extends z.ZodType>(opts: {
     const res = await getClient().messages.parse({
       model: MODEL,
       max_tokens: 16000,
-      system: `${TRUTH_RULES}\n\n${opts.system}`,
+      system: `${BASE_RULES}\n\n${opts.system}`,
       output_config: { format: zodOutputFormat(opts.schema), effort: opts.effort ?? "medium" },
       messages: [{ role: "user", content: opts.prompt }],
     });
@@ -50,7 +46,7 @@ export async function aiText(opts: { system: string; prompt: string; fallback: (
     const res = await getClient().messages.create({
       model: MODEL,
       max_tokens: 4000,
-      system: `${TRUTH_RULES}\n\n${opts.system}`,
+      system: `${BASE_RULES}\n\n${opts.system}`,
       output_config: { effort: opts.effort ?? "low" },
       messages: [{ role: "user", content: opts.prompt }],
     });

@@ -8,7 +8,7 @@ import { Card, Chip, Empty, Label, PageHeader, Script, Stat, cx } from "@/compon
 import { fmtKzt } from "@/lib/engine/taxonomy";
 import { CopyButton } from "../app/interviews/_components/copy-button";
 
-export const metadata = { title: "Partners — Simplify" };
+export const metadata = { title: "Partners" };
 
 /** Outcomes are only shown once a cohort is large enough that no individual can be singled out. */
 const K_ANON = 3;

@@ -5,7 +5,7 @@ import { db, j } from "@/lib/db";
 import { ButtonLink, Card, Empty, PageHeader, Script, Stat } from "@/components/ui";
 import { SectionTitle } from "./_components/bits";
 import { IdentityForm, ConditionsForm, SkillsEditor, CvSection } from "./_components/sections";
-import { TruthLayer, TruthExplainer } from "./_components/facts";
+import { FactsList } from "./_components/facts";
 import { Stories } from "./_components/stories";
 
 export const metadata: Metadata = { title: "Career Profile" };
@@ -14,7 +14,7 @@ const NAV = [
   ["contacts", "Контакты"],
   ["conditions", "Условия"],
   ["skills", "Навыки"],
-  ["truth", "Truth Layer"],
+  ["facts", "Опыт"],
   ["stories", "STAR"],
   ["cv", "CV"],
 ] as const;
@@ -31,7 +31,7 @@ export default async function ProfilePage() {
     return (
       <>
         <PageHeader eyebrow="Career Profile" title={<>Ваш Career <Script>Profile</Script></>} />
-        <Empty title="Профиль ещё не создан" sub="Загрузите CV — Simplify извлечёт факты в Truth Layer, а вы их подтвердите." action={<ButtonLink href="/onboarding">Загрузить CV</ButtonLink>} />
+        <Empty title="Профиль ещё не создан" sub="Загрузите CV — Simplify извлечёт опыт, навыки и достижения." action={<ButtonLink href="/onboarding">Загрузить CV</ButtonLink>} />
       </>
     );
   }
@@ -43,7 +43,7 @@ export default async function ProfilePage() {
   return (
     <>
       <PageHeader
-        eyebrow="Career Profile · Truth Layer"
+        eyebrow="Career Profile"
         title={<>Ваш Career <Script>Profile</Script></>}
         sub="Единственный источник правды для агента. Всё, что Simplify пишет в CV, анкетах и на интервью, опирается только на подтверждённые факты отсюда."
         actions={<ButtonLink href="/app/readiness" variant="glass"><Gauge className="size-4" strokeWidth={1.7} aria-hidden />Проверить Readiness</ButtonLink>}
@@ -76,14 +76,13 @@ export default async function ProfilePage() {
         </section>
 
         <section aria-labelledby="skills-h">
-          <SectionTitle id="skills" eyebrow="03 · Skills" title={<span id="skills-h">Навыки</span>} sub="Навык с зелёной отметкой подтверждён хотя бы одним фактом. Остальные агент упоминает осторожно — без выдуманного опыта." />
+          <SectionTitle id="skills" eyebrow="03 · Skills" title={<span id="skills-h">Навыки</span>} sub="Навык с зелёной отметкой встречается в вашем опыте — агент ставит такие навыки выше." />
           <SkillsEditor skills={skills} facts={facts} />
         </section>
 
-        <section aria-labelledby="truth-h" className="flex flex-col gap-5">
-          <SectionTitle id="truth" eyebrow="04 · Truth Layer" title={<span id="truth-h">Факты, а не <Script>фантазии</Script></span>} sub="Каждый факт хранит источник и статус. Truth Lock: AI может переформулировать факт под роль, но никогда не изменит его содержание." />
-          <TruthExplainer />
-          <TruthLayer facts={facts} />
+        <section aria-labelledby="facts-h" className="flex flex-col gap-5">
+          <SectionTitle id="facts" eyebrow="04 · Опыт" title={<span id="facts-h">Опыт и <Script>достижения</Script></span>} sub="Работа, образование, проекты и сертификаты — из них агент собирает CV под каждую вакансию." />
+          <FactsList facts={facts} />
         </section>
 
         <section aria-labelledby="stories-h">

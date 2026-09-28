@@ -6,7 +6,7 @@ import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
 import { SiteHeader } from "./_components/site-header";
 
 const STEPS = [
-  { icon: UserRound, n: "01", title: "Career Profile", text: "Загружаете CV — агент собирает Truth Layer из проверенных фактов и уточняет опыт в мини-интервью." },
+  { icon: UserRound, n: "01", title: "Career Profile", text: "Загружаете CV — агент собирает единый профиль и уточняет опыт в мини-интервью." },
   { icon: Workflow, n: "02", title: "Autonomous campaign", text: "60 дней агент ищет вакансии, проверяет Match и Eligibility, адаптирует CV и подаёт заявки." },
   { icon: Mic, n: "03", title: "Interview & offer", text: "Interview Room, live Interview Copilot на реальных интервью и Offer Desk для переговоров." },
 ];
@@ -113,7 +113,7 @@ export default async function Home() {
             })}
           </div>
           <p className="max-w-[640px] text-center text-[13px] leading-relaxed text-ink-3">
-            Simplify — это исполнение кампании поиска работы, а не гарантия трудоустройства. Агент работает только с проверенными фактами о вас (Truth Lock) и не подаётся туда, где вы не проходите по Eligibility.
+            Simplify — это исполнение кампании поиска работы, а не гарантия трудоустройства. Агент не подаётся туда, где вы не проходите по Eligibility.
           </p>
         </section>
       </main>

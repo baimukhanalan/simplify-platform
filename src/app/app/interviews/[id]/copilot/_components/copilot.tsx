@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Mic, MicOff, X, ShieldAlert, AlertTriangle, CornerDownLeft, Lock, Gauge } from "lucide-react";
+import { Mic, MicOff, X, ShieldAlert, CornerDownLeft, Lock, Gauge } from "lucide-react";
 import { scaffold, type FactLite, type Scaffold, type StoryLite } from "@/lib/engine/interview";
 import { cx } from "@/components/ui";
 import { useSpeech, useSpeechSupported } from "../../../_components/use-speech";
@@ -247,7 +247,7 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
             )}
             <p className="mt-3 flex items-start gap-2 text-[12px] text-white/45">
               <Lock className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.7} aria-hidden />
-              Звук обрабатывает встроенный speech engine браузера. Simplify ничего не записывает и не сохраняет. Подсказки — только из ваших подтверждённых фактов и STAR-историй.
+              Звук обрабатывает встроенный speech engine браузера. Simplify ничего не записывает и не сохраняет. Подсказки строятся из вашего профиля и STAR-историй.
             </p>
           </footer>
         </>
@@ -261,15 +261,6 @@ function ScaffoldCard({ item }: { item: Item }) {
   return (
     <article className="mx-auto flex w-full max-w-3xl animate-fade flex-col gap-6">
       <p className="text-[15px] leading-snug text-white/55">«{q}»</p>
-      {sc.warning && (
-        <div role="alert" className="flex gap-3 rounded-2xl border-2 border-[#ff8a8a]/60 bg-[#e5484d]/15 px-5 py-4">
-          <AlertTriangle className="mt-0.5 size-6 shrink-0 text-[#ff9d9d]" strokeWidth={1.8} aria-hidden />
-          <div>
-            <div className="mb-1 font-mono text-[11px] uppercase tracking-[.08em] text-[#ff9d9d]">Truth Lock</div>
-            <p className="text-[clamp(17px,2vw,21px)] font-medium leading-snug text-white">{sc.warning}</p>
-          </div>
-        </div>
-      )}
       <div className="flex flex-wrap items-center gap-3">
         <span className="rounded-full bg-[#4fd39a] px-3 py-1 font-mono text-[11.5px] uppercase tracking-[.08em] text-[#0c1512]">{sc.intent}</span>
         <span className="text-[15px] text-white/70">{sc.strategy}</span>

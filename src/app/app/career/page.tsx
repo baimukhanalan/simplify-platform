@@ -189,7 +189,7 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
       <Card strong className="mt-10 flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           <h2 className="h-serif text-[24px]">Готовы к следующему шагу?</h2>
-          <p className="text-[14px] text-ink-3">Новая Career Campaign начнётся с вашего текущего Career Profile — Truth Layer и STAR-истории уже на месте.</p>
+          <p className="text-[14px] text-ink-3">Новая Career Campaign начнётся с вашего текущего Career Profile — опыт и STAR-истории уже на месте.</p>
         </div>
         <ButtonLink href="/app/campaign" size="lg"><Rocket className="size-4" strokeWidth={1.7} aria-hidden />Start New Campaign</ButtonLink>
       </Card>

@@ -42,7 +42,6 @@ export async function regeneratePack(form: FormData) {
     technologies: j<string[]>(job.technologies, []),
     skills: profile.skills,
     yearsExperience: profile.yearsExperience,
-    // Truth Lock: only verified stories feed the pack.
     stories: stories.filter((x) => x.verified).map((x) => ({ id: x.id, title: x.title, situation: x.situation, task: x.task, action: x.action, result: x.result, metric: x.metric, tags: j<string[]>(x.tags, []) })),
     facts: facts.map((f) => ({ kind: f.kind, title: f.title, org: f.org, details: f.details, metrics: f.metrics, tech: f.tech, teamSize: teamSize.get(f.id) ?? null })),
   });
