@@ -16,7 +16,7 @@ export function Editable({ id, title, sub, view, editor, className }: { id: stri
       </div>
       {editor ? (
         <details className="group/e">
-          <summary className="absolute right-4 top-4 inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-full border border-line bg-white/70 px-3.5 text-[13px] text-head transition-colors select-none hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green sm:right-5 sm:top-5 [&::-webkit-details-marker]:hidden">
+          <summary className="absolute right-4 top-4 inline-flex h-10 cursor-pointer list-none items-center gap-1.5 rounded-full border border-line bg-white/70 px-3.5 text-[13px] text-head transition-colors select-none hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green sm:right-5 sm:top-5 [&::-webkit-details-marker]:hidden">
             <Pencil className="size-3.5 group-open/e:hidden" strokeWidth={1.7} aria-hidden />
             <span className="group-open/e:hidden">Изменить</span>
             <span className="hidden group-open/e:inline">Закрыть</span>

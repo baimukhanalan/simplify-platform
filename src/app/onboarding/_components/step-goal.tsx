@@ -50,7 +50,7 @@ export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggest
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               <span className="text-[12px] text-ink-3">Подходит по навыкам:</span>
               {roleSuggestions.map((r) => (
-                <button key={r} type="button" onClick={() => setRole(r)} aria-pressed={role === r} className={cx("rounded-full border px-3 py-1 text-[12.5px] transition-colors focus-visible:outline-2 focus-visible:outline-green", role === r ? "border-green/40 bg-green-soft text-green" : "border-line bg-white/60 text-ink-2 hover:border-teal/40")}>{r}</button>
+                <button key={r} type="button" onClick={() => setRole(r)} aria-pressed={role === r} className={cx("inline-flex min-h-10 items-center rounded-full border px-3.5 text-[12.5px] transition-colors focus-visible:outline-2 focus-visible:outline-green", role === r ? "border-green/40 bg-green-soft text-green" : "border-line bg-white/60 text-ink-2 hover:border-teal/40")}>{r}</button>
               ))}
             </div>
           )}
@@ -116,7 +116,7 @@ export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggest
 
 function Chip({ children }: { children: ReactNode }) {
   return (
-    <label className="cursor-pointer rounded-full border border-line bg-white/60 px-3.5 py-1.5 text-[13.5px] text-ink-2 transition-colors hover:border-teal/40 has-[:checked]:border-cta has-[:checked]:bg-cta has-[:checked]:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-green">
+    <label className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-line bg-white/60 px-3.5 text-[13.5px] text-ink-2 transition-colors hover:border-teal/40 has-[:checked]:border-cta has-[:checked]:bg-cta has-[:checked]:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-green">
       {children}
     </label>
   );

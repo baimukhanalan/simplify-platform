@@ -103,7 +103,7 @@ export function CvInput({ initialText = "", initialFileName = "", minChars = 120
             ) : (
               <>
                 <UploadCloud className={cx("size-7 transition-colors", drag ? "text-green" : "text-teal")} strokeWidth={1.5} aria-hidden />
-                <span className="text-[14.5px] text-head"><span className="font-medium underline decoration-line underline-offset-4 group-hover:decoration-teal">Выберите файл</span> или перетащите сюда</span>
+                <span className="text-[14.5px] text-head"><span className="font-medium underline decoration-line underline-offset-4 group-hover:decoration-teal">Выбери файл</span> или перетащи сюда</span>
                 <span id={`${id}-hint`} className="label !text-[10px]">PDF или TXT · до 5 МБ</span>
               </>
             )}
@@ -126,7 +126,7 @@ export function CvInput({ initialText = "", initialFileName = "", minChars = 120
           aria-describedby={`${id}-count`}
         />
         <div id={`${id}-count`} className="mt-1.5 flex justify-between text-[12px] text-ink-3">
-          <span>Скопируйте текст из PDF, Word или LinkedIn</span>
+          <span>Скопируй текст из PDF, Word или LinkedIn</span>
           <span className={cx("num", chars > 0 && chars < minChars && "text-amber")}>{chars.toLocaleString("ru-RU")} симв.</span>
         </div>
       </div>

@@ -33,8 +33,8 @@ export async function runCareerCheck(_: FormState, form: FormData): Promise<Form
   const cvText = noNul(String(form.get("cvText") ?? "")).slice(0, 30000);
   const target = str(form, "target", 120);
   const rl = await rateLimit("career-check", 6, 60 * 60 * 1000);
-  if (!rl.ok) return { error: `Слишком много проверок. Попробуйте через ${Math.ceil((rl.retryAfter ?? 60) / 60)} мин.`, fields: { target } };
-  if (cvText.trim().length < 120) return { error: "Добавьте CV: загрузите PDF или вставьте текст (минимум несколько абзацев).", fields: { target } };
+  if (!rl.ok) return { error: `Слишком много проверок. Попробуй через ${Math.ceil((rl.retryAfter ?? 60) / 60)} мин.`, fields: { target } };
+  if (cvText.trim().length < 120) return { error: "Добавь CV: загрузи PDF или вставь текст (минимум несколько абзацев).", fields: { target } };
   let id: string;
   try {
     const result = await buildCareerCheck(cvText, target);
@@ -42,7 +42,7 @@ export async function runCareerCheck(_: FormState, form: FormData): Promise<Form
     id = row.id;
   } catch (err) {
     console.error("[career-check]", err);
-    return { error: "Не удалось проанализировать CV. Попробуйте ещё раз или вставьте текст вручную.", fields: { target } };
+    return { error: "Не удалось проанализировать CV. Попробуй ещё раз или вставь текст вручную.", fields: { target } };
   }
   redirect(`/check/${id}`);
 }

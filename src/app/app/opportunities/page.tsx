@@ -3,12 +3,13 @@ import type { Prisma } from "@prisma/client";
 import { ArrowLeft, ArrowRight, Check, MapPin, Search } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j, insensitive } from "@/lib/db";
-import { STRONG_MATCH, currentCampaign, windowNumbers } from "@/lib/ops-data";
+import { STRONG_MATCH, currentCampaign, pendingApprovalsWhere, windowNumbers } from "@/lib/ops-data";
 import { startOfToday } from "@/lib/time";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { REMOTE_LABEL, ago, salaryLabel } from "@/lib/ops";
-import { ButtonLink, Chip, DemoBadge, Empty, PageHeader, Script, cx } from "@/components/ui";
+import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
+import { AgentStatus, type Need } from "../../_components/agent-status";
 import { LaneChip, StatusChip, matchTone } from "./_components/bits";
 import { DecisionBar } from "./_components/decision";
 import { AutoApplyToggle } from "./_components/auto-apply";
@@ -50,7 +51,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         <PageHeader eyebrow="Opportunities" title={<>Что агент <Script>нашёл</Script></>} />
         <Empty
           title="Агент ещё не начал поиск"
-          sub="После запуска кампании агент каждый день собирает вакансии, проверяет Match и Eligibility и подаёт на сильные сам. Здесь вы увидите, что он нашёл."
+          sub="После запуска кампании агент каждый день собирает вакансии, проверяет Match и Eligibility и подаёт на сильные сам. Здесь ты увидишь, что он нашёл."
           action={<ButtonLink href="/app/campaign">Start your campaign</ButtonLink>}
         />
       </>
@@ -83,7 +84,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
 
   const [{ found, fit, strong, submitted }, waiting, counts, total, rows, candidate] = await Promise.all([
     windowNumbers(campaign.id, since, threshold),
-    db.approval.count({ where: { userId: user.id, status: "pending", kind: { not: "handoff" } } }),
+    db.approval.count({ where: { ...pendingApprovalsWhere(user.id), kind: { not: "handoff" } } }),
     Promise.all(TABS.map((t) => db.opportunity.count({ where: { ...base, ...tabWhere[t.key], ...search } }))),
     db.opportunity.count({ where }),
     db.opportunity.findMany({
@@ -100,10 +101,19 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   ]);
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   const when = foundToday ? "Сегодня" : foundWeek ? "За неделю" : "За кампанию";
+  const hasDemo = rows.some((o) => o.job.source === "demo");
+  const needs: Need[] = waiting ? [{ text: `${waiting} ${plural(waiting, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа — без этого часть заявок не уйдёт`, href: "/app/approvals" }] : [];
 
   return (
     <div className="flex flex-col gap-5">
       <PageHeader eyebrow="Opportunities" title={<>Что агент <Script>нашёл</Script></>} />
+
+      <AgentStatus
+        needs={needs}
+        idle={campaign.status !== "active"}
+        working={campaign.status === "active" ? "Агент ищет вакансии и подаёт на сильные сам." : campaign.status === "paused" ? "Кампания на паузе — агент не ищет и не подаёт." : "Кампания завершена — новые вакансии не ищутся."}
+        className="-mt-3"
+      />
 
       <section aria-label="Итоги поиска" className="glass-strong -mt-2 grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-10">
         <div className="flex flex-col gap-4">
@@ -114,15 +124,9 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
             <N v={submitted} /> {plural(submitted, ["заявка уже отправлена", "заявки уже отправлены", "заявок уже отправлены"])}.
           </p>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
-            <Link href="/app/applications" className="inline-flex items-center gap-1.5 text-teal underline-offset-4 hover:text-head hover:underline">
+            <Link href="/app/applications" className="inline-flex min-h-10 items-center gap-1.5 text-teal underline-offset-4 hover:text-head hover:underline">
               Смотреть заявки <ArrowRight className="size-3.5" aria-hidden />
             </Link>
-            {waiting > 0 && (
-              <Link href="/app/approvals" className="inline-flex items-center gap-1.5 text-amber underline-offset-4 hover:underline">
-                <span className="size-1.5 rounded-full bg-amber" aria-hidden />
-                <span className="num">{waiting}</span> {plural(waiting, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} вашего ответа
-              </Link>
-            )}
           </div>
         </div>
         <div className="border-t border-line pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
@@ -138,7 +142,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
               href={href(t.key, q)}
               aria-current={tab === t.key ? "page" : undefined}
               className={cx(
-                "inline-flex h-8 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green",
+                "inline-flex h-10 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green",
                 tab === t.key ? "bg-cta text-white" : "text-ink-2 hover:bg-white/70 hover:text-head",
               )}
             >
@@ -154,6 +158,12 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
           <input id="opp-q" name="q" type="search" defaultValue={q} placeholder="Роль, компания, город" className="field !rounded-full !py-2 !pl-10 !text-[14px]" />
         </form>
       </div>
+
+      {hasDemo && (
+        <p className="-mt-2 text-[12.5px] text-ink-3">
+          Часть вакансий — демонстрационные: подача в них и ответы работодателей симулируются.
+        </p>
+      )}
 
       {rows.length === 0 ? (
         <EmptyFeed tab={tab} q={q} />
@@ -181,7 +191,7 @@ const N = ({ v }: { v: number }) => <span className="num text-[0.92em] text-head
 function EmptyFeed({ tab, q }: { tab: Tab; q: string }) {
   if (q) return <Empty title="Ничего не найдено" sub={`По запросу «${q}» вакансий нет.`} action={<ButtonLink href={href(tab, "")} variant="glass" size="sm">Сбросить поиск</ButtonLink>} />;
   if (tab === "strong") return <Empty title="Сильных вакансий пока нет" sub="Агент продолжает искать каждый день. Всё, что он уже нашёл, — во вкладке «Все»." action={<ButtonLink href={href("all", "")} variant="glass" size="sm">Показать все</ButtonLink>} />;
-  if (tab === "skipped") return <Empty title="Пропущенных нет" sub="Сюда попадают вакансии, которые вы пропустили, и роли с hard blockers." />;
+  if (tab === "skipped") return <Empty title="Пропущенных нет" sub="Сюда попадают пропущенные вакансии и роли с hard blockers." />;
   return <Empty title="Вакансий пока нет" sub="Агент ещё не нашёл вакансий. Первый цикл обычно занимает несколько минут." />;
 }
 
@@ -208,7 +218,6 @@ function OpportunityCard({ o, candidate }: { o: Row; candidate: FitCandidate }) 
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[13px] font-medium text-ink">{o.job.company}</span>
-            {o.job.source === "demo" && <DemoBadge />}
             <LaneChip value={o.lane} />
           </div>
           <h2 id={titleId} className="h-serif text-[21px] !leading-[1.15]">
@@ -226,12 +235,12 @@ function OpportunityCard({ o, candidate }: { o: Row; candidate: FitCandidate }) 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-2">
         <span className="inline-flex items-center gap-1.5">
           <span className={cx("size-1.5 rounded-full", TONE_DOT[chance.tone])} aria-hidden />
-          Interview probability: <b className={cx("font-medium", TONE_TEXT[chance.tone])}>{chance.label}</b>
+          Interview probability: <b className={cx("num font-medium", TONE_TEXT[chance.tone])}>{chance.label}</b>
         </span>
         {salary ? <span className="num text-head">{salary}</span> : <span className="text-ink-4">зарплата не указана</span>}
         <Chip tone={o.job.remote === "remote" ? "green" : "neutral"}>{REMOTE_LABEL[o.job.remote] ?? o.job.remote}</Chip>
         {o.job.location && <span className="inline-flex min-w-0 items-center gap-1 text-ink-3"><MapPin className="size-3.5 shrink-0 text-ink-4" aria-hidden /><span className="truncate">{o.job.location}</span></span>}
-        <span className="text-ink-3">Published {ago(o.job.postedAt)}</span>
+        <span className="text-ink-3">опубликована {ago(o.job.postedAt)}</span>
       </div>
 
       {why.length > 0 && (
@@ -244,18 +253,18 @@ function OpportunityCard({ o, candidate }: { o: Row; candidate: FitCandidate }) 
           </ul>
         </div>
       )}
-      {risk && <p className={cx("text-[12.5px]", blocked ? "text-rose" : "text-amber")}>{blocked ? "Hard blocker: " : "Учтите: "}{risk}</p>}
+      {risk && <p className={cx("text-[12.5px]", blocked ? "text-rose" : "text-amber")}>{blocked ? "Hard blocker: " : "Учти: "}{risk}</p>}
 
       <div className="mt-auto flex flex-wrap items-end justify-between gap-3 border-t border-line pt-4">
         {applied ? (
           <div className="flex flex-wrap items-center gap-2">
             <StatusChip value={o.status} />
-            <Link href={`/app/applications/${o.id}`} className="inline-flex items-center gap-1 text-[13px] text-teal hover:text-head">Открыть заявку<ArrowRight className="size-3.5" aria-hidden /></Link>
+            <Link href={`/app/applications/${o.id}`} className="inline-flex min-h-10 items-center gap-1 text-[13px] text-teal hover:text-head">Открыть заявку<ArrowRight className="size-3.5" aria-hidden /></Link>
           </div>
         ) : (
           <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} pending={o.approvals.length} />
         )}
-        <Link href={`/app/opportunities/${o.id}`} className="inline-flex items-center gap-1 text-[12.5px] text-ink-3 hover:text-head" aria-label={`Подробнее: ${o.job.title}, ${o.job.company}`}>
+        <Link href={`/app/opportunities/${o.id}`} className="inline-flex min-h-10 items-center gap-1 text-[12.5px] text-ink-3 hover:text-head" aria-label={`Подробнее: ${o.job.title}, ${o.job.company}`}>
           Подробнее<ArrowRight className="size-3" aria-hidden />
         </Link>
       </div>

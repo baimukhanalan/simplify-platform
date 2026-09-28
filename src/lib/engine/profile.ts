@@ -126,12 +126,12 @@ export function miniInterviewQuestions(fact: { kind: string; title: string; org:
   const qs: string[] = [];
   const where = fact.org ? `${fact.title} (${fact.org})` : fact.title;
   if (fact.kind === "employment" || fact.kind === "project") {
-    qs.push(`Что конкретно вы делали в «${where}»? Опишите 2–3 ключевые задачи.`);
+    qs.push(`Что конкретно ты делал(а) в «${where}»? Опиши 2–3 ключевые задачи.`);
     if (!fact.metrics) qs.push(`Был ли измеримый результат в «${where}»? Какие метрики изменились (было → стало)?`);
-    if (fact.tech === "[]" || !fact.tech) qs.push(`Какие технологии и инструменты вы реально использовали в «${where}»?`);
+    if (fact.tech === "[]" || !fact.tech) qs.push(`Какие технологии и инструменты ты реально использовал(а) в «${where}»?`);
     if (fact.teamSize == null) qs.push(`Сколько человек было в команде в «${where}»?`);
-    if (!fact.ownership) qs.push(`В «${where}» вы сами принимали решения или исполняли поставленные задачи?`);
-    qs.push(`Какую самую сложную проблему вы решили в «${where}»?`);
+    if (!fact.ownership) qs.push(`В «${where}» ты сам(а) принимал(а) решения или исполнял(а) поставленные задачи?`);
+    qs.push(`Какую самую сложную проблему ты решил(а) в «${where}»?`);
   }
   if (fact.kind === "education") qs.push(`Есть ли в «${where}» дипломный проект или курсовые, релевантные целевой роли?`);
   return qs;

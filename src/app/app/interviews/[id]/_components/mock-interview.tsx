@@ -28,11 +28,11 @@ const DIMS: { key: keyof MockFeedback["dims"]; label: string }[] = [
   { key: "confidence", label: "Уверенность" },
 ];
 const DIM_ADVICE: Record<keyof MockFeedback["dims"], string> = {
-  content: "Каждый ответ — с одной цифрой результата из вашего опыта.",
-  structure: "Отвечайте по STAR: 1 фраза контекста, 1 — задача, 2–3 — ваши действия, 1 — результат.",
+  content: "Каждый ответ — с одной цифрой результата из твоего опыта.",
+  structure: "Отвечай по STAR: 1 фраза контекста, 1 — задача, 2–3 — твои действия, 1 — результат.",
   clarity: "Короткие предложения и паузы вместо слов-паразитов.",
-  length: "Держите ответ в 60–120 секунд (≈ 80–220 слов).",
-  confidence: "Уберите «I think maybe / наверное» — говорите о своих решениях в первом лице.",
+  length: "Держи ответ в 60–120 секунд (≈ 80–220 слов).",
+  confidence: "Убери «I think maybe / наверное» — говори о своих решениях в первом лице.",
 };
 
 function summarize(turns: Turn[]): MockFeedback {
@@ -53,7 +53,7 @@ function summarize(turns: Turn[]): MockFeedback {
   };
 }
 
-export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { interviewId: string; defaultPersona: string; ctx: MockCtx; jdTerms: string[] }) {
+export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, assessment = false }: { interviewId: string; defaultPersona: string; ctx: MockCtx; jdTerms: string[]; assessment?: boolean }) {
   const [phase, setPhase] = useState<"select" | "run" | "done">("select");
   const [persona, setPersona] = useState(defaultPersona);
   const [idx, setIdx] = useState(0);
@@ -135,8 +135,8 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { i
     return (
       <Card strong>
         <Label className="mb-2">Mock Interview</Label>
-        <h2 className="h-serif mb-2 text-[clamp(24px,2.6vw,32px)]">Кто будет вас интервьюировать?</h2>
-        <p className="mb-5 max-w-xl text-[14px] text-ink-3">5 вопросов. Отвечайте голосом или текстом — после каждого ответа: оценка, структура, ясность, чего не хватило и как сказать сильнее на ваших же историях.</p>
+        <h2 className="h-serif mb-2 text-[clamp(24px,2.6vw,32px)]">Кто будет тебя интервьюировать?</h2>
+        <p className="mb-5 max-w-xl text-[14px] text-ink-3">5 вопросов. Отвечай голосом или текстом — после каждого ответа: оценка, структура, ясность, чего не хватило и как сказать сильнее на твоих же историях.</p>
         <fieldset>
           <legend className="sr-only">Персона интервьюера</legend>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -149,7 +149,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { i
             ))}
           </div>
         </fieldset>
-        <Button className="mt-6" size="lg" onClick={start}><Play className="size-4" strokeWidth={1.7} aria-hidden />Start Mock Interview</Button>
+        <Button className="mt-6" size="lg" onClick={start}><Play className="size-4" strokeWidth={1.7} aria-hidden />{assessment ? "Начать тренировку" : "Start Mock Interview"}</Button>
       </Card>
     );
 
@@ -161,7 +161,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { i
           <Ring value={fb.overall} size={112} label="overall" />
           <div className="flex flex-col gap-1.5">
             <Label>Итог · {PERSONA_LABEL[persona]}</Label>
-            <h2 className="h-serif text-[28px]">{fb.overall >= 75 ? "Готовы к звонку" : fb.overall >= 55 ? "Почти готовы" : "Нужна ещё одна тренировка"}</h2>
+            <h2 className="h-serif text-[28px]">{fb.overall >= 75 ? (assessment ? "Уровень для теста есть" : "Уровень для звонка есть") : fb.overall >= 55 ? "Почти на уровне" : "Нужна ещё одна тренировка"}</h2>
             <p className="text-[13px] text-ink-3" role="status">
               {fb.answered === 0 ? "Нет ответов — сессия не сохранена." : pending ? "Сохраняем сессию…" : saved === "ok" ? "Сессия сохранена." : saved === "error" ? "Не удалось сохранить сессию." : ""}
             </p>
@@ -202,7 +202,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { i
       <h2 className="h-serif text-[clamp(22px,2.6vw,30px)]" aria-live="polite">{question}</h2>
 
       <div className="flex flex-col gap-2">
-        <label htmlFor={`${ids}-answer`} className="label">Ваш ответ</label>
+        <label htmlFor={`${ids}-answer`} className="label">Твой ответ</label>
         <textarea
           ref={answerRef}
           id={`${ids}-answer`}
@@ -210,7 +210,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { i
           onChange={(e) => { setDraft(e.target.value); setCurrent(null); }}
           onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); if (current) advance(); else evaluate(); } }}
           rows={6}
-          placeholder={supported ? "Говорите в микрофон или печатайте…" : "Напечатайте ответ так, как сказали бы его вслух…"}
+          placeholder={supported ? "Говори в микрофон или печатай…" : "Напечатай ответ так, как он звучал бы вслух…"}
           className="field resize-y leading-relaxed"
           aria-describedby={`${ids}-hint`}
         />
@@ -231,7 +231,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { i
             </select>
           </>
         ) : (
-          <span className="text-[12.5px] text-ink-3">Голосовой ввод недоступен в этом браузере — ответьте текстом.</span>
+          <span className="text-[12.5px] text-ink-3">Голосовой ввод недоступен в этом браузере — ответь текстом.</span>
         )}
         <span className="flex-1" />
         <Button variant="ghost" onClick={() => advance(true)}><SkipForward className="size-4" strokeWidth={1.7} />Пропустить</Button>

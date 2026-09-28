@@ -36,13 +36,24 @@ function Switch({ name, label, hint, checked, onChange, note }: { name: string; 
   );
 }
 
+type Snapshot = string;
+const snap = (v: Record<string, boolean>, sensitive: string, autoOn: boolean, threshold: number): Snapshot => JSON.stringify([v, sensitive, autoOn, threshold]);
+
 export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Autonomy; rows: Row[]; autoSubmitConsent: boolean }) {
-  const { state, pending, formAction, onSubmit } = useActionForm<AutonomyState>(saveAutonomy, {});
+  const { state, pending, formAction, onSubmit: submit } = useActionForm<AutonomyState>(saveAutonomy, {});
   const [v, setV] = useState<Record<string, boolean>>(() => Object.fromEntries(rows.map((r) => [r.key, Boolean(initial[r.key as keyof Autonomy])])));
   const [sensitive, setSensitive] = useState(initial.sensitive);
   // One control for two fields (shared with the Opportunities switch): on/off = submitApplications, slider = threshold.
   const [autoOn, setAutoOn] = useState(initial.submitApplications);
   const [threshold, setThreshold] = useState(initial.autoApplyMinMatch);
+
+  // Unsaved changes = the form differs from what was last saved (the page load, or the last successful submit).
+  const current = snap(v, sensitive, autoOn, threshold);
+  const [initialSnap] = useState(current);
+  const [submitted, setSubmitted] = useState<Snapshot>(current);
+  const saved = state.ok ? submitted : initialSnap;
+  const dirty = current !== saved;
+  const onSubmit: typeof submit = (e) => { setSubmitted(current); submit(e); };
 
   const selfRows = rows.filter((r) => ["findJobs", "personalizeCv", "answerStandard"].includes(r.key));
   const askRows = rows.filter((r) => !selfRows.includes(r));
@@ -70,11 +81,11 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
           hint={
             autoOn
               ? `Агент сам подаёт на вакансии с Match ≥ ${threshold}%. Ниже порога пакет готов, а заявка ждёт твоего Apply или Auto в Opportunities.`
-              : "Выключено: агент находит и готовит пакеты, но подаёт только на вакансии, которые ты отметил Apply или Auto."
+              : "Выключено: агент находит и готовит пакеты, но подаёт только на вакансии с отметкой Apply или Auto."
           }
           checked={autoOn}
           onChange={setAutoOn}
-          note={!autoSubmitConsent ? "Автоподача выключена в «Настройках» (согласие): агент сам ничего не отправляет, даже роли с Auto. Подать можно кнопкой Apply." : undefined}
+          note={!autoSubmitConsent ? "Автоподача выключена в настройках приватности (согласие): агент сам ничего не отправляет, даже вакансии с Auto. Подать можно кнопкой Apply." : undefined}
         />
         <div className={cx("flex flex-col gap-2 pb-1 pt-4 transition-opacity", !autoOn && "opacity-60")}>
           <div className="flex items-center justify-between">
@@ -133,19 +144,29 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
         </div>
       </fieldset>
 
-      <div className="sticky bottom-3 z-10 flex flex-wrap items-center gap-3 rounded-full border border-stroke bg-white/90 py-2 pl-2 pr-4 shadow-(--shadow-glass) backdrop-blur-xl">
-        <button
-          type="submit"
-          disabled={pending}
-          aria-busy={pending || undefined}
-          className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-cta px-6 text-[14.5px] font-medium text-white shadow-(--shadow-cta) transition-all hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green disabled:opacity-60"
-        >
-          {pending && <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />}
-          {pending ? "Сохраняем…" : "Сохранить настройки"}
-        </button>
+      {/* The save bar appears only with unsaved changes (or an error to show); otherwise just a quiet status line. */}
+      <div
+        className={cx(
+          "flex flex-wrap items-center gap-3",
+          (dirty || pending || state.error) && "sticky bottom-3 z-10 rounded-[28px] border border-stroke bg-white/90 py-2 pl-2 pr-4 shadow-(--shadow-glass) backdrop-blur-xl animate-fade",
+        )}
+      >
+        {(dirty || pending || state.error) && (
+          <button
+            type="submit"
+            disabled={pending}
+            aria-busy={pending || undefined}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-cta px-6 text-[14.5px] font-medium text-white shadow-(--shadow-cta) transition-all hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green disabled:opacity-60"
+          >
+            {pending && <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />}
+            {pending ? "Сохраняем…" : "Сохранить настройки"}
+          </button>
+        )}
         <span role="status" aria-live="polite" className="text-[13px]">
           {state.error ? (
             <span id="autonomy-error" className="text-rose">{state.error}</span>
+          ) : dirty && !pending ? (
+            <span className="text-ink-3">Есть несохранённые изменения</span>
           ) : state.ok && !pending ? (
             <span className="inline-flex items-center gap-1.5 text-green"><Check className="size-4" aria-hidden />Сохранено. Агент применит это в следующем цикле.</span>
           ) : null}

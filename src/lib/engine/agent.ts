@@ -11,6 +11,7 @@ import { classifyEmail, CLASS_TO_STATUS, matchCompany } from "./inbox";
 import { buildPackHeuristic } from "./interview";
 import { classifyRole, defaultLanguagesFor, APPLIED_OR_LATER } from "./taxonomy";
 import { toUSD } from "./fx";
+import { salaryAnswer } from "./salary";
 
 export async function notify(userId: string, type: string, title: string, body = "", href = "") {
   await db.notification.create({ data: { userId, type, title, body, href } });
@@ -138,20 +139,50 @@ export async function rerank(campaignId: string) {
   return allocation;
 }
 
-// Questions a human must answer once; afterwards the latest approved answer is reused as a standing answer.
-const STANDING_KINDS = new Set(["sensitive", "legal", "sponsorship"]);
+// Questions a human must answer once; afterwards the latest approved answer is reused as a standing answer,
+// and answering one pending copy answers every other pending copy of the same question (see ./approvals.ts).
+export const STANDING_KINDS = new Set(["sensitive", "legal", "sponsorship"]);
+
+/** The answer the agent gives to a sensitive question when Autonomy.sensitive = "decline". */
+export const SENSITIVE_DECLINE = "I don't wish to answer";
+
+/** Note written into Approval.answer when a question is closed because its campaign ended (HIRED / expired). */
+export const CAMPAIGN_CLOSED_NOTE = "Кампания завершена — вопрос закрыт";
+
+/**
+ * A finished campaign must stop asking: close every pending approval of its opportunities
+ * (status "rejected" + CAMPAIGN_CLOSED_NOTE). The opportunities themselves are left as they are.
+ */
+export async function closeCampaignApprovals(campaignId: string) {
+  const r = await db.approval.updateMany({
+    where: { status: "pending", opportunity: { campaignId } },
+    data: { status: "rejected", answer: CAMPAIGN_CLOSED_NOTE, resolvedAt: new Date() },
+  });
+  return r.count;
+}
+
+export type PrepareOptions = {
+  /**
+   * Preview ("Показать версию сейчас"): build and store the package only. The opportunity keeps its status
+   * (it does not become "prepared", so nothing is queued for submission) and no approvals are created.
+   * A later non-preview prepare() rebuilds the package and routes its questions as usual.
+   */
+  preview?: boolean;
+};
 
 /** Build the application package for one opportunity and route anything sensitive to approvals. */
-export async function prepare(opportunityId: string) {
+export async function prepare(opportunityId: string, opts: PrepareOptions = {}) {
   const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true } });
   if (APPLIED_OR_LATER.includes(opp.status)) return { pending: 0 }; // never rewrite a package that was already sent
   const userId = opp.campaign.userId;
   const { profile, facts, autonomy } = await loadCandidate(userId);
   const pkg = await buildPackage(profile, facts, jobLite(opp.job));
-  // Agent screen: standard answers may require the user; sensitive questions may be auto-declined.
+  // Agent screen: standard answers may require the user; sensitive questions may be auto-declined;
+  // the salary answer follows "Change salary expectation" (floor range exactly when OFF).
   for (const a of pkg.answers) {
+    if (a.kind === "salary") a.a = salaryAnswer(profile.salaryExpectation, opp.job, autonomy.changeSalary);
     if (!autonomy.answerStandard && a.category !== "approval") { a.category = "approval"; a.status = "pending"; a.kind = a.kind ?? "standard"; }
-    if (autonomy.sensitive === "decline" && a.kind === "sensitive" && a.status === "pending") { a.a = "I don't wish to answer"; a.status = "approved"; }
+    if (autonomy.sensitive === "decline" && a.kind === "sensitive" && a.status === "pending") { a.a = SENSITIVE_DECLINE; a.status = "approved"; }
   }
   let reused = 0;
   for (const a of pkg.answers) {
@@ -166,6 +197,7 @@ export async function prepare(opportunityId: string) {
     update: { cvText: pkg.cvText, summary: pkg.summary, coverLetter: pkg.coverLetter, skillsOrder: s(pkg.skillsOrder), projects: s(pkg.projects), answers: s(pkg.answers), generatedBy: pkg.by },
   });
   const pending = pkg.answers.filter((a) => a.status === "pending");
+  if (opts.preview) return { pending: pending.length, preview: true };
   for (const a of pending) {
     const open = await db.approval.findFirst({ where: { opportunityId, question: a.q, status: "pending" }, select: { id: true } });
     if (!open) await db.approval.create({ data: { userId, opportunityId, kind: a.kind ?? "unknown_question", question: a.q, proposed: a.a } });
@@ -202,7 +234,10 @@ export async function runTick(campaignId: string) {
   const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
   // Expiry first: a campaign paused past its end date is over too, not "paused forever".
   if ((campaign.status === "active" || campaign.status === "paused") && campaign.endsAt && campaign.endsAt < new Date()) {
-    await db.campaign.update({ where: { id: campaignId }, data: { status: "expired" } });
+    // Conditional: a concurrent tick (or HIRED) that already ended the campaign wins; its questions are closed either way.
+    const ended = await db.campaign.updateMany({ where: { id: campaignId, status: { in: ["active", "paused"] } }, data: { status: "expired" } });
+    const closed = await closeCampaignApprovals(campaignId);
+    if (ended.count) await logEvent(campaign.userId, "campaign_status", `Кампания завершена по сроку${closed ? ` — ${closed} открытых вопрос(ов) закрыто` : ""}`);
     return { skipped: "expired" };
   }
   if (campaign.status !== "active") return { skipped: campaign.status };
@@ -251,7 +286,7 @@ export async function runTick(campaignId: string) {
     } else waiting++;
   }
   await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: new Date() } });
-  await logEvent(campaign.userId, "tick", `Цикл агента: +${d.found} найдено, ${prepared} подготовлено, ${submitted} отправлено, ${waiting} ждут вас`);
+  await logEvent(campaign.userId, "tick", `Цикл агента: +${d.found} найдено, ${prepared} подготовлено, ${submitted} отправлено, ${waiting} ждут тебя`);
   return { ...d, prepared, submitted, waiting, budget: startBudget };
 }
 

@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Plus, Target } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { ButtonLink, Empty, PageHeader, Script } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { applyReadinessFix } from "@/lib/actions/profile";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { loadReadiness } from "./_components/data";
 import { goalTitle, kUsd, readinessView, fmtYears } from "./_components/model";
@@ -18,7 +18,7 @@ export default async function ReadinessPage() {
   const user = await requireUser();
   const [data, campaign] = await Promise.all([
     loadReadiness(user.id),
-    db.campaign.findFirst({ where: { userId: user.id, status: { in: ["active", "paused"] } }, select: { id: true } }),
+    runningCampaign(user.id),
   ]);
 
   if (!data) {
@@ -51,7 +51,7 @@ export default async function ReadinessPage() {
       />
 
       <div className="flex flex-col gap-5">
-        <AgentStatus needs={needs} working={campaign ? "Simplify использует это, чтобы выбирать вакансии и готовить заявки." : "Когда кампания запустится, агент начнёт с самых вероятных вакансий."} className="animate-rise" />
+        <AgentStatus needs={needs} idle={!campaign} working={campaign ? "Агент использует это, чтобы выбирать вакансии и готовить заявки." : "Когда кампания запустится, агент начнёт с самых вероятных вакансий."} className="animate-rise" />
 
         <div className="animate-rise [animation-delay:60ms]">
           <ReadinessHero score={view.score} verdict={r.verdict} goal={<>{goalTitle(goal.primaryRole, goal.countries)} <span className="text-ink-3">· {SENIORITY_LABEL[goal.seniority] ?? goal.seniority}</span></>} />

@@ -8,14 +8,18 @@ import { ButtonLink, Card, Chip, Label, Progress, Ring, Script, cx } from "@/com
 import { SubmitButton } from "@/components/client";
 import { setCareerMode, recordSnapshot } from "@/lib/actions/account";
 import { ROLE_FAMILIES, fmtMoney } from "@/lib/engine/taxonomy";
+import { agentState } from "../_components/today-data";
 import { loadCareer } from "./_components/data";
 import { HistoryChart } from "./_components/history-chart";
-import { BREAKDOWN, currentSeniority, nextMilestone, recommendation } from "./_components/next-step";
+import { BREAKDOWN, baseRole, currentSeniority, nextMilestone, recommendation } from "./_components/next-step";
 
 export const metadata: Metadata = { title: "Career Mode" };
 
 const usd = (n: number) => fmtMoney(n, "USD");
 const kUsd = (n: number) => `$${Math.round(n / 1000)}k`;
+/** What a vacancy "pays": the midpoint of its range (or the only bound given). */
+const midpoint = (j: { salaryMin: number | null; salaryMax: number | null }) =>
+  j.salaryMin && j.salaryMax ? (j.salaryMin + j.salaryMax) / 2 : j.salaryMax ?? j.salaryMin ?? 0;
 const toneFor = (v: number) => (v >= 75 ? "green" : v >= 50 ? "teal" : v >= 30 ? "amber" : "rose") as "green" | "teal" | "amber" | "rose";
 
 export default async function CareerPage({ searchParams }: { searchParams: Promise<{ hired?: string }> }) {
@@ -27,34 +31,43 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
   const passive = user.careerMode === "passive";
   const threshold = Math.round(c.currentSalary * 1.25);
   const betterWhere = { active: true, roleFamily: c.family, currency: "USD", salaryMax: { gte: threshold } };
-  const [snapshots, betterCount, better, hiredCampaign] = await Promise.all([
+  const [snapshots, candidates, hiredCampaign, agent] = await Promise.all([
     db.careerSnapshot.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, take: 36 }),
-    c.currentSalary > 0 ? db.job.count({ where: betterWhere }) : Promise.resolve(0),
+    // Pre-filter on the top of the range in SQL, then keep only roles whose midpoint clears +25%.
     c.currentSalary > 0
       ? db.job.findMany({
           where: betterWhere,
           orderBy: { salaryMax: "desc" },
-          take: 6,
+          take: 300,
           select: { id: true, title: true, company: true, location: true, remote: true, salaryMin: true, salaryMax: true, url: true },
         })
       : Promise.resolve([]),
     db.campaign.findFirst({ where: { userId: user.id, status: "hired" }, select: { id: true } }),
+    agentState(user),
   ]);
+  const qualifying = candidates
+    .map((jb) => ({ ...jb, mid: midpoint(jb) }))
+    .filter((jb) => jb.mid >= threshold)
+    .sort((a, b) => b.mid - a.mid);
+  const betterCount = qualifying.length;
+  const better = qualifying.slice(0, 6);
 
-  const familyLabel = ROLE_FAMILIES[c.family]?.label ?? "Роль не распознана";
   const currentTitle = c.accepted ? c.accepted.role : c.role;
+  const familyLabel = c.family !== "other" && ROLE_FAMILIES[c.family] ? ROLE_FAMILIES[c.family].label : baseRole(currentTitle) || "твоя роль";
   const level = currentSeniority(currentTitle, c.user.profile?.yearsExperience ?? 0);
-  const milestone = nextMilestone(c.family, level);
-  const rec = recommendation({ components: c.components, family: c.family, skills: j<string[]>(c.user.profile?.skills, []), nextLevel: milestone.level, mockCount: c.mockCount });
+  const milestone = nextMilestone(c.family, level, currentTitle || c.role);
+  const rec = recommendation({ components: c.components, family: c.family, skills: j<string[]>(c.user.profile?.skills, []), nextLevel: milestone?.level ?? null, mockCount: c.mockCount });
+  const running = agent.running;
+  const eyebrow = running ? "Кампания идёт" : c.accepted ? "После HIRED" : agent.hasCampaign ? "Между кампаниями" : "Карьера";
   const gapPct = c.currentSalary && c.marketValue ? Math.round((c.gap / c.marketValue) * 100) : 0;
 
   return (
     <>
       {/* ── Header ─────────────────────────────────────────── */}
       <div className="mb-7 flex flex-col gap-2.5 animate-rise">
-        <Label>{c.accepted ? "После HIRED" : "Между кампаниями"}</Label>
+        <Label>{eyebrow}</Label>
         <h1 className="h-serif text-[clamp(30px,3.6vw,46px)]">Career <Script>Mode</Script></h1>
-        <p className="max-w-2xl text-[15px] text-ink-2">Career Score, рыночная стоимость и следующий шаг — в одном месте. Агент продолжает следить за рынком и между кампаниями.</p>
+        <p className="max-w-2xl text-[15px] text-ink-2">Career Score, Market Value и следующий шаг — в одном месте.{agent.hasCampaign && !running ? " Агент продолжает следить за рынком и между кампаниями." : ""}</p>
       </div>
 
       {/* ── Overview ───────────────────────────────────────── */}
@@ -75,7 +88,11 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
             hint={c.salarySource === "offer" ? "по принятому офферу" : c.salarySource === "profile" ? "ожидание из профиля" : <Link href="/app/profile#conditions" className="underline underline-offset-2">указать в профиле</Link>}
             tone={c.underpaid ? "rose" : undefined}
           />
-          <Tile label="Next milestone" value={milestone.title} hint={`${familyLabel} · следующий уровень`} serif />
+          {milestone ? (
+            <Tile label="Next milestone" value={milestone.title} hint={`следующий уровень после ${level === "intern" ? "Intern" : level.charAt(0).toUpperCase() + level.slice(1)}`} serif />
+          ) : (
+            <Tile label="Next milestone" value="—" hint={<Link href="/app/goal" className="underline underline-offset-2">укажи целевую роль в Goal</Link>} />
+          )}
         </div>
       </Card>
 
@@ -95,10 +112,22 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
               <span className="font-mono text-[11px] uppercase tracking-[.12em] text-[#8fc7ad]">Passive Mode · {passive ? "включён" : "выключен"}</span>
             </div>
             <h2 id="passive-h" className="h-serif mt-3 text-[clamp(24px,3vw,34px)] !text-white">
-              {passive ? <>Искать работу не нужно<span className="text-[#7fe3b6]">.</span></> : <>Агент ищет за вас<span className="text-[#7fe3b6]">.</span></>}
+              {agent.searching ? <>Агент ищет за тебя<span className="text-[#7fe3b6]">.</span></>
+                : passive ? <>Искать работу не нужно<span className="text-[#7fe3b6]">.</span></>
+                : agent.paused ? <>Кампания на паузе<span className="text-[#7fe3b6]">.</span></>
+                : running ? <>Поиск вакансий выключен<span className="text-[#7fe3b6]">.</span></>
+                : <>Кампании сейчас нет<span className="text-[#7fe3b6]">.</span></>}
             </h2>
             <p className="mt-2 text-[14.5px] text-white/70">
-              {passive ? "Мы скажем, когда стоит двигаться: следим за рынком, Career Score и ролями, где платят заметно больше." : "Агент работает в рамках Career Campaign — ищет, готовит и подаёт заявки. Включите Passive Mode, когда поиск не нужен."}
+              {agent.searching
+                ? "Агент работает в рамках Career Campaign — ищет, готовит и подаёт заявки."
+                : passive
+                  ? "Мы скажем, когда стоит двигаться: следим за рынком, Career Score и ролями, где платят заметно больше."
+                  : agent.paused
+                    ? "Агент не подаёт заявки, пока кампания на паузе. Продолжить можно на странице кампании."
+                    : running
+                      ? "Кампания идёт, но поиск новых вакансий выключен в настройках Agent."
+                      : "Запусти Career Campaign — агент начнёт искать, готовить и подавать заявки. Или включи Passive Mode, если поиск сейчас не нужен."}
             </p>
           </div>
           <div role="group" aria-label="Режим карьеры" className="inline-flex w-fit shrink-0 gap-1 rounded-full border border-white/15 bg-white/[.05] p-1">
@@ -108,11 +137,11 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
         </div>
         <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
           {c.currentSalary === 0 ? (
-            <p className="text-[14px] text-white/70">Укажите текущую компенсацию в <Link href="/app/profile#conditions" className="text-white underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-[#7fe3b6]">Career Profile</Link>, чтобы видеть роли, которые платят больше.</p>
+            <p className="text-[14px] text-white/70">Укажи текущую компенсацию в <Link href="/app/profile#conditions" className="text-white underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-[#7fe3b6]">Career Profile</Link>, чтобы видеть роли, которые платят больше.</p>
           ) : (
             <p className="text-[15px] text-white/85">
               <span className="num text-[26px] leading-none text-[#7fe3b6]">{betterCount}</span>{" "}
-              {betterCount === 1 ? "вакансия сейчас платит" : "вакансий сейчас платят"} на 25%+ больше вашей текущей роли
+              {plural(betterCount, "вакансия сейчас платит", "вакансии сейчас платят", "вакансий сейчас платят")} в среднем на 25%+ больше твоей текущей компенсации
               <span className="text-white/50"> (от {kUsd(threshold)})</span>
             </p>
           )}
@@ -159,11 +188,23 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
         <div className="flex min-w-0 flex-col gap-6">
           <Card strong className="flex animate-rise flex-col gap-4" style={{ animationDelay: "200ms" }}>
             <Label>Next move</Label>
-            <h2 className="h-serif text-[clamp(24px,2.6vw,30px)]">Ready for the next <Script>move</Script>?</h2>
-            <p className="text-[14px] text-ink-3">
-              Новая кампания стартует с текущего Career Profile — опыт и STAR-истории уже на месте, онбординг проходить заново не нужно.
-            </p>
-            <ButtonLink href="/app/campaign" size="lg" className="w-fit"><Rocket className="size-4" strokeWidth={1.7} aria-hidden />Start Next Campaign</ButtonLink>
+            {running ? (
+              <>
+                <h2 className="h-serif text-[clamp(24px,2.6vw,30px)]">Кампания уже <Script>идёт</Script></h2>
+                <p className="text-[14px] text-ink-3">{agent.paused ? "Кампания на паузе — продолжить или изменить её можно на странице кампании." : "Прогресс, заявки и интервью — на Today."}</p>
+                <ButtonLink href={agent.paused ? "/app/campaign" : "/app"} size="lg" variant="glass" className="w-fit">{agent.paused ? "Открыть кампанию" : "Открыть Today"}<ArrowRight className="size-4" strokeWidth={1.7} aria-hidden /></ButtonLink>
+              </>
+            ) : (
+              <>
+                <h2 className="h-serif text-[clamp(24px,2.6vw,30px)]">Ready for the next <Script>move</Script>?</h2>
+                <p className="text-[14px] text-ink-3">
+                  {agent.hasCampaign
+                    ? "Новая кампания стартует с текущего Career Profile — опыт и STAR-истории уже на месте, онбординг проходить заново не нужно."
+                    : "Кампания стартует с текущего Career Profile: агент ищет роли, готовит заявки и подаёт их в рамках твоих правил."}
+                </p>
+                <ButtonLink href="/app/campaign" size="lg" className="w-fit"><Rocket className="size-4" strokeWidth={1.7} aria-hidden />{agent.hasCampaign ? "Start Next Campaign" : "Запустить кампанию"}</ButtonLink>
+              </>
+            )}
             {hiredCampaign && (
               <Link href="/app/hired" className="w-fit rounded text-[13px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
                 Итог прошлой кампании · HIRED
@@ -183,26 +224,26 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
         <div className="mb-4 flex flex-col gap-1.5">
           <Label>Salary Intelligence</Label>
           <h2 id="better-h" className="h-serif text-[clamp(22px,2.4vw,30px)]">Роли, которые платят на 25%+ больше</h2>
-          {c.currentSalary > 0 && <p className="text-[14px] text-ink-3">Активные вакансии «{familyLabel}» с верхней границей от {usd(threshold)}{betterCount > better.length ? ` · показаны ${better.length} из ${betterCount}` : ""}.</p>}
+          {c.currentSalary > 0 && <p className="text-[14px] text-ink-3">Активные вакансии «{familyLabel}», у которых середина вилки от {usd(threshold)}{betterCount > better.length ? ` · показаны ${better.length} из ${betterCount}` : ""}.</p>}
         </div>
         {c.currentSalary === 0 ? (
           <Card className="text-[14px] text-ink-3">Нужна текущая компенсация или ожидание в профиле, чтобы сравнить.</Card>
         ) : better.length === 0 ? (
-          <Card className="text-[14px] text-ink-3">Сейчас нет активных вакансий на 25%+ выше вашей компенсации — вы в верхней части рынка. Passive Mode сообщит, когда такие появятся.</Card>
+          <Card className="text-[14px] text-ink-3">Сейчас нет активных вакансий на 25%+ выше твоей компенсации — ты в верхней части рынка. Passive Mode сообщит, когда такие появятся.</Card>
         ) : (
-          <ul className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,260px),1fr))] gap-3">
             {better.map((jb) => {
-              const uplift = Math.round(((jb.salaryMax ?? 0) / c.currentSalary - 1) * 100);
+              const uplift = Math.round((jb.mid / c.currentSalary - 1) * 100);
               return (
-                <li key={jb.id} className="glass flex flex-col gap-3 p-5">
+                <li key={jb.id} className="glass flex min-w-0 flex-col gap-3 p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-[15px] text-head">{jb.title}</div>
+                      <div className="break-words text-[15px] text-head">{jb.title}</div>
                       <div className="truncate text-[13px] text-ink-3">{jb.company} · {jb.remote === "remote" ? "Remote" : jb.location || jb.remote}</div>
                     </div>
-                    <Chip tone="green">+{uplift}%</Chip>
+                    <Chip tone="green" className="shrink-0"><span className="sr-only">В среднем </span>+{uplift}%</Chip>
                   </div>
-                  <div className="num mt-auto text-[18px] text-head">{jb.salaryMin ? `${usd(jb.salaryMin)}–` : "до "}{usd(jb.salaryMax ?? 0)}</div>
+                  <div className="num mt-auto break-words text-[18px] text-head">{jb.salaryMin ? `${usd(jb.salaryMin)}–` : "до "}{usd(jb.salaryMax ?? 0)}</div>
                   {jb.url && (
                     <a href={jb.url} target="_blank" rel="noopener noreferrer" className="inline-flex w-fit items-center gap-1 rounded text-[13px] text-teal underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
                       Вакансия<ArrowUpRight className="size-3.5" strokeWidth={1.7} aria-hidden /><span className="sr-only"> (откроется в новой вкладке)</span>
@@ -233,7 +274,7 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
           <HistoryChart points={snapshots.map((s) => ({ at: s.createdAt, score: s.score, marketValue: s.marketValue }))} />
         ) : (
           <p className="py-8 text-center text-[14px] text-ink-3">
-            {snapshots.length === 1 ? "Один замер есть. Зафиксируйте ещё один позже — появится динамика." : "Замеров пока нет. Зафиксируйте первый Career Score, чтобы отслеживать рост."}
+            {snapshots.length === 1 ? "Один замер есть. Зафиксируй ещё один позже — появится динамика." : "Замеров пока нет. Зафиксируй первый Career Score, чтобы отслеживать рост."}
           </p>
         )}
       </Card>
@@ -281,4 +322,9 @@ function ModeButton({ mode, current, icon, children }: { mode: "active" | "passi
       </button>
     </form>
   );
+}
+
+function plural(n: number, one: string, few: string, many: string) {
+  const m10 = n % 10, m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
 }

@@ -62,7 +62,7 @@ export default async function ProfilePage() {
 
       <nav aria-label="Разделы профиля" className="scroll-thin -mx-4 mb-6 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
         {NAV.map(([id, label]) => (
-          <a key={id} href={`#${id}`} className="glass shrink-0 !rounded-full px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-[.06em] text-ink-2 transition-colors hover:bg-white hover:text-head focus-visible:outline-2 focus-visible:outline-green">
+          <a key={id} href={`#${id}`} className="glass inline-flex min-h-10 shrink-0 items-center !rounded-full px-3.5 font-mono text-[11px] uppercase tracking-[.06em] text-ink-2 transition-colors hover:bg-white hover:text-head focus-visible:outline-2 focus-visible:outline-green">
             {label}
           </a>
         ))}

@@ -17,7 +17,7 @@ const INDUSTRIES = ["Fintech", "SaaS", "E-commerce", "EdTech", "HealthTech", "AI
 const WORK_MODES = [["remote", "Remote"], ["hybrid", "Hybrid"], ["onsite", "Onsite"]] as const;
 const SIZES = [["any", "Любой"], ["startup", "Стартап"], ["scaleup", "Scale-up"], ["corporate", "Корпорация"]] as const;
 const MODES = [
-  { key: "autonomous", title: "Autonomous", icon: Compass, text: "Агент сам находит вакансии, проверяет Eligibility, ранжирует и подаёт в пределах дневного лимита. Вас спрашивает только об исключениях: юридические вопросы, зарплата, незнакомые вопросы анкет." },
+  { key: "autonomous", title: "Autonomous", icon: Compass, text: "Агент сам находит вакансии, проверяет Eligibility, ранжирует и подаёт в пределах дневного лимита. Тебя спрашивает только об исключениях: юридические вопросы, зарплата, незнакомые вопросы анкет." },
   { key: "target", title: "Target Mode", icon: Crosshair, text: "Только компании мечты. Меньше заявок, но каждая глубже: CV и cover letter под конкретную компанию, мониторинг новых позиций. Лучше всего работает при Readiness 70+." },
   { key: "mass", title: "Mass Hiring lane", icon: Layers, text: "Быстрый параллельный поток в ролях массового найма — support, sales, operations, annotation, QA. Короткие формы и быстрые ответы: первый оффер как страховка, пока основная цель в работе." },
 ] as const;
@@ -185,7 +185,7 @@ function SummaryLine({ text }: { text: string }) {
 
 function Pill({ children, type = "checkbox", ...p }: { children: ReactNode; type?: "checkbox" | "radio"; name: string; value: string; defaultChecked?: boolean }) {
   return (
-    <label className="cursor-pointer rounded-full border border-line bg-white/70 px-3.5 py-2 text-[13.5px] text-ink-2 transition-colors select-none hover:bg-white has-[:checked]:border-cta has-[:checked]:bg-cta has-[:checked]:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-green">
+    <label className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-line bg-white/70 px-3.5 text-[13.5px] text-ink-2 transition-colors select-none hover:bg-white has-[:checked]:border-cta has-[:checked]:bg-cta has-[:checked]:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-green">
       <input type={type} {...p} className="sr-only" />
       {children}
     </label>

@@ -6,8 +6,10 @@ import { db, j } from "@/lib/db";
 import { prepareOpportunity } from "@/lib/actions/campaign";
 import { confirmUserSubmitted } from "@/lib/actions/ops";
 import { APPLIED_OR_LATER, ROLE_FAMILIES, SENIORITY_LABEL } from "@/lib/engine/taxonomy";
-import { REMOTE_LABEL, SOURCE_LABEL, ago, fmtDate, salaryLabel } from "@/lib/ops";
-import { Card, Chip, DemoBadge, Label, PageHeader, Ring, Script, cx } from "@/components/ui";
+import { REMOTE_LABEL, SOURCE_LABEL, ago, salaryLabel } from "@/lib/ops";
+import { Card, Chip, Label, PageHeader, Ring, Script, cx } from "@/components/ui";
+import { AgentStatus, type Need } from "../../../_components/agent-status";
+import { shortDate } from "../../../_components/ru";
 import { SubmitButton } from "@/components/client";
 import { LaneChip, StatusChip } from "../_components/bits";
 import { DecisionBar } from "../_components/decision";
@@ -51,6 +53,10 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
   const pending = opp.approvals.filter((a) => a.kind !== "handoff").length;
   const handoff = !isDemo && !applied && Boolean(pkg) && pending === 0 && opp.status === "prepared";
 
+  const needs: Need[] = [];
+  if (pending) needs.push({ text: pending === 1 ? "Ответь на вопрос по этой вакансии" : "Ответь на вопросы по этой вакансии", href: "/app/approvals" });
+  if (handoff) needs.push({ text: "Отправь пакет через официальную форму компании — ниже всё готово" });
+
   const originalSummary = (user.profile?.summary || user.profile?.headline || "").trim();
   const exp = pkg ? experiencePair(facts, pkg.cvText) : null;
 
@@ -67,13 +73,15 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             {job.location && <span className="inline-flex items-center gap-1"><MapPin className="size-3.5 text-ink-4" aria-hidden />{job.location}</span>}
             <Chip tone={job.remote === "remote" ? "green" : "neutral"}>{REMOTE_LABEL[job.remote] ?? job.remote}</Chip>
             {salary && <span className="num text-head">{salary}</span>}
-            <span className="text-ink-3">Published {ago(job.postedAt)}</span>
-            {isDemo && <DemoBadge />}
+            <span className="text-ink-3">опубликована {ago(job.postedAt)}</span>
+            {isDemo && <span className="text-ink-3">· демо-вакансия: подача и ответы симулируются</span>}
             <LaneChip value={opp.lane} />
             {opp.status !== "found" && opp.status !== "qualified" && <StatusChip value={opp.status} />}
           </span>
         }
       />
+
+      <AgentStatus needs={needs} working={applied ? "Заявка отправлена — агент следит за ответом работодателя." : undefined} className="-mt-3" />
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Decision first in the DOM so it is near the top on mobile; on desktop it is the sticky right column. */}
@@ -82,7 +90,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             <Label>Решение</Label>
             {applied ? (
               <div className="flex flex-col gap-3">
-                <p className="flex items-center gap-2 text-[14px] text-head"><Check className="size-4 text-green" aria-hidden />Заявка отправлена {fmtDate(opp.submittedAt)}</p>
+                <p className="flex items-center gap-2 text-[14px] text-head"><Check className="size-4 text-green" aria-hidden />Заявка отправлена {shortDate(opp.submittedAt)}</p>
                 <Link href={`/app/applications/${opp.id}`} className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-cta px-5 text-[14.5px] font-medium text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">
                   Открыть заявку<ArrowRight className="size-4" aria-hidden />
                 </Link>
@@ -90,7 +98,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             ) : handoff ? (
               <div className="flex flex-col gap-3">
                 <p className="text-[13.5px] leading-snug text-ink-2">
-                  Пакет готов. Это живая вакансия: агент не отправляет в неё сам. Откройте официальную форму {job.company}, вставьте CV и cover letter и отметьте отправку.
+                  Пакет готов. Это живая вакансия: агент не отправляет в неё сам. Открой официальную форму {job.company}, вставь CV и cover letter и отметь отправку.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {job.url && (
@@ -100,7 +108,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                   )}
                   <form action={confirmUserSubmitted}>
                     <input type="hidden" name="id" value={opp.id} />
-                    <SubmitButton size="sm" variant="glass" pendingText="Отмечаем…">Я отправил</SubmitButton>
+                    <SubmitButton size="sm" variant="glass" pendingText="Отмечаем…">Отправлено</SubmitButton>
                   </form>
                 </div>
                 <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} />
@@ -116,7 +124,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             )}
           </Card>
           <Card className="hidden flex-col gap-4 lg:flex">
-            <JobFacts job={job} />
+            <JobFacts job={job} isDemo={isDemo} />
           </Card>
         </aside>
 
@@ -145,8 +153,8 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
               <div className="flex flex-col gap-2">
                 <dt className="label !text-[9.5px]">Interview probability</dt>
                 <dd className="flex flex-col gap-1">
-                  <span className={cx("num text-[28px] leading-none", TONE_TEXT[chance.tone])}>{chance.label}</span>
-                  <span className="text-[12px] leading-snug text-ink-3">{blocked ? "агент не подаёт" : `≈ ${Math.round(opp.pInterview * 100)}% по модели`}</span>
+                  <span className={cx("num text-[28px] leading-none", TONE_TEXT[chance.tone])}>{chance.pct}%</span>
+                  <span className="text-[12px] leading-snug text-ink-3">{blocked ? "не проходишь по требованиям — агент не подаёт" : chance.qual}</span>
                 </dd>
               </div>
             </dl>
@@ -181,7 +189,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                 <Label>CV personalization</Label>
                 <h2 className="h-serif mt-2 text-[24px]">Как агент <Script>адаптировал</Script> CV</h2>
               </div>
-              {pkg && <Chip tone="dark">CV: {cvVersionLabel(pkg.cvVersion)}</Chip>}
+              {pkg && <span className="rounded-full bg-cta px-3 py-1 text-[12px] text-white">{cvVersionLabel(pkg.cvVersion)}</span>}
             </div>
             {pkg ? (
               <div className="flex flex-col gap-5">
@@ -193,12 +201,12 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                 {originalSummary && <Compare title="Summary" original={originalSummary} simplify={null} />}
                 <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-line p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-[13.5px] text-ink-2">
-                    {blocked ? "У вакансии hard blocker — агент не готовит под неё CV." : "Агент соберёт персональную версию CV, когда вы выберете Apply или Auto."}
+                    {blocked ? "У вакансии hard blocker — агент не готовит под неё CV." : "Персональную версию CV агент соберёт, когда ты выберешь Apply или Auto. Черновик можно посмотреть заранее — это ничего не отправляет и не меняет статус."}
                   </p>
                   {!blocked && opp.status !== "skipped" && (
                     <form action={prepareOpportunity} className="shrink-0">
                       <input type="hidden" name="id" value={opp.id} />
-                      <SubmitButton size="sm" variant="glass" pendingText="Готовим…">Показать версию сейчас</SubmitButton>
+                      <SubmitButton size="sm" variant="glass" pendingText="Собираем черновик…">Показать черновик CV</SubmitButton>
                     </form>
                   )}
                 </div>
@@ -209,7 +217,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
           {/* Job description */}
           <Card className="flex flex-col gap-4">
             <Label>Вакансия</Label>
-            <div className="lg:hidden"><JobFacts job={job} /></div>
+            <div className="lg:hidden"><JobFacts job={job} isDemo={isDemo} /></div>
             {tech.length > 0 && <ul className="flex flex-wrap gap-1.5" aria-label="Технологии">{tech.map((t) => <li key={t}><Chip>{t}</Chip></li>)}</ul>}
             {requirements.length > 0 && (
               <div className="flex flex-col gap-2">
@@ -232,19 +240,20 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
   );
 }
 
-function JobFacts({ job }: { job: { seniority: string; minYears: number; sponsorship: string; industry: string; source: string; postedAt: Date; url: string } }) {
+/** Demo jobs have no real posting behind them, so there is no "original" link for them. */
+function JobFacts({ job, isDemo }: { job: { seniority: string; minYears: number; sponsorship: string; industry: string; source: string; postedAt: Date; url: string }; isDemo: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
         <Fact k="Уровень" v={SENIORITY_LABEL[job.seniority] ?? job.seniority} />
-        <Fact k="Опыт" v={job.minYears ? `${job.minYears}+ лет` : "не указан"} />
+        <Fact k="Опыт" v={job.minYears ? `от ${job.minYears} ${job.minYears % 1 === 0 && job.minYears % 10 === 1 && job.minYears % 100 !== 11 ? "года" : "лет"}` : "не указан"} />
         <Fact k="Спонсорство" v={job.sponsorship === "yes" ? "есть" : job.sponsorship === "no" ? "нет" : "не указано"} />
         <Fact k="Отрасль" v={job.industry || "—"} />
         <Fact k="Источник" v={SOURCE_LABEL[job.source] ?? job.source} />
-        <Fact k="Опубликована" v={fmtDate(job.postedAt)} />
+        <Fact k="Опубликована" v={shortDate(job.postedAt)} />
       </dl>
-      {job.url && (
-        <a href={job.url} target="_blank" rel="noopener noreferrer" className="inline-flex w-fit items-center gap-1.5 text-[13px] text-teal hover:text-head">
+      {job.url && !isDemo && (
+        <a href={job.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 w-fit items-center gap-1.5 text-[13px] text-teal hover:text-head">
           Оригинал вакансии<ExternalLink className="size-3.5" aria-hidden /><span className="sr-only">(откроется в новой вкладке)</span>
         </a>
       )}

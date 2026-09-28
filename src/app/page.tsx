@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowRight, Check } from "lucide-react";
 import { currentUser } from "@/lib/auth";
 import { ButtonLink, Label, Script, Logo } from "@/components/ui";
@@ -21,11 +22,16 @@ export default async function Home() {
   return (
     <div className="flex min-h-dvh flex-col overflow-x-clip">
       <SiteHeader
-        right={user ? (
-          <ButtonLink href="/app" size="sm" variant="glass">Мой кабинет <ArrowRight className="size-3.5" aria-hidden /></ButtonLink>
-        ) : (
-          <ButtonLink href="/login" variant="glass" size="sm">Войти</ButtonLink>
-        )}
+        right={<>
+          <Link href="/check" className="hidden min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:inline-flex">
+            Бесплатный Career Check
+          </Link>
+          {user ? (
+            <ButtonLink href="/app" size="sm" variant="glass">Мой кабинет <ArrowRight className="size-3.5" aria-hidden /></ButtonLink>
+          ) : (
+            <ButtonLink href="/login" variant="glass" size="sm">Войти</ButtonLink>
+          )}
+        </>}
       />
 
       <main className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col px-4 sm:px-8">
@@ -40,9 +46,14 @@ export default async function Home() {
           <div className="w-full max-w-[620px] animate-rise [animation-delay:100ms]">
             <IntentFlow signedIn={Boolean(user)} />
           </div>
-          <p className="text-[13px] text-ink-3 animate-fade [animation-delay:300ms]">
-            60 дней · агент работает каждый день · ты подключаешься только к решениям и интервью
-          </p>
+          <div className="flex flex-col items-center gap-2 animate-fade [animation-delay:300ms]">
+            <p className="text-[13px] text-ink-3">
+              60 дней · агент работает каждый день · ты подключаешься только к решениям и интервью
+            </p>
+            <Link href="/check" className="inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-[13.5px] text-teal underline decoration-line underline-offset-4 hover:text-head hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green">
+              Сначала проверить CV — бесплатный Career Check<ArrowRight className="size-3.5" aria-hidden />
+            </Link>
+          </div>
         </section>
 
         {/* How it works */}
@@ -85,7 +96,7 @@ export default async function Home() {
                       <li key={f} className="flex items-start gap-2.5 text-[14px] text-ink-2"><Check className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={2.2} aria-hidden />{f}</li>
                     ))}
                   </ul>
-                  <ButtonLink href={user ? "/onboarding?step=5" : `/login?mode=signup&plan=${k}`} variant={featured ? "primary" : "glass"} className="mt-auto">
+                  <ButtonLink href={user ? `/onboarding?step=5&plan=${k}` : `/login?mode=signup&plan=${k}`} variant={featured ? "primary" : "glass"} className="mt-auto">
                     Выбрать {plan.label}
                   </ButtonLink>
                 </div>
@@ -100,6 +111,11 @@ export default async function Home() {
 
       <footer className="mx-auto flex w-full max-w-[1180px] flex-col items-center justify-between gap-3 border-t border-line px-4 py-8 text-[12.5px] text-ink-3 sm:flex-row sm:px-8">
         <Logo className="!h-[18px] opacity-70" />
+        <nav aria-label="Документы и сервисы" className="flex flex-wrap items-center justify-center gap-x-4">
+          <Link href="/check" className="inline-flex min-h-10 items-center hover:text-head focus-visible:outline-2 focus-visible:outline-green">Career Check</Link>
+          <Link href="/terms" className="inline-flex min-h-10 items-center hover:text-head focus-visible:outline-2 focus-visible:outline-green">Условия</Link>
+          <Link href="/privacy" className="inline-flex min-h-10 items-center hover:text-head focus-visible:outline-2 focus-visible:outline-green">Политика данных</Link>
+        </nav>
         <span>© {new Date().getFullYear()} Simplify · Алматы</span>
       </footer>
     </div>

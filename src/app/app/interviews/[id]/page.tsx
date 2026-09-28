@@ -45,7 +45,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
   if (!iv) notFound();
   const [stories, facts] = await Promise.all([
     db.story.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, select: { id: true, title: true, situation: true, task: true, action: true, result: true, metric: true, tags: true } }),
-    db.fact.findMany({ where: { userId: user.id }, select: { kind: true, title: true, org: true, details: true, metrics: true, tech: true, teamSize: true } }),
+    db.fact.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, select: { kind: true, title: true, org: true, details: true, metrics: true, tech: true, teamSize: true } }),
   ]);
 
   const now = nowMs();
@@ -85,6 +85,8 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
     { label: "Brief и ответы", value: pack ? 100 : 60, w: 0.1 },
   ];
   const upcoming = iv.status === "upcoming";
+  // Debrief is secondary until the call has actually happened.
+  const beforeCall = upcoming && (iv.scheduledAt?.getTime() ?? Infinity) > now;
 
   return (
     <>
@@ -110,7 +112,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
         </div>
         {upcoming && tab !== "mock" && (
           <div className="flex flex-wrap gap-2">
-            <ButtonLink href={`/app/interviews/${iv.id}?tab=mock`} scroll={false}><Play className="size-4" strokeWidth={1.7} aria-hidden />Start Mock Interview</ButtonLink>
+            <ButtonLink href={`/app/interviews/${iv.id}?tab=mock`} scroll={false}><Play className="size-4" strokeWidth={1.7} aria-hidden />{isAssessment ? "Начать тренировку" : "Start Mock Interview"}</ButtonLink>
           </div>
         )}
       </header>
@@ -119,7 +121,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
         <Link href={`/app/interviews/${iv.id}?tab=debrief`} className="mb-6 flex items-center justify-between gap-4 rounded-[22px] bg-cta px-5 py-4 text-white shadow-(--shadow-cta) transition hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green sm:px-6">
           <span className="flex flex-col gap-0.5">
             <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-white/55">Интервью закончилось</span>
-            <span className="h-serif text-[22px] !text-white">Как прошло? Расскажите за минуту</span>
+            <span className="h-serif text-[22px] !text-white">Как прошло? Расскажи за минуту</span>
           </span>
           <ArrowRight className="size-5 shrink-0" strokeWidth={1.7} aria-hidden />
         </Link>
@@ -135,10 +137,10 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
                 scroll={false}
                 className={cx(
                   "flex h-9 items-center gap-1.5 rounded-full px-4 text-[13.5px] transition-colors focus-visible:outline-2 focus-visible:outline-green",
-                  tab === k ? "bg-cta text-white shadow-(--shadow-cta)" : "text-ink-2 hover:bg-white/70 hover:text-head",
+                  tab === k ? "bg-cta text-white shadow-(--shadow-cta)" : k === "debrief" && beforeCall ? "text-ink-4 hover:bg-white/70 hover:text-ink-2" : "text-ink-2 hover:bg-white/70 hover:text-head",
                 )}
               >
-                {TABS[k]}
+                {isAssessment && k === "mock" ? "Тренировка" : k === "debrief" && beforeCall ? (isAssessment ? "После теста" : "После звонка") : TABS[k]}
                 {k === "mock" && iv.mocks.length > 0 && <span className="num text-[11px] opacity-70">{iv.mocks.length}</span>}
                 {k === "debrief" && justHappened && <span aria-label="нужно заполнить" className="size-1.5 rounded-full bg-green" />}
               </Link>
@@ -185,13 +187,14 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
             interviewId={iv.id}
             round={iv.round}
             mocks={iv.mocks}
+            assessment={isAssessment}
             ctx={ctx}
             jdTerms={[...technologies, ...requirements.flatMap((r) => r.split(/\W+/).filter((w) => w.length > 5)).slice(0, 12)]}
           />
         )}
         {tab === "debrief" && (
           <DebriefTab
-            iv={{ id: iv.id, round: iv.round, status: iv.status, company: job.company, upcoming: upcoming && (iv.scheduledAt?.getTime() ?? 0) > now }}
+            iv={{ id: iv.id, round: iv.round, status: iv.status, company: job.company, upcoming: beforeCall }}
             debrief={debrief}
           />
         )}

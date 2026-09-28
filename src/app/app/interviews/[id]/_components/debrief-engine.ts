@@ -102,7 +102,7 @@ export function structureDebrief(i: { transcript: string; outcome: string; round
     if (questions.length >= 3) strong.push(`Ответили на ${questions.length} вопросов без пропусков`);
     if (/\d/.test(i.transcript)) strong.push("Приводили конкретные цифры");
   }
-  if (!weak.length && !/\d/.test(i.transcript)) weak.push("В рассказе нет цифр — проверьте, были ли они в ответах");
+  if (!weak.length && !/\d/.test(i.transcript)) weak.push("В рассказе нет цифр — проверь, были ли они в ответах");
 
   const prep = new Set<string>();
   for (const s of [...hardS, ...questions]) for (const [re, topic] of PREP_MAP) if (re.test(s)) prep.add(topic);

@@ -91,20 +91,20 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
       if (r.reason === "handoff") return { ok: true, message: "Пакет готов. Живая вакансия — отправка через официальную форму.", href: `/app/opportunities/${id}`, hrefLabel: "Открыть" };
     }
     refresh(id);
-    if (pending) return { ok: true, message: `Агент подаст сам, как только вы ответите на ${pending === 1 ? "1 вопрос" : `${pending} вопроса`}.`, href: "/app/approvals", hrefLabel: "Ответить" };
+    if (pending) return { ok: true, message: `Агент подаст сам, как только ты ответишь на ${pending === 1 ? "1 вопрос" : `${pending} вопроса`}.`, href: "/app/approvals", hrefLabel: "Ответить" };
     return { ok: true, message: opp.campaign.status === "active" ? "Агент подаст сам в ближайшем цикле." : "Отмечено. Агент подаст, когда кампания снова будет активна." };
   }
 
   // decision === "apply": the user explicitly confirmed this role.
   await db.opportunity.update({ where: { id }, data: { decision: "apply", status: revived } });
-  await logEvent(user.id, "decision", `Apply: вы подтвердили заявку — ${who}`, id, { decision: "apply" });
+  await logEvent(user.id, "decision", `Apply: ты подтвердил(а) заявку — ${who}`, id, { decision: "apply" });
   try {
     const hasPkg = await db.applicationPackage.findUnique({ where: { opportunityId: id }, select: { id: true } });
     if (!hasPkg || revived !== "prepared") await prepare(id);
     const pending = await db.approval.count({ where: { opportunityId: id, status: "pending", kind: { not: "handoff" } } });
     if (pending) {
       refresh(id);
-      return { ok: true, message: `Пакет готов. ${pending === 1 ? "1 вопрос ждёт" : `${pending} вопроса ждут`} вашего ответа — после этого заявка уйдёт.`, href: "/app/approvals", hrefLabel: "Ответить" };
+      return { ok: true, message: `Пакет готов. ${pending === 1 ? "1 вопрос ждёт" : `${pending} вопроса ждут`} твоего ответа — после этого заявка уйдёт.`, href: "/app/approvals", hrefLabel: "Ответить" };
     }
     const r = await submit(id);
     refresh(id);
@@ -131,12 +131,15 @@ export async function setAutoApply(enabled: boolean): Promise<{ ok: boolean; ena
   const fresh = await db.user.findUnique({ where: { id: user.id }, select: { autonomy: true } });
   let raw: Record<string, unknown> = {};
   try {
-    raw = JSON.parse(fresh?.autonomy || "{}") as Record<string, unknown>;
+    const parsed: unknown = JSON.parse(fresh?.autonomy || "{}");
+    raw = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
   } catch {
     raw = {};
   }
   const current = readAutonomy(fresh?.autonomy);
   const min = current.autoApplyMinMatch;
+  // Server actions are callable with any payload: only a real boolean changes anything.
+  if (typeof enabled !== "boolean") return { ok: false, enabled: current.submitApplications, min };
   await db.user.update({ where: { id: user.id }, data: { autonomy: s({ ...raw, submitApplications: enabled, autoApplyMinMatch: min }) } });
   await logEvent(user.id, "autonomy", enabled ? `Auto-apply включён: Match ≥ ${min}%` : "Auto-apply выключен: агент подаёт только на отмеченные вами вакансии");
   revalidatePath("/app", "layout");

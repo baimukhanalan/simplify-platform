@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { db, s } from "../db";
 import { AUTONOMY_DEFAULTS, AUTONOMY_LABELS, readAutonomy, type Autonomy } from "../engine/autonomy";
-import { logEvent } from "../engine/agent";
+import { logEvent, SENSITIVE_DECLINE } from "../engine/agent";
+import { answerMatchingApprovals } from "../engine/approvals";
 
 export type AutonomyState = { ok?: boolean; error?: string; savedAt?: number };
 
@@ -35,6 +36,11 @@ export async function saveAutonomy(_prev: AutonomyState, form: FormData): Promis
   }
   if (before.sensitive !== next.sensitive) changed.push(`Sensitive: ${next.sensitive === "ask" ? "ask me" : "prefer not to say"}`);
   if (changed.length) await logEvent(user.id, "autonomy", `Настройки агента: ${changed.join(", ")}`);
+  // Switching Sensitive to "prefer not to say" applies to questions already waiting too, not only to new packages:
+  // each pending sensitive approval is answered the same way prepare() would answer it, and ready roles continue.
+  if (before.sensitive !== "decline" && next.sensitive === "decline") {
+    await answerMatchingApprovals(user.id, { kind: "sensitive", answer: SENSITIVE_DECLINE, status: "approved" });
+  }
 
   revalidatePath("/app", "layout");
   return { ok: true, savedAt: Date.now() };

@@ -17,7 +17,7 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
   const [sp, user] = await Promise.all([searchParams, requireUser()]);
   const [offers, facts, opps] = await Promise.all([
     db.offer.findMany({ where: { userId: user.id }, orderBy: [{ createdAt: "desc" }] }),
-    db.fact.findMany({ where: { userId: user.id, verified: true, NOT: { metrics: "" } }, select: { metrics: true } }),
+    db.fact.findMany({ where: { userId: user.id, verified: true, NOT: { metrics: "" } }, select: { metrics: true, kind: true }, orderBy: { createdAt: "asc" } }),
     db.opportunity.findMany({
       where: { campaign: { userId: user.id }, status: { in: ["recruiter", "hiring_manager", "technical", "final", "offer"] } },
       include: { job: { select: { company: true, title: true } } },
@@ -28,7 +28,8 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
   const level: Aggressiveness = LEVELS.includes(sp.level as Aggressiveness) ? (sp.level as Aggressiveness) : "balanced";
   const seniority = user.goal?.seniority ?? "junior";
   const regions = regionsFor(j<string[]>(user.goal?.countries, []));
-  const strengths = facts.map((f) => f.metrics);
+  // Only the user's own verified results; work experience first, CV order within (most recent role first).
+  const strengths = [...facts.filter((f) => f.kind === "employment"), ...facts.filter((f) => f.kind !== "employment")].map((f) => f.metrics);
   const open = offers.filter((o) => o.status === "received" || o.status === "negotiating");
   const closed = offers.filter((o) => o.status === "accepted" || o.status === "declined");
   const oppOptions = opps.map((o) => ({ id: o.id, label: `${o.job.company} — ${o.job.title}` }));
@@ -46,7 +47,7 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
       {open.length > 0 && <h1 className="sr-only">Offer Desk</h1>}
 
       {offers.length === 0 ? (
-        <Empty title="Офферов пока нет" sub="Агент добавит оффер сюда автоматически, как только он придёт в Inbox. Получили оффер напрямую — внесите его ниже." />
+        <Empty title="Офферов пока нет" sub="Агент добавит оффер сюда автоматически, как только он придёт в Inbox. Оффер пришёл напрямую — внеси его ниже." />
       ) : (
         <div className="flex flex-col gap-14">
           {open.map((o) => (

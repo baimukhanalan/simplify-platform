@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
 import { db } from "../db";
 import { PLANS } from "../engine/taxonomy";
-import { runTick, simulateResponses, logEvent, notify, submit, prepare } from "../engine/agent";
+import { runTick, simulateResponses, logEvent, notify, prepare, closeCampaignApprovals } from "../engine/agent";
+import { demoToolsEnabled } from "../demo";
 import { createInvoice } from "../payments/kaspi";
 import { toUSD } from "../engine/fx";
 import { rateLimitUser } from "../rate-limit";
@@ -42,6 +43,7 @@ export async function runAgentNow() {
 
 export async function simulateEmployers() {
   const user = await requireUser();
+  if (!demoToolsEnabled(user)) return; // demo tool: public demo account, staff, local dev only
   await simulateResponses(user.id);
   revalidatePath("/app", "layout");
 }
@@ -60,24 +62,19 @@ export async function updateCampaignSettings(form: FormData) {
   const user = await requireUser();
   const c = await activeCampaign(user.id);
   if (!c) return;
-  await db.campaign.update({ where: { id: c.id }, data: { dailyLimit: Math.max(1, Math.min(25, Number(form.get("dailyLimit")) || c.dailyLimit)), autoSubmit: form.get("autoSubmit") === "on" } });
+  await db.campaign.update({ where: { id: c.id }, data: { dailyLimit: Math.max(1, Math.min(PLANS[c.plan as keyof typeof PLANS]?.dailyLimit ?? 10, Number(form.get("dailyLimit")) || c.dailyLimit)), autoSubmit: form.get("autoSubmit") === "on" } });
   revalidatePath("/app", "layout");
 }
 
-/** Manually prepare or submit one opportunity (from the vacancy list). */
+/**
+ * "Показать версию сейчас": build a preview of the tailored package for one opportunity. Preview only — the
+ * opportunity keeps its status and no questions are queued; Apply / the agent cycle prepare it for real.
+ */
 export async function prepareOpportunity(form: FormData) {
   const user = await requireUser();
   const id = String(form.get("id"));
   const o = await db.opportunity.findFirst({ where: { id, campaign: { userId: user.id } } });
-  if (o) await prepare(id);
-  revalidatePath("/app", "layout");
-}
-
-export async function submitOpportunity(form: FormData) {
-  const user = await requireUser();
-  const id = String(form.get("id"));
-  const o = await db.opportunity.findFirst({ where: { id, campaign: { userId: user.id } } });
-  if (o) await submit(id, form.get("via") === "user" ? "user" : "agent");
+  if (o) await prepare(id, { preview: true });
   revalidatePath("/app", "layout");
 }
 
@@ -85,6 +82,8 @@ export async function markHired(form: FormData) {
   const user = await requireUser();
   const offerId = String(form.get("offerId") ?? "");
   const offer = offerId ? await db.offer.findFirst({ where: { id: offerId, userId: user.id }, include: { opportunity: { select: { campaignId: true } } } }) : null;
+  // A hand-crafted request with someone else's (or a non-existent) offer id, or a declined offer, changes nothing.
+  if (offerId && (!offer || offer.status === "declined")) return;
   // The campaign to close: the one the accepted offer came from, else the running one, else the latest non-hired one.
   const notHired = { userId: user.id, status: { notIn: ["hired", "draft"] } };
   const c =
@@ -96,6 +95,8 @@ export async function markHired(form: FormData) {
   const acceptedNow = offer ? (await db.offer.updateMany({ where: { id: offer.id, userId: user.id, status: { not: "accepted" } }, data: { status: "accepted" } })).count > 0 : false;
   const hiredNow = c ? (await db.campaign.updateMany({ where: { id: c.id, status: { not: "hired" } }, data: { status: "hired", hiredAt: new Date() } })).count > 0 : false;
   if (!acceptedNow && !hiredNow) redirect(c || offer ? "/app/hired" : "/app/career");
+  // A finished campaign stops asking: its open questions are closed.
+  if (c) await closeCampaignApprovals(c.id);
 
   if (offer && acceptedNow) {
     if (offer.opportunityId) await db.opportunity.update({ where: { id: offer.opportunityId }, data: { status: "hired" } });

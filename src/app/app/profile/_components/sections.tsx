@@ -96,7 +96,7 @@ export function Skills({ skills, facts }: { skills: string[]; facts: Fact[] }) {
         <ul className="flex flex-wrap gap-2" aria-label="Навыки">
           {skills.map((s) => <li key={s} className="rounded-full border border-line bg-white/80 px-3 py-1 text-[13.5px] text-head">{s}</li>)}
         </ul>
-      ) : <p className="text-[14px] text-ink-3">Навыков пока нет — они появятся из CV или добавь их сам.</p>}
+      ) : <p className="text-[14px] text-ink-3">Навыков пока нет — они появятся из CV или добавь их вручную.</p>}
       editor={
         <div className="flex flex-col gap-4">
           {skills.length > 0 && (
@@ -126,7 +126,7 @@ export function Skills({ skills, facts }: { skills: string[]; facts: Fact[] }) {
                 {fromFacts.map((t) => (
                   <form key={t} action={addSkill}>
                     <input type="hidden" name="skill" value={t} />
-                    <button type="submit" className="inline-flex items-center gap-1 rounded-full border border-dashed border-green/35 px-3 py-1 text-[13px] text-green transition-colors hover:bg-green-soft focus-visible:outline-2 focus-visible:outline-green">
+                    <button type="submit" className="inline-flex min-h-10 items-center gap-1 rounded-full border border-dashed border-green/35 px-3 text-[13px] text-green transition-colors hover:bg-green-soft focus-visible:outline-2 focus-visible:outline-green">
                       <Plus className="size-3" strokeWidth={2} aria-hidden />{t}
                     </button>
                   </form>
@@ -207,7 +207,7 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
             <legend className="label mb-2">Право на работу (кроме гражданства)</legend>
             <div className="flex flex-wrap gap-2">
               {AUTH_OPTIONS.map(([c, l]) => (
-                <label key={c} className="cursor-pointer rounded-full border border-line bg-white/70 px-3.5 py-1.5 text-[13.5px] text-ink-2 transition-colors has-[:checked]:border-cta has-[:checked]:bg-cta has-[:checked]:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-green">
+                <label key={c} className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-line bg-white/70 px-3.5 text-[13.5px] text-ink-2 transition-colors has-[:checked]:border-cta has-[:checked]:bg-cta has-[:checked]:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-green">
                   <input type="checkbox" name="workAuth" value={c} defaultChecked={c === "EU" ? hasEU : auth.includes(c)} className="sr-only" />{l}
                 </label>
               ))}

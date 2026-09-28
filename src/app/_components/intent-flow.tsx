@@ -117,7 +117,7 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Популярные роли">
               {ROLE_SUGGESTIONS.map((r) => (
                 <button key={r} type="button" onClick={() => { setRole(r); setError(""); }} aria-pressed={role === r}
-                  className={cx("rounded-full border px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green", role === r ? "border-green/40 bg-green-soft text-green" : "border-line bg-white/60 text-ink-2 hover:border-teal/40 hover:text-head")}
+                  className={cx("inline-flex min-h-10 items-center rounded-full border px-3.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green", role === r ? "border-green/40 bg-green-soft text-green" : "border-line bg-white/60 text-ink-2 hover:border-teal/40 hover:text-head")}
                 >{r}</button>
               ))}
             </div>
@@ -158,7 +158,7 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Быстрый выбор">
               {SALARY_PRESETS.map((n) => (
                 <button key={n} type="button" onClick={() => setSalary(String(n))} aria-pressed={salaryNum === n}
-                  className={cx("num rounded-full border px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green", salaryNum === n ? "border-green/40 bg-green-soft text-green" : "border-line bg-white/60 text-ink-2 hover:border-teal/40 hover:text-head")}
+                  className={cx("num inline-flex min-h-10 items-center rounded-full border px-3.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green", salaryNum === n ? "border-green/40 bg-green-soft text-green" : "border-line bg-white/60 text-ink-2 hover:border-teal/40 hover:text-head")}
                 >{fmtUsd(n)}+</button>
               ))}
             </div>

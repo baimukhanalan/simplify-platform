@@ -1,14 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Check, CircleAlert, Pause, Play, Zap } from "lucide-react";
+import { cookies } from "next/headers";
+import { ArrowRight, Check, CircleAlert, Pause, Play, TicketPercent, Zap } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
-import { ButtonLink, Card, Chip, Field, Label, PageHeader, Progress, Ring, Script, cx } from "@/components/ui";
+import { demoToolsEnabled } from "@/lib/demo";
+import { isOverdue, pendingApprovalsCount } from "@/lib/ops-data";
+import { ButtonLink, Card, Chip, Label, PageHeader, Progress, Ring, Script, cx } from "@/components/ui";
 import { PaymentHistory } from "./_components/payment-history";
 import { SubmitButton } from "@/components/client";
 import { checkout, setCampaignStatus, runAgentNow } from "@/lib/actions/campaign";
 import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
 import { Disclosure } from "../profile/_components/bits";
+import { AgentStatus } from "../../_components/agent-status";
+import { LegalLinks } from "../../_components/legal-page";
+import { PLAN_COOKIE, cleanPlan, type PlanKey } from "../../_components/plan-pref";
+import { plural } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Career Campaign" };
 
@@ -24,7 +31,7 @@ const PLAN_COPY = {
 };
 const STATUS_LABEL: Record<string, { label: string; tone: "green" | "amber" | "teal" | "rose" | "neutral" }> = {
   active: { label: "Active", tone: "green" }, paused: { label: "Paused", tone: "amber" }, hired: { label: "Hired", tone: "green" },
-  expired: { label: "Expired", tone: "neutral" }, draft: { label: "Draft", tone: "neutral" },
+  expired: { label: "Завершена", tone: "neutral" }, draft: { label: "Draft", tone: "neutral" },
 };
 const DAY = 86400000;
 /** Request-time clock for a campaign window (server-rendered per request). */
@@ -40,35 +47,57 @@ const date = (d: Date | null | undefined) => (d ? d.toLocaleDateString("ru-RU", 
 
 export default async function CampaignPage() {
   const user = await requireUser();
-  const [campaigns, payments] = await Promise.all([
+  const [rows, payments, approvals, jar] = await Promise.all([
     db.campaign.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { _count: { select: { opportunities: { where: { submittedAt: { not: null } } } } } } }),
     db.payment.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { campaign: { select: { plan: true } } } }),
+    pendingApprovalsCount(user.id),
+    cookies(),
   ]);
+  // A campaign past endsAt is over even before an agent cycle writes status="expired": no Pause/Run, show the buy form.
+  const campaigns = rows.map((c) => (isOverdue(c) ? { ...c, status: "expired" } : c));
   const active = campaigns.find((c) => c.status === "active" || c.status === "paused");
   const past = campaigns.filter((c) => c !== active && c.status !== "draft");
   const last = past[0];
   const consents = j<{ autoSubmit?: boolean }>(user.consents, {});
+  const demo = demoToolsEnabled(user);
+  const needs = active && approvals ? [{ text: `${approvals} ${plural(approvals, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа`, href: "/app/approvals" }] : [];
 
   return (
     <>
       <PageHeader
         eyebrow="Career Campaign · 60 дней"
-        title={active ? <>Кампания <Script>в работе</Script></> : <>Запустите Career <Script>Campaign</Script></>}
-        sub="Simplify продаёт исполнение кампании — поиск, подготовку, подачу и сопровождение до оффера. Мы не гарантируем трудоустройство: решение о найме всегда за работодателем."
+        title={active ? <>Кампания <Script>в работе</Script></> : <>Запусти Career <Script>Campaign</Script></>}
+        sub={active ? undefined : "60 дней агент ищет вакансии, адаптирует CV, подаёт заявки и готовит тебя к интервью. Трудоустройство мы не гарантируем: решение о найме всегда за работодателем."}
       />
 
-      {active ? <ActiveCampaign c={active} autoSubmitConsent={consents.autoSubmit !== false} /> : (
+      {!active && (
+        <AgentStatus needs={[{ text: user.goal?.primaryRole ? "Выбери тариф ниже — и агент начнёт работать" : "Сначала задай цель — без неё агенту нечего искать", href: user.goal?.primaryRole ? undefined : "/app/goal?need=goal" }]} className="mb-6 animate-rise" />
+      )}
+      {active && (
+        <AgentStatus
+          needs={needs}
+          idle={active.status === "paused"}
+          working={active.status === "paused" ? "Кампания на паузе — агент ничего не отправляет, пока ты её не возобновишь." : undefined}
+          className="mb-6 animate-rise"
+        />
+      )}
+
+      {active ? <ActiveCampaign c={active} autoSubmitConsent={consents.autoSubmit !== false} demo={demo} /> : (
         <>
           {last && (last.status === "hired" || last.status === "expired") && (
             <div className="mb-6 flex animate-rise flex-col gap-2 rounded-2xl border border-line bg-white/70 px-4 py-3.5 text-[14px] text-ink-2 sm:flex-row sm:items-center sm:justify-between">
               <span>
                 Предыдущая кампания завершена: <Chip tone={STATUS_LABEL[last.status].tone} className="mx-1">{STATUS_LABEL[last.status].label}</Chip>
-                {last.status === "hired" ? "поздравляем! Новая кампания — когда будете готовы к следующему шагу." : "можно начать новую с обновлённой целью."}
+                {last.status === "hired" ? "поздравляем! Новая кампания — когда захочешь сделать следующий шаг." : "можно начать новую с обновлённой целью."}
               </span>
-              <span className="font-mono text-[11px] uppercase tracking-[.06em] text-teal">Start New Campaign ↓</span>
+              <span className="font-mono text-[11px] uppercase tracking-[.06em] text-teal">Новая кампания ↓</span>
             </div>
           )}
-          <Checkout hasGoal={Boolean(user.goal?.primaryRole)} partner={user.referredByCode ?? ""} intl={j<string[]>(user.goal?.countries, []).some((c) => !["KZ", "CIS"].includes(c))} />
+          <Checkout
+            hasGoal={Boolean(user.goal?.primaryRole)}
+            partner={user.referredByCode ?? ""}
+            recommended={cleanPlan(jar.get(PLAN_COOKIE)?.value) ?? (j<string[]>(user.goal?.countries, []).some((c) => !["KZ", "CIS"].includes(c)) ? "international" : "local")}
+          />
         </>
       )}
 
@@ -85,7 +114,7 @@ export default async function CampaignPage() {
                   <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
                     <div>
                       <div className="text-[14px] text-head">{PLANS[c.plan as keyof typeof PLANS]?.label ?? c.plan}</div>
-                      <div className="text-[12.5px] text-ink-3">{date(c.startedAt)} — {date(c.hiredAt ?? c.endsAt)} · <span className="num">{c._count.opportunities}</span> заявок · readiness <span className="num">{c.readiness}</span></div>
+                      <div className="text-[12.5px] text-ink-3">{date(c.startedAt)} — {date(c.hiredAt ?? c.endsAt)} · <span className="num">{c._count.opportunities}</span> {plural(c._count.opportunities, ["заявка", "заявки", "заявок"])} · Readiness на старте <span className="num">{c.readiness}</span></div>
                     </div>
                     <Chip tone={STATUS_LABEL[c.status]?.tone ?? "neutral"}>{STATUS_LABEL[c.status]?.label ?? c.status}</Chip>
                   </li>
@@ -99,8 +128,8 @@ export default async function CampaignPage() {
   );
 }
 
-function Checkout({ hasGoal, partner, intl }: { hasGoal: boolean; partner: string; intl: boolean }) {
-  const recommended = intl ? "international" : "local";
+/** Plan picker. Partner attribution comes only from the signup referral — shown read-only, never typed here. */
+function Checkout({ hasGoal, partner, recommended }: { hasGoal: boolean; partner: string; recommended: PlanKey }) {
   return (
     <form action={checkout} className="flex flex-col gap-6">
       <div className="grid gap-4 md:grid-cols-2">
@@ -115,7 +144,7 @@ function Checkout({ hasGoal, partner, intl }: { hasGoal: boolean; partner: strin
                   <div className="num text-[40px] leading-none text-head">{fmtKzt(plan.priceKzt)}</div>
                   <div className="text-[13px] text-ink-3">за {plan.days} дней кампании · разовый платёж</div>
                 </div>
-                {rec && <Chip tone="green" dot>Под твою цель</Chip>}
+                {rec && <Chip tone="green" dot>Рекомендуем</Chip>}
               </div>
               <div className="flex flex-col gap-1 border-t border-line pt-4 text-[14px] text-ink-2">
                 <div><span className="text-ink-3">Рынки: </span>{PLAN_COPY[key].regions}</div>
@@ -146,21 +175,22 @@ function Checkout({ hasGoal, partner, intl }: { hasGoal: boolean; partner: strin
             ))}
           </ul>
         </div>
-        <div className="flex flex-col gap-4 border-t border-line pt-5 sm:flex-row sm:items-end">
-          <Field label="Партнёрский код" hint="Если тебя пригласил партнёр — бонус учтётся автоматически" className="sm:w-64">
-            <input name="partner" defaultValue={partner} autoComplete="off" className="field font-mono uppercase" placeholder="AMASKILLS" />
-          </Field>
-        </div>
+        {partner && (
+          <p className="flex items-center gap-2 border-t border-line pt-5 text-[13px] text-ink-2">
+            <TicketPercent className="size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
+            Партнёр <span className="font-mono text-head">{partner}</span> учтён при регистрации.
+          </p>
+        )}
         <div className="flex items-start gap-2.5 rounded-2xl bg-amber-soft px-4 py-3 text-[13px] text-ink-2">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber" strokeWidth={1.8} aria-hidden />
-          <p><span className="font-medium text-head">Оплата через Kaspi Pay.</span> Сейчас подключён тестовый шлюз Kaspi: деньги не списываются, а кампания запускается сразу после подтверждения оплаты. Simplify продаёт исполнение кампании, а не гарантию трудоустройства.</p>
+          <p><span className="font-medium text-head">Оплата через Kaspi Pay.</span> Сейчас подключён тестовый шлюз Kaspi: деньги не списываются, а кампания запускается сразу после подтверждения оплаты. Оплачивая, ты принимаешь <LegalLinks />.</p>
         </div>
       </Card>
     </form>
   );
 }
 
-function ActiveCampaign({ c, autoSubmitConsent }: { c: { id: string; plan: string; status: string; readiness: number; dailyLimit: number; autoSubmit: boolean; startedAt: Date | null; endsAt: Date | null; lastRunAt: Date | null }; autoSubmitConsent: boolean }) {
+function ActiveCampaign({ c, autoSubmitConsent, demo }: { c: { id: string; plan: string; status: string; readiness: number; dailyLimit: number; autoSubmit: boolean; startedAt: Date | null; endsAt: Date | null; lastRunAt: Date | null }; autoSubmitConsent: boolean; demo: boolean }) {
   const plan = PLANS[c.plan as keyof typeof PLANS] ?? PLANS.local;
   const { total, elapsed, left } = campaignClock(c.startedAt, c.endsAt, plan.days);
   const paused = c.status === "paused";
@@ -177,7 +207,7 @@ function ActiveCampaign({ c, autoSubmitConsent }: { c: { id: string; plan: strin
         <div className="flex flex-wrap items-end gap-x-10 gap-y-5">
           <div>
             <div className="num text-[64px] leading-none text-head">{left}</div>
-            <div className="mt-1 text-[13px] text-ink-3">дней осталось из {total}</div>
+            <div className="mt-1 text-[13px] text-ink-3">{plural(left, ["день остался", "дня осталось", "дней осталось"])} из {total}</div>
           </div>
           <div className="flex items-center gap-3">
             <Ring value={c.readiness} size={64} stroke={5} />
@@ -197,7 +227,7 @@ function ActiveCampaign({ c, autoSubmitConsent }: { c: { id: string; plan: strin
               {paused ? <><Play className="size-4" strokeWidth={1.7} aria-hidden />Возобновить</> : <><Pause className="size-4" strokeWidth={1.7} aria-hidden />Пауза</>}
             </SubmitButton>
           </form>
-          {!paused && (
+          {!paused && demo && (
             <form action={runAgentNow}>
               <SubmitButton pendingText="Агент работает…"><Zap className="size-4" strokeWidth={1.7} aria-hidden />Запустить цикл агента</SubmitButton>
             </form>
@@ -215,7 +245,7 @@ function ActiveCampaign({ c, autoSubmitConsent }: { c: { id: string; plan: strin
         <Card className="animate-rise" style={{ animationDelay: "80ms" }}>
           <Label className="mb-3">Настройки агента</Label>
           <p className="text-[13.5px] text-ink-2">
-            Сейчас: до <span className="num text-head">{c.dailyLimit}</span> заявок в день, автоподача {c.autoSubmit ? "включена" : autoSubmitConsent ? "выключена" : "выключена (согласие отозвано)"}.
+            Сейчас: до <span className="num text-head">{Math.min(c.dailyLimit, plan.dailyLimit)}</span> {plural(Math.min(c.dailyLimit, plan.dailyLimit), ["заявки", "заявок", "заявок"])} в день, автоподача {c.autoSubmit ? "включена" : autoSubmitConsent ? "выключена" : "выключена (согласие отозвано)"}.
             Что агент делает сам, а что — только с твоего разрешения, настраивается в Agent.
           </p>
           <Link href="/app/agent" className="mt-4 inline-flex items-center gap-1.5 text-[13.5px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">Открыть Agent <ArrowRight className="size-3.5" aria-hidden /></Link>
@@ -223,7 +253,7 @@ function ActiveCampaign({ c, autoSubmitConsent }: { c: { id: string; plan: strin
         <Card className="animate-rise" style={{ animationDelay: "140ms" }}>
           <Label className="mb-3">Fair usage</Label>
           <div className="flex flex-col gap-2 text-[13.5px] text-ink-2">
-            <p>План включает до <span className="num text-head">{plan.dailyLimit}</span> заявок в день — лимит защищает качество: каждая заявка персонализирована, а не разослана массово.</p>
+            <p>Тариф {plan.label} — до <span className="num text-head">{plan.dailyLimit}</span> {plural(plan.dailyLimit, ["заявки", "заявок", "заявок"])} в день. Лимит защищает качество: каждая заявка персонализирована, а не разослана массово.</p>
             <p>Агент никогда не подаёт дважды в одну вакансию и пропускает вакансии с hard blockers по Eligibility.</p>
             <p className="text-ink-3">Пауза не продлевает 60 дней кампании.</p>
           </div>

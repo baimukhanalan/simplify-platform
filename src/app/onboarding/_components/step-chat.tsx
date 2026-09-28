@@ -159,7 +159,7 @@ function UserBubble({ children, onEdit, saving }: { children: ReactNode; onEdit?
   return (
     <div className="flex items-center justify-end gap-2 animate-fade">
       {onEdit && (
-        <button type="button" onClick={onEdit} className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[12px] text-ink-3 hover:bg-white/70 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
+        <button type="button" onClick={onEdit} className="inline-flex h-10 items-center gap-1 rounded-full px-2.5 text-[12px] text-ink-3 hover:bg-white/70 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
           <Pencil className="size-3" aria-hidden />Изменить
         </button>
       )}
@@ -229,8 +229,8 @@ function Composer({ turn, initial, busy, error, onSend, onCancel, autoFocus }: {
         </div>
       )}
       <div className="flex items-center gap-1">
-        {onCancel && <button type="button" onClick={onCancel} className="h-8 rounded-full px-3 text-[12.5px] text-ink-3 hover:bg-white/70 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Отмена</button>}
-        <button type="button" onClick={() => onSend("")} disabled={busy} className="h-8 rounded-full px-3 text-[12.5px] text-ink-3 hover:bg-white/70 hover:text-head disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-green">Пропустить</button>
+        {onCancel && <button type="button" onClick={onCancel} className="inline-flex h-10 items-center rounded-full px-3 text-[12.5px] text-ink-3 hover:bg-white/70 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Отмена</button>}
+        <button type="button" onClick={() => onSend("")} disabled={busy} className="inline-flex h-10 items-center rounded-full px-3 text-[12.5px] text-ink-3 hover:bg-white/70 hover:text-head disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-green">Пропустить</button>
       </div>
       {error && <p id={`${id}-e`} role="alert" className="text-[12.5px] text-rose">{error}</p>}
     </div>
@@ -279,10 +279,10 @@ function PositionRow({ p }: { p: Position }) {
           <label className="flex flex-col gap-1"><span className="label !text-[10px]">С</span><input name="startDate" defaultValue={p.startDate} maxLength={40} className="field !py-2 !text-[14px]" /></label>
           <label className="flex flex-col gap-1"><span className="label !text-[10px]">По</span><input name="endDate" defaultValue={p.endDate} maxLength={40} className="field !py-2 !text-[14px]" /></label>
           <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-            <button type="submit" disabled={saving} className="inline-flex h-9 items-center gap-2 rounded-full bg-cta px-4 text-[13px] font-medium text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
+            <button type="submit" disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-full bg-cta px-4 text-[13px] font-medium text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
               {saving && <span className="size-3 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />}Сохранить
             </button>
-            <button type="button" onClick={() => setMode("view")} className="h-9 rounded-full px-3 text-[13px] text-ink-2 hover:bg-mint-2 focus-visible:outline-2 focus-visible:outline-green">Отмена</button>
+            <button type="button" onClick={() => setMode("view")} className="inline-flex h-10 items-center rounded-full px-3 text-[13px] text-ink-2 hover:bg-mint-2 focus-visible:outline-2 focus-visible:outline-green">Отмена</button>
             <FormAlert error={state?.error} />
           </div>
         </form>
@@ -299,14 +299,14 @@ function PositionRow({ p }: { p: Position }) {
       {mode === "confirm" ? (
         <span className="flex shrink-0 items-center gap-1">
           <span className="text-[12.5px] text-ink-2">Убрать?</span>
-          <button type="button" disabled={pending} onClick={() => start(async () => { try { await deleteFact(p.id); setMode("gone"); } catch { setErr("Не удалось"); setMode("view"); } })} className="h-8 rounded-full bg-rose px-3 text-[12.5px] text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose">Да</button>
-          <button type="button" onClick={() => setMode("view")} className="h-8 rounded-full px-3 text-[12.5px] text-ink-2 hover:bg-mint-2 focus-visible:outline-2 focus-visible:outline-green">Нет</button>
+          <button type="button" disabled={pending} onClick={() => start(async () => { try { await deleteFact(p.id); setMode("gone"); } catch { setErr("Не удалось"); setMode("view"); } })} className="inline-flex h-10 items-center rounded-full bg-rose px-3 text-[12.5px] text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose">Да</button>
+          <button type="button" onClick={() => setMode("view")} className="inline-flex h-10 items-center rounded-full px-3 text-[12.5px] text-ink-2 hover:bg-mint-2 focus-visible:outline-2 focus-visible:outline-green">Нет</button>
         </span>
       ) : (
         <span className="flex shrink-0 items-center gap-0.5">
           {err && <span className="mr-1 text-[12px] text-rose" role="alert">{err}</span>}
-          <button type="button" onClick={() => { setEditBase(state); setMode("edit"); }} aria-label={`Исправить: ${title}`} className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[12.5px] text-ink-3 hover:bg-mint-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green"><Pencil className="size-3" aria-hidden />Исправить</button>
-          <button type="button" onClick={() => setMode("confirm")} aria-label={`Убрать: ${title}`} className="inline-flex h-8 items-center gap-1 rounded-full px-2.5 text-[12.5px] text-ink-3 hover:bg-rose-soft hover:text-rose focus-visible:outline-2 focus-visible:outline-green"><X className="size-3" aria-hidden />Убрать</button>
+          <button type="button" onClick={() => { setEditBase(state); setMode("edit"); }} aria-label={`Исправить: ${title}`} className="inline-flex h-10 items-center gap-1 rounded-full px-2.5 text-[12.5px] text-ink-3 hover:bg-mint-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green"><Pencil className="size-3" aria-hidden />Исправить</button>
+          <button type="button" onClick={() => setMode("confirm")} aria-label={`Убрать: ${title}`} className="inline-flex h-10 items-center gap-1 rounded-full px-2.5 text-[12.5px] text-ink-3 hover:bg-rose-soft hover:text-rose focus-visible:outline-2 focus-visible:outline-green"><X className="size-3" aria-hidden />Убрать</button>
         </span>
       )}
     </li>

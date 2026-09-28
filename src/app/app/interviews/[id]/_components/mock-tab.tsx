@@ -5,15 +5,15 @@ import { PERSONA_KEYS, PERSONA_LABEL } from "@/lib/rounds";
 import { MockInterview, type MockFeedback } from "./mock-interview";
 import type { MockCtx } from "./mock-questions";
 
-export function MockTab({ interviewId, round, mocks, ctx, jdTerms }: { interviewId: string; round: string; mocks: MockSession[]; ctx: MockCtx; jdTerms: string[] }) {
+export function MockTab({ interviewId, round, mocks, ctx, jdTerms, assessment = false }: { interviewId: string; round: string; mocks: MockSession[]; ctx: MockCtx; jdTerms: string[]; assessment?: boolean }) {
   const defaultPersona = round === "assessment" ? "technical" : PERSONA_KEYS.includes(round) ? round : "hiring_manager";
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-      <MockInterview interviewId={interviewId} defaultPersona={defaultPersona} ctx={ctx} jdTerms={[...new Set(jdTerms)]} />
+      <MockInterview interviewId={interviewId} defaultPersona={defaultPersona} ctx={ctx} jdTerms={[...new Set(jdTerms)]} assessment={assessment} />
       <aside aria-labelledby="mock-history" className="flex flex-col gap-3">
         <h2 id="mock-history" className="label px-1">Прошлые сессии</h2>
         {mocks.length === 0 ? (
-          <p className="glass px-5 py-6 text-[13.5px] text-ink-3">Здесь появятся сохранённые Mock Interview с оценками. Цель — 75+ перед реальным звонком.</p>
+          <p className="glass px-5 py-6 text-[13.5px] text-ink-3">{assessment ? "Здесь появятся сохранённые тренировки с оценками. Цель — 75+ перед тестом." : "Здесь появятся сохранённые Mock Interview с оценками. Цель — 75+ перед реальным звонком."}</p>
         ) : (
           mocks.map((m) => {
             const fb = j<Partial<MockFeedback>>(m.feedback, {});
@@ -38,7 +38,7 @@ export function MockTab({ interviewId, round, mocks, ctx, jdTerms }: { interview
                     <ol className="scroll-thin mt-2 flex max-h-72 flex-col gap-2 overflow-auto text-[12.5px]">
                       {transcript.map((t, i) => (
                         <li key={i} className={t.role === "interviewer" ? "font-medium text-head" : "text-ink-2"}>
-                          <Label className="!text-[9.5px]">{t.role === "interviewer" ? "Интервьюер" : "Вы"}</Label>
+                          <Label className="!text-[9.5px]">{t.role === "interviewer" ? "Интервьюер" : "Ты"}</Label>
                           {t.text}
                         </li>
                       ))}

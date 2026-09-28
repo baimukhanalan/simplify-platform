@@ -6,11 +6,12 @@ import type { CheckResult } from "@/lib/onboarding";
 import { Card, Label, H, Script, Chip, Ring, Progress, ButtonLink, Divider, cx } from "@/components/ui";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
 import { SiteHeader } from "../../_components/site-header";
+import { count } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Результат Career Check", robots: { index: false } };
 
 const VERDICT = {
-  ready: { label: "Готово к кампании", tone: "green" as const, head: ["Вы", "готовы", "к кампании"] },
+  ready: { label: "Готово к кампании", tone: "green" as const, head: ["Профиль", "готов", "к кампании"] },
   stretch: { label: "Реалистично с усилением", tone: "teal" as const, head: ["Цель", "достижима", "— с усилением"] },
   unrealistic: { label: "Цель пока нереалистична", tone: "rose" as const, head: ["Цель пока", "далеко", "— но путь есть"] },
 };
@@ -45,7 +46,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
               <Chip>English {r.english}</Chip>
             </div>
             <p className="max-w-2xl text-[14.5px] text-ink-2">
-              Распознано {r.skills.length} навыков и {r.factsCount} фактов опыта, из них {r.metricsCount} с измеримым результатом. Это оценка по одному CV — до мини-интервью по опыту.
+              Распознано {count(r.skills.length, ["навык", "навыка", "навыков"])} и {count(r.factsCount, ["факт опыта", "факта опыта", "фактов опыта"])}, из них {r.metricsCount} с измеримым результатом. Это оценка по одному CV — до мини-интервью по опыту.
             </p>
           </div>
           <Card strong className="flex items-center gap-5 md:flex-col md:px-8">
@@ -69,7 +70,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
               <ul className="flex flex-col gap-2.5">
                 {r.strengths.map((x) => <li key={x} className="flex gap-2.5 text-[14px] text-ink-2"><Check className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={2.2} aria-label="плюс" />{x}</li>)}
               </ul>
-            ) : <p className="text-[14px] text-ink-3">Явных сильных сторон под эту цель пока не видно — начните с рекомендаций ниже.</p>}
+            ) : <p className="text-[14px] text-ink-3">Явных сильных сторон под эту цель пока не видно — начни с рекомендаций ниже.</p>}
           </Card>
           <Card className="flex flex-col gap-4 animate-rise [animation-delay:120ms]">
             <Label>Что тянет вниз</Label>
@@ -113,8 +114,8 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
               <Label>Потенциальные роли</Label>
               {r.roles.length ? (
                 <div className="flex flex-wrap gap-2">{r.roles.map((x) => <Chip key={x} tone="teal">{x}</Chip>)}</div>
-              ) : <p className="text-[13.5px] text-ink-3">Добавьте больше навыков в CV — тогда подскажем смежные роли.</p>}
-              <p className="text-[12.5px] text-ink-3">По пересечению ваших навыков с требованиями ролей.</p>
+              ) : <p className="text-[13.5px] text-ink-3">Добавь больше навыков в CV — тогда подскажем смежные роли.</p>}
+              <p className="text-[12.5px] text-ink-3">По пересечению твоих навыков с требованиями ролей.</p>
             </Card>
           </div>
         </section>
@@ -141,7 +142,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                   <Ring value={r.job.match} size={76} stroke={6} label="match" />
                   <div className="flex flex-col gap-1.5">
                     <Chip tone={ELIG[r.job.eligibility].tone} dot>{ELIG[r.job.eligibility].label}</Chip>
-                    <span className="num text-[12px] text-ink-3">P(interview) ≈ {Math.round(r.job.pInterview * 100)}%</span>
+                    <span className="num text-[12px] text-ink-3">Interview probability ≈ {Math.round(r.job.pInterview * 100)}%</span>
                   </div>
                 </div>
               </div>
@@ -203,7 +204,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
         {/* CTA */}
         <section className="glass-strong mt-4 flex flex-col items-center gap-5 px-6 py-12 text-center animate-rise">
           <Label>Следующий шаг</Label>
-          <h2 className="h-serif text-[clamp(28px,4vw,46px)]">Stop applying. <Script>Start</Script> interviewing.</h2>
+          <h2 className="h-serif text-[clamp(28px,4vw,46px)]">Задай цель. Simplify доведёт до <Script>оффера</Script>.</h2>
           <p className="max-w-lg text-[15px] text-ink-2">Агент найдёт вакансии, адаптирует CV под каждую, подаст заявки, отследит ответы и подготовит к интервью — 60 дней кампании.</p>
           <div className="flex flex-col items-center gap-3 sm:flex-row">
             <ButtonLink href="/login?mode=signup" size="lg">Start your campaign <ArrowRight className="size-4" /></ButtonLink>

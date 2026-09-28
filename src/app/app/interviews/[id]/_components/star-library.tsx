@@ -34,13 +34,13 @@ export function StarLibrary({ stories }: { stories: StoryLite[] }) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1.5">
           <Label>STAR Stories</Label>
-          <h2 id={`${uid}-h`} className="h-serif text-[clamp(24px,2.6vw,32px)]">Библиотека ваших историй</h2>
+          <h2 id={`${uid}-h`} className="h-serif text-[clamp(24px,2.6vw,32px)]">Библиотека твоих историй</h2>
         </div>
         <ButtonLink href="/app/profile#stories" size="sm" variant="glass" className="self-start"><Plus className="size-3.5" strokeWidth={1.8} aria-hidden />Добавить историю</ButtonLink>
       </div>
 
       {stories.length === 0 ? (
-        <p className="glass px-5 py-6 text-[14px] text-ink-3">Историй пока нет. Добавьте 3–4 в Career Profile: конфликт, ошибка, лидерство и проект с цифрой — их хватит на большинство behavioral-вопросов.</p>
+        <p className="glass px-5 py-6 text-[14px] text-ink-3">Историй пока нет. Добавь 3–4 в Career Profile: конфликт, ошибка, лидерство и проект с цифрой — их хватит на большинство behavioral-вопросов.</p>
       ) : (
         <>
           <div role="group" aria-label="Фильтр по теме" className="scroll-thin -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">

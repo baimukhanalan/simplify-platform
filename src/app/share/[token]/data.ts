@@ -1,7 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { db } from "@/lib/db";
-import { clampText, firstName, journeyStats } from "@/app/app/hired/_lib/journey";
+import { clampText, firstName, journeyStats, plural } from "@/app/app/hired/_lib/journey";
 
 const TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
 
@@ -29,8 +29,18 @@ export const loadShare = cache(async (token: string) => {
   };
 });
 
+/** Public headline. Russian copy around the owner's English moment ("HIRED."); role/company stay as written in the offer. */
 export function headline(d: { name: string; role: string | null; company: string | null }) {
-  if (d.role && d.company) return `${d.name} got hired as ${d.role} at ${d.company}`;
-  if (d.role) return `${d.name} got hired as ${d.role}`;
-  return `${d.name} got hired`;
+  if (d.role && d.company) return `${d.name}: HIRED. ${d.role} в ${d.company}`;
+  if (d.role) return `${d.name}: HIRED. ${d.role}`;
+  return `${d.name}: HIRED.`;
+}
+
+/** "12 заявок · 3 интервью · 21 день до оффера". */
+export function statsLine(d: { applications: number; interviews: number; daysToOffer: number | null }) {
+  return [
+    `${d.applications} ${plural(d.applications, ["заявка", "заявки", "заявок"])}`,
+    `${d.interviews} интервью`,
+    ...(d.daysToOffer != null ? [`${d.daysToOffer} ${plural(d.daysToOffer, ["день", "дня", "дней"])} до оффера`] : []),
+  ].join(" · ");
 }

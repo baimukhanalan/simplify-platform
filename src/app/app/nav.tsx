@@ -11,26 +11,27 @@ import { logout } from "@/lib/actions/auth";
 
 type Item = { href: string; label: string; icon: LucideIcon; badge?: "approvals" | "responses" | "interviews"; also?: string[] };
 
-/** Six primary destinations: one agent, one story. */
+const OFFERS: Item = { href: "/app/offers", label: "Offers", icon: BadgeDollarSign };
+
+/** Six primary destinations: one agent, one story. Offers joins them (after Interviews) once an offer exists. */
 const PRIMARY: Item[] = [
   { href: "/app", label: "Today", icon: Sun },
   { href: "/app/opportunities", label: "Opportunities", icon: Search },
   { href: "/app/applications", label: "Applications", icon: BriefcaseBusiness, also: ["/app/pipeline"] },
   { href: "/app/interviews", label: "Interviews", icon: Mic, badge: "interviews" },
-  { href: "/app/career", label: "Career", icon: Sprout, also: ["/app/profile", "/app/goal", "/app/readiness", "/app/insights"] },
+  { href: "/app/career", label: "Career", icon: Sprout, also: ["/app/profile", "/app/goal", "/app/readiness", "/app/insights", "/app/hired"] },
   { href: "/app/agent", label: "Agent", icon: Bot },
 ];
 
 /** Everything else: quieter, below the fold of attention. */
 const SECONDARY: Item[] = [
-  { href: "/app/inbox", label: "Responses", icon: MessageSquareText, badge: "responses" },
+  { href: "/app/inbox", label: "Ответы работодателей", icon: MessageSquareText, badge: "responses" },
   { href: "/app/approvals", label: "Подтверждения", icon: ShieldCheck, badge: "approvals" },
-  { href: "/app/offers", label: "Offers", icon: BadgeDollarSign },
   { href: "/app/campaign", label: "Кампания и оплата", icon: Rocket },
   { href: "/app/settings", label: "Приватность", icon: Lock },
 ];
 
-export type NavCounts = { approvals: number; responses: number; interviews: number };
+export type NavCounts = { approvals: number; responses: number; interviews: number; offers: number };
 
 export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; role: string; campaign: { status: string; day: number | null; total: number } | null; userName: string }) {
   const path = usePathname();
@@ -57,12 +58,13 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
   ];
 
   const badge = (it: Item) => (it.badge ? counts[it.badge] ?? 0 : 0);
+  const primary = counts.offers > 0 ? [...PRIMARY.slice(0, 4), OFFERS, ...PRIMARY.slice(4)] : PRIMARY;
 
   const list = (
     <div className="flex flex-col gap-7">
       <nav aria-label="Основная навигация">
         <ul className="flex flex-col gap-0.5">
-          {PRIMARY.map((it) => {
+          {primary.map((it) => {
             const active = isActive(it);
             const n = badge(it);
             return (
@@ -99,7 +101,7 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
                   onClick={() => setOpen(false)}
                   aria-current={active ? "page" : undefined}
                   className={cx(
-                    "flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green",
+                    "flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green lg:min-h-0",
                     active ? "bg-white/80 text-head" : "text-ink-3 hover:bg-white/50 hover:text-head",
                   )}
                 >

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { Chip, DemoBadge } from "@/components/ui";
-import { fmtDate, statusLabel, statusTone } from "@/lib/ops";
-import { LazyStatusMover } from "../../pipeline/_components/lazy-mover";
+import { ArrowRight } from "lucide-react";
+import { Chip, cx } from "@/components/ui";
+import { statusLabel, statusTone } from "@/lib/ops";
 import { cvVersionLabel } from "../../opportunities/_lib/fit";
+import { shortDate } from "../../../_components/ru";
 
 export type AppCardData = {
   id: string;
@@ -12,27 +13,28 @@ export type AppCardData = {
   pkg: { cvVersion: string } | null;
 };
 
-/** One application on the tracker. The status menu mounts only when opened (lazy), so a large board stays light. */
-export function ApplicationCard({ a, showStatus }: { a: AppCardData; showStatus?: boolean }) {
+/**
+ * One application. The whole card links to its page — status changes live there, not on the list,
+ * so a stray tap on a phone cannot move an application.
+ */
+export function ApplicationCard({ a, showStatus, compact }: { a: AppCardData; showStatus?: boolean; compact?: boolean }) {
   return (
-    <article className="flex flex-col gap-2 rounded-2xl border border-stroke bg-white/85 p-3 shadow-[0_1px_2px_rgb(0_0_0/.04)] transition-shadow hover:shadow-(--shadow-glass)">
-      <div className="flex items-center justify-between gap-2">
+    <Link
+      href={`/app/applications/${a.id}`}
+      className={cx(
+        "group flex h-full flex-col gap-2 rounded-2xl border border-stroke bg-white/85 shadow-[0_1px_2px_rgb(0_0_0/.04)] transition-shadow hover:shadow-(--shadow-glass) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green",
+        compact ? "p-3" : "p-4",
+      )}
+    >
+      <span className="flex items-center justify-between gap-2">
         <span className="truncate text-[12.5px] font-medium text-ink">{a.job.company}</span>
-        {a.job.source === "demo" && <DemoBadge />}
-      </div>
-      <Link href={`/app/applications/${a.id}`} className="line-clamp-2 rounded text-[14px] leading-snug text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">
-        {a.job.title}
-      </Link>
-      <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[12px]">
-        <dt className="text-ink-4">Submitted:</dt>
-        <dd className="num text-ink-2">{fmtDate(a.submittedAt)}</dd>
-        <dt className="text-ink-4">CV:</dt>
-        <dd className="text-ink-2">{cvVersionLabel(a.pkg?.cvVersion)}</dd>
-      </dl>
-      <div className="flex flex-wrap items-center justify-between gap-1.5">
-        {showStatus ? <Chip tone={statusTone(a.status)}>{statusLabel(a.status)}</Chip> : <span />}
-        <LazyStatusMover id={a.id} current={a.status} groups={["applied", "interview", "result"]} label={`Сменить статус: ${a.job.company} — ${a.job.title}`} />
-      </div>
-    </article>
+        {showStatus && <Chip tone={statusTone(a.status)}>{statusLabel(a.status)}</Chip>}
+      </span>
+      <span className="line-clamp-2 text-[14.5px] leading-snug text-head group-hover:underline">{a.job.title}</span>
+      <span className="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[12px] text-ink-3">
+        <span>Подано <span className="num text-ink-2">{shortDate(a.submittedAt)}</span>{a.pkg ? <> · {cvVersionLabel(a.pkg.cvVersion)}</> : null}</span>
+        <ArrowRight className="size-3.5 text-teal transition-transform group-hover:translate-x-0.5" aria-hidden />
+      </span>
+    </Link>
   );
 }

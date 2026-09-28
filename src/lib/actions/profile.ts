@@ -52,54 +52,6 @@ async function ownFact(userId: string, id: string) {
   return id ? db.fact.findFirst({ where: { id, userId } }) : null;
 }
 
-/* ───────────── Identity & conditions ───────────── */
-
-export async function updateIdentity(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser();
-  const name = str(form, "name", 80);
-  if (name.length < 2) return fail("Введите имя — минимум 2 символа.");
-  const data = {
-    headline: str(form, "headline", 120),
-    city: str(form, "city", 80),
-    location: str(form, "city", 80),
-    country: str(form, "country", 2).toUpperCase() || "KZ",
-    phone: str(form, "phone", 40),
-    linkedin: cleanUrl(str(form, "linkedin", 200)),
-    github: cleanUrl(str(form, "github", 200)),
-    portfolio: cleanUrl(str(form, "portfolio", 200)),
-    summary: str(form, "summary", 1200),
-  };
-  await db.user.update({ where: { id: user.id }, data: { name } });
-  await db.profile.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
-  refresh();
-  return done("Контакты сохранены");
-}
-
-export async function updateConditions(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser();
-  const workAuth = list(str(form, "workAuth", 200).toUpperCase(), 20, 3).filter((c) => /^[A-Z]{2}$/.test(c));
-  const languages = list(str(form, "languages", 600), 12, 80).map((line) => {
-    const [lang, level] = line.split(/\s*[—–:-]\s*/);
-    return { lang: (lang ?? "").trim(), level: (level ?? "").trim() || "—" };
-  }).filter((l) => l.lang);
-  const years = Number(str(form, "yearsExperience", 6).replace(",", "."));
-  const data = {
-    citizenship: str(form, "citizenship", 2).toUpperCase() || "KZ",
-    workAuth: s(workAuth),
-    needsSponsorship: bool(form, "needsSponsorship"),
-    relocation: bool(form, "relocation"),
-    languages: s(languages),
-    englishLevel: oneOf(str(form, "englishLevel", 2).toUpperCase(), ENGLISH, "B1"),
-    salaryExpectation: intOr(str(form, "salaryExpectation", 12), 0, 0, 5_000_000),
-    noticePeriod: str(form, "noticePeriod", 40) || "2 weeks",
-    remotePref: oneOf(str(form, "remotePref", 10), REMOTE, "remote"),
-    yearsExperience: Number.isFinite(years) ? Math.max(0, Math.min(50, Math.round(years * 10) / 10)) : 0,
-  };
-  await db.profile.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
-  refresh();
-  return done("Условия сохранены");
-}
-
 /** "Основное" on the Career Profile: role, experience, English, location, contacts. */
 export async function updateBasics(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
@@ -216,51 +168,6 @@ export async function deleteFact(form: FormData) {
   await db.fact.delete({ where: { id: fact.id } });
   await logEvent(user.id, "fact_deleted", `Факт удалён: ${fact.title}`);
   refresh();
-}
-
-export async function toggleFactVerified(form: FormData) {
-  const user = await requireUser();
-  const fact = await ownFact(user.id, str(form, "id", 40));
-  if (!fact) return;
-  await db.fact.update({ where: { id: fact.id }, data: { verified: !fact.verified } });
-  await logEvent(user.id, "fact_verified", `${fact.verified ? "Снято подтверждение" : "Подтверждён факт"}: ${fact.title}`);
-  refresh();
-}
-
-/* ───────────── AI mini-interview ───────────── */
-
-export async function saveMiniAnswer(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser();
-  const fact = await ownFact(user.id, str(form, "factId", 40));
-  if (!fact) return fail("Факт не найден.");
-  const question = str(form, "question", 400);
-  const answer = str(form, "answer", 3000);
-  if (!question) return fail("Вопрос не указан.");
-  if (answer.length < 3) return fail("Напишите ответ — хотя бы пару слов.");
-  const existing = await db.miniInterviewAnswer.findFirst({ where: { userId: user.id, factId: fact.id, question } });
-  if (existing) await db.miniInterviewAnswer.update({ where: { id: existing.id }, data: { answer } });
-  else await db.miniInterviewAnswer.create({ data: { userId: user.id, factId: fact.id, question, answer } });
-  refresh();
-  return done("Ответ сохранён");
-}
-
-/** Suggestions derived from the user's own answers — shown for confirmation, never applied silently. */
-export async function applyAnswerToFact(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser();
-  const fact = await ownFact(user.id, str(form, "factId", 40));
-  if (!fact) return fail("Факт не найден.");
-  const metrics = str(form, "metrics", 240);
-  const teamRaw = str(form, "teamSize", 6);
-  const ownership = oneOf(str(form, "ownership", 12), [...OWNERSHIP, ""] as const, "");
-  const data: { metrics?: string; teamSize?: number; ownership?: string } = {};
-  if (metrics) data.metrics = metrics;
-  if (teamRaw) data.teamSize = intOr(teamRaw, 1, 1, 10000);
-  if (ownership) data.ownership = ownership;
-  if (!Object.keys(data).length) return fail("Заполните хотя бы одно поле.");
-  await db.fact.update({ where: { id: fact.id }, data });
-  await logEvent(user.id, "fact_enriched", `Факт уточнён по мини-интервью: ${fact.title}`, null, data);
-  refresh();
-  return done("Факт обновлён из ваших ответов");
 }
 
 /* ───────────── STAR stories ───────────── */

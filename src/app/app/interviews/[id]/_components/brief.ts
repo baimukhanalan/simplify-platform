@@ -71,9 +71,32 @@ const FAMILY_TOPICS: Record<string, string[]> = {
 const ROUND_FOCUS: Record<string, string[]> = {
   assessment: ["Скорость и точность под таймером"],
   recruiter: ["Мотивация и история карьеры", "Ожидания по зарплате и сроки выхода"],
-  hiring_manager: ["Глубина вашего лучшего проекта", "Приоритизация и работа со стейкхолдерами"],
-  technical: ["Live-задача по ключевому навыку", "Как вы проверяете корректность анализа"],
+  hiring_manager: ["Глубина твоего лучшего проекта", "Приоритизация и работа со стейкхолдерами"],
+  technical: ["Live-задача по ключевому навыку", "Как ты проверяешь корректность анализа"],
   final: ["Ценности и культура", "Долгосрочные цели и вопросы к лидерам"],
+};
+
+/** Whole-sentence Russian equivalents for common soft requirements. Unknown ones return null (never half-translated). */
+const SOFT_RU: [RegExp, string][] = [
+  [/communicat/i, "Ясно объясняет выводы и договаривается с коллегами"],
+  [/stakeholder/i, "Работает со стейкхолдерами и их запросами"],
+  [/english/i, "Рабочий английский"],
+  [/attention to detail|detail[- ]oriented/i, "Внимательность к деталям"],
+  [/team ?player|teamwork|collaborat/i, "Умеет работать в команде"],
+  [/ownership|self-?starter|proactive|independen/i, "Самостоятельность и ответственность за результат"],
+  [/problem[- ]solving|analytical (thinking|mindset|skills)/i, "Аналитическое мышление"],
+  [/a\/b|experiment/i, "Опыт A/B-тестов и экспериментов"],
+  [/statistic/i, "Уверенная статистика"],
+  [/degree|bachelor|master/i, "Профильное образование"],
+  [/fast[- ]paced|startup/i, "Готовность к быстрому темпу"],
+];
+const translateSoft = (r: string) => SOFT_RU.find(([re]) => re.test(r))?.[1] ?? null;
+
+/** True when a line is mostly Latin script — i.e. quoted from an English JD. */
+export const isEnglish = (s: string) => {
+  const lat = (s.match(/[A-Za-z]/g) ?? []).length;
+  const cyr = (s.match(/[А-Яа-яЁё]/g) ?? []).length;
+  return lat > cyr * 2;
 };
 
 const clean = (l: string) => l.replace(/^[\s\-•*·–]+/, "").replace(/\s+/g, " ").trim();
@@ -95,9 +118,9 @@ export function buildBriefHeuristic(i: BriefInput): Brief {
 
   // "About us" style sentences, excluding the generic "X is hiring a Y" opener.
   const about = sentences.filter((s) => /\b(we are|we're|our mission|we build|we help|helps|platform|founded|customers)\b/i.test(s) && !/is hiring/i.test(s)).slice(0, 2);
-  const what = about.length
-    ? about.join(" ")
-    : `${i.company} работает в сфере ${industry}${profile ? ` — ${profile.what}` : ""}.`;
+  const what = !about.length || profile
+    ? `${i.company} работает в сфере ${industry}${profile ? ` — ${profile.what}` : ""}.`
+    : about.join(" ");
 
   const productLines = sentences.filter((s) => /\b(product|app|platform|service|tool|api)\b/i.test(s) && !/is hiring|you('|’)ll|you will|join|requirement/i.test(s)).slice(0, 2);
 
@@ -131,15 +154,16 @@ export function buildBriefHeuristic(i: BriefInput): Brief {
   const lookFor = uniq([
     `${SENIORITY_LABEL[i.seniority] ?? "Junior"}-уровень: ${years}`,
     i.technologies.length ? `Уверенно владеет ${i.technologies.slice(0, 4).join(", ")}` : "",
-    ...soft.map((r) => r.replace(/^Strong /i, "Сильные ").replace(/^Ability to /i, "Умеет ")),
+    // Only requirements we can translate whole; the rest stay verbatim (English) under "Ключевые требования".
+    ...soft.map(translateSoft).filter((x): x is string => Boolean(x)),
   ]).slice(0, 4);
 
-  const topics = uniq([...(ROUND_FOCUS[i.round] ?? []), ...(FAMILY_TOPICS[i.roleFamily] ?? []), ...i.technologies.slice(0, 3).map((t) => `${t}: типичные вопросы и ваш рабочий пример`)]).slice(0, 6);
+  const topics = uniq([...(ROUND_FOCUS[i.round] ?? []), ...(FAMILY_TOPICS[i.roleFamily] ?? []), ...i.technologies.slice(0, 3).map((t) => `${t}: типичные вопросы и твой рабочий пример`)]).slice(0, 6);
 
   return {
     company: {
       what,
-      model: profile?.model ?? "Модель монетизации в вакансии не описана — уточните на звонке, как компания зарабатывает и кто платит.",
+      model: profile?.model ?? "Модель монетизации в вакансии не описана — уточни на звонке, как компания зарабатывает и кто платит.",
       products: uniq([...productLines, ...(profile?.products ?? [])]).slice(0, 4),
       recent: [
         `Запуски и релизы ${i.company} за последние 90 дней`,

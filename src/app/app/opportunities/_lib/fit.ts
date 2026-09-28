@@ -1,6 +1,7 @@
 // Pure presentation logic for Opportunities: turns engine output (match reasons, eligibility, job vs goal)
 // into human sentences — "Why this fits" and "Risks". Safe for server and client.
 import { ROLE_FAMILIES, SENIORITY_LABEL, seniorityIndex } from "@/lib/engine/taxonomy";
+import { plural } from "../../../_components/ru";
 
 export type Reason = { label: string; ok: boolean };
 
@@ -30,13 +31,21 @@ export type FitOpp = { match: number; eligibility: string; pInterview: number; r
 
 const DAY = 86400000;
 const years = (n: number) => (n % 1 === 0 ? String(n) : n.toFixed(1));
+/** "от 1 года", "от 2 лет", "от 2.5 года" — genitive after «от». */
+const fromYears = (n: number) => (n % 1 === 0 ? plural(n, ["года", "лет", "лет"]) : "года");
 
-/** Interview probability bucket. pInterview is capped at 0.6 by the engine; typical strong roles land at 0.1–0.3. */
+/**
+ * Interview probability as a number with a plain-language comparison: "22% — выше среднего".
+ * pInterview is capped at 0.6 by the engine; typical strong roles land at 0.1–0.3, so ~6–15% is "around average".
+ */
 export function interviewChance(o: { eligibility: string; pInterview: number }) {
-  if (o.eligibility === "blocked") return { label: "Low", tone: "rose" as const };
-  if (o.pInterview >= 0.15) return { label: "High", tone: "green" as const };
-  if (o.pInterview >= 0.06) return { label: "Medium", tone: "teal" as const };
-  return { label: "Low", tone: "amber" as const };
+  const pct = Math.round(Math.max(0, Math.min(1, o.pInterview)) * 100);
+  const [qual, tone] =
+    o.eligibility === "blocked" ? (["не проходишь по требованиям", "rose"] as const)
+    : o.pInterview >= 0.15 ? (["выше среднего", "green"] as const)
+    : o.pInterview >= 0.06 ? (["около среднего", "teal"] as const)
+    : (["ниже среднего", "amber"] as const);
+  return { pct, qual, tone, label: `${pct}% — ${qual}` };
 }
 
 const INDUSTRY_ALIASES: Record<string, string[]> = {
@@ -63,19 +72,19 @@ export function whyFits(o: FitOpp, job: FitJob, c: FitCandidate, limit = 4): str
   if (job.industry && hasDomain(job.industry, c.background)) out.push(`${job.industry} experience`);
   if (role?.ok) out.push(`Роль совпадает с целью: ${role.label}`);
   if (job.remote === "remote" && o.eligibility !== "blocked") out.push("Remote eligible");
-  else if (c.workModes.includes(job.remote) && o.eligibility !== "blocked") out.push(`${job.remote === "hybrid" ? "Hybrid" : "Onsite"} — ваш формат`);
+  else if (c.workModes.includes(job.remote) && o.eligibility !== "blocked") out.push(`${job.remote === "hybrid" ? "Hybrid" : "Onsite"} — твой формат`);
   const senGap = seniorityIndex(job.seniority) - seniorityIndex(c.seniority);
   if (senGap === 0 || (senGap === 1 && c.yearsExperience >= job.minYears)) out.push(`Seniority aligned (${SENIORITY_LABEL[job.seniority] ?? job.seniority})`);
-  if (job.minYears && c.yearsExperience >= job.minYears) out.push(`Опыт ${years(c.yearsExperience)} г. ≥ ${years(job.minYears)} требуемых`);
+  if (job.minYears && c.yearsExperience >= job.minYears) out.push(`Опыт ${years(c.yearsExperience)} ${c.yearsExperience % 1 === 0 ? plural(c.yearsExperience, ["год", "года", "лет"]) : "года"} — требуется от ${years(job.minYears)}`);
   const salary = o.reasons.find((r) => /salary/i.test(r.label));
-  if (salary?.ok) out.push("Зарплата выше вашего минимума");
+  if (salary?.ok) out.push("Зарплата выше твоего минимума");
   return out.slice(0, limit);
 }
 
 /** Honest risks: stated gaps plus what the posting leaves unknown. */
 export function risks(o: FitOpp, job: FitJob, c: FitCandidate): string[] {
   const out: string[] = [...o.blockers];
-  if (job.minYears && c.yearsExperience < job.minYears) out.push(`Требуется ${years(job.minYears)}+ лет, у вас ${years(c.yearsExperience)}`);
+  if (job.minYears && c.yearsExperience < job.minYears) out.push(`Нужен опыт от ${years(job.minYears)} ${fromYears(job.minYears)}, у тебя ${years(c.yearsExperience)}`);
   for (const g of o.softGaps) {
     if (/^Требуется \d/.test(g)) continue; // restated above with the user's exact years
     out.push(job.sponsorship === "yes" && /спонсорство не указано/i.test(g) ? "Нужна виза — компания спонсирует" : g);
@@ -93,26 +102,19 @@ export function risks(o: FitOpp, job: FitJob, c: FitCandidate): string[] {
 
 /** Eligibility as a verdict the user reads in one glance. */
 export function eligibilityVerdict(e: string) {
-  if (e === "blocked") return { label: "Fail", hint: "Формально не проходите — агент не подаёт", tone: "rose" as const };
-  if (e === "soft") return { label: "Pass", hint: "Проходите, но есть пробелы", tone: "amber" as const };
+  if (e === "blocked") return { label: "Fail", hint: "Формально не проходишь — агент не подаёт", tone: "rose" as const };
+  if (e === "soft") return { label: "Pass", hint: "Проходишь, но есть пробелы", tone: "amber" as const };
   return { label: "Pass", hint: "Формальных препятствий нет", tone: "green" as const };
 }
 
-/** "v14-data_analyst" → "Version 14". */
+/** "v20-product_analyst" → "CV · версия 20". Internal role codes never reach the UI. */
 export const cvVersionLabel = (v: string | null | undefined) => {
-  if (!v) return "—";
+  if (!v) return "CV";
   const n = /^v(\d+)/i.exec(v)?.[1];
-  return n ? `Version ${n}` : v;
+  return n ? `CV · версия ${n}` : "CV";
 };
 
-/** Russian plural: plural(5, ["вакансия", "вакансии", "вакансий"]). */
-export function plural(n: number, forms: [string, string, string]) {
-  const a = Math.abs(n) % 100, b = a % 10;
-  if (a > 10 && a < 20) return forms[2];
-  if (b > 1 && b < 5) return forms[1];
-  if (b === 1) return forms[0];
-  return forms[2];
-}
+export { plural } from "../../../_components/ru";
 
 /** Requirement lines from sources often carry their own bullet ("- SQL"); the UI draws its own. */
 export const cleanRequirement = (r: string) => r.replace(/^\s*(?:[-•*–]|\d+[.)])\s*/, "").trim();

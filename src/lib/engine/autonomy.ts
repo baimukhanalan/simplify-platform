@@ -60,7 +60,7 @@ export const AUTONOMY_LABELS: { key: Exclude<keyof Autonomy, "sensitive" | "auto
   { key: "findJobs", label: "Find jobs", hint: "Искать новые вакансии каждый день" },
   { key: "personalizeCv", label: "Personalize CV", hint: "Адаптировать CV и cover letter под каждую вакансию" },
   { key: "answerStandard", label: "Answer standard questions", hint: "Опыт, notice period, relocation, мотивация" },
-  { key: "changeSalary", label: "Change salary expectation", hint: "Отклоняться от вашей зарплатной вилки в ответах" },
+  { key: "changeSalary", label: "Change salary expectation", hint: "Отклоняться от твоей зарплатной вилки в ответах" },
   { key: "outsideCountries", label: "Apply outside selected countries", hint: "Подаваться за пределами выбранных стран" },
   { key: "belowSalaryFloor", label: "Apply below salary floor", hint: "Подаваться на вакансии ниже минимальной зарплаты" },
 ];

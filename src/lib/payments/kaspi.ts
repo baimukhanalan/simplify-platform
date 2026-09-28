@@ -33,6 +33,8 @@ export const mockEnabled = () => kaspiMode() === "mock";
 export const MOCK_PROVIDER = "kaspi_mock";
 export const LIVE_PROVIDER = "kaspi";
 export const KASPI_PROVIDERS = [MOCK_PROVIDER, LIVE_PROVIDER];
+/** True for any Kaspi invoice, mock or real — UI that offers "pay" / "open invoice" must treat both alike. */
+export const isKaspiProvider = (p: string | null | undefined) => p === MOCK_PROVIDER || p === LIVE_PROVIDER;
 
 const INVOICE_TTL_MS = 30 * 60 * 1000;
 const MAX_SKEW_S = 5 * 60;
@@ -192,6 +194,7 @@ export async function handleWebhook(evt: WebhookEvent, source: EventSource): Pro
   // A mock-signed event can never settle a real invoice (and vice versa).
   if ((source === "mock") !== (p.provider === MOCK_PROVIDER)) return { ok: false, status: 403, error: "event source does not match invoice provider" };
   if (evt.amount !== p.amount || evt.currency !== p.currency) return { ok: false, status: 400, error: "amount mismatch" };
+  if (!p.userId) return { ok: false, status: 410, error: "account deleted" };
   const meta = j<Meta>(p.meta, {});
   const seenTx = (meta.txIds ?? []).includes(evt.transactionId);
 
@@ -232,7 +235,9 @@ type ActivateResult = { claimed: boolean } & ({ kind: "not_paid"; campaignId?: u
  * The first agent tick is NOT run here; callers schedule it with after() so the webhook returns fast.
  */
 export async function activatePaid(paymentId: string, claimMeta?: Meta): Promise<ActivateResult> {
-  const pre = await db.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { userId: true } });
+  const found = await db.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { userId: true } });
+  if (!found.userId) return { claimed: false, kind: "not_paid" };
+  const pre = { userId: found.userId };
   const user = await db.user.findUniqueOrThrow({ where: { id: pre.userId }, include: { goal: true } });
   const readiness = await assessReadinessFor(pre.userId).catch(() => 0);
 
@@ -253,8 +258,8 @@ export async function activatePaid(paymentId: string, claimMeta?: Meta): Promise
 
     const now = new Date();
     // Campaigns past endsAt are over even if no tick has expired them yet.
-    await tx.campaign.updateMany({ where: { userId: p.userId, status: { in: ["active", "paused"] }, endsAt: { lte: now } }, data: { status: "expired" } });
-    const existing = await tx.campaign.findFirst({ where: { userId: p.userId, status: { in: ["active", "paused"] } }, select: { id: true } });
+    await tx.campaign.updateMany({ where: { userId: pre.userId, status: { in: ["active", "paused"] }, endsAt: { lte: now } }, data: { status: "expired" } });
+    const existing = await tx.campaign.findFirst({ where: { userId: pre.userId, status: { in: ["active", "paused"] } }, select: { id: true } });
     if (existing) {
       await tx.payment.update({ where: { id: p.id }, data: { meta: s({ ...meta, refundDue: true, refundReason: "campaign_already_active", conflictingCampaignId: existing.id }) } });
       return { kind: "refund_due", claimed, externalId: p.externalId };
@@ -262,14 +267,14 @@ export async function activatePaid(paymentId: string, claimMeta?: Meta): Promise
     const plan = PLANS[p.plan as keyof typeof PLANS] ?? PLANS.local;
     const campaign = await tx.campaign.create({
       data: {
-        userId: p.userId, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: user.goal?.mode ?? "autonomous", readiness,
+        userId: pre.userId, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: user.goal?.mode ?? "autonomous", readiness,
         dailyLimit: plan.dailyLimit, autoSubmit: j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false, startedAt: now, endsAt: new Date(now.getTime() + plan.days * 86400000),
       },
     });
     await tx.payment.update({ where: { id: p.id }, data: { campaignId: campaign.id } });
-    await tx.user.update({ where: { id: p.userId }, data: { careerMode: "active" } });
+    await tx.user.update({ where: { id: pre.userId }, data: { careerMode: "active" } });
     // Other open invoices can no longer be paid by mistake (a late payment on one is handled as refund_due).
-    await tx.payment.updateMany({ where: { userId: p.userId, id: { not: p.id }, status: "pending", provider: { in: KASPI_PROVIDERS } }, data: { status: "expired" } });
+    await tx.payment.updateMany({ where: { userId: pre.userId, id: { not: p.id }, status: "pending", provider: { in: KASPI_PROVIDERS } }, data: { status: "expired" } });
     return { kind: "created", campaignId: campaign.id, claimed, externalId: p.externalId, planLabel: plan.label, days: plan.days };
   });
 
@@ -277,7 +282,7 @@ export async function activatePaid(paymentId: string, claimMeta?: Meta): Promise
     await logEvent(pre.userId, "campaign_started", `Оплата Kaspi Pay ${r.externalId} прошла. Career Campaign «${r.planLabel}» запущена на ${r.days} дней`);
   } else if (r.kind === "refund_due" && r.externalId) {
     await logEvent(pre.userId, "payment_refund_due", `Оплата ${r.externalId} получена, но кампания уже идёт — платёж будет возвращён`);
-    await notify(pre.userId, "info", "Платёж будет возвращён", `Счёт ${r.externalId} оплачен, но у вас уже есть активная кампания. Мы вернём деньги.`, "/app/campaign");
+    await notify(pre.userId, "info", "Платёж будет возвращён", `Счёт ${r.externalId} оплачен, но у тебя уже есть активная кампания. Мы вернём деньги.`, "/app/campaign");
   }
   return r.kind === "not_paid" || r.kind === "refund_due" ? { kind: r.kind, claimed: r.claimed } : { kind: r.kind, campaignId: r.campaignId, claimed: r.claimed };
 }

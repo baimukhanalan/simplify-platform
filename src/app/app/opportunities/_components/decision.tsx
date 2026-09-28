@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { ArrowRight, Bot, Check, Send, Undo2, X } from "lucide-react";
 import { cx } from "@/components/ui";
 import { decideOpportunity, type DecisionState } from "@/lib/actions/opportunities";
+import { plural } from "../../../_components/ru";
 
 type Props = {
   id: string;
@@ -35,7 +36,7 @@ export function DecisionBar({ id, company, decision, status, blocked, pending = 
   const [intent, setIntent] = useState<string>("");
   const applyRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
-  const h = size === "md" ? "h-11 px-5 text-[14.5px]" : "h-9 px-4 text-[13px]";
+  const h = size === "md" ? "h-11 px-5 text-[14.5px]" : "h-10 px-4 text-[13px]";
 
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
@@ -97,7 +98,7 @@ export function DecisionBar({ id, company, decision, status, blocked, pending = 
         >
           <p className="text-[13px] leading-snug text-ink-2">
             Подать в <b className="font-medium text-head">{company}</b> сейчас? Агент соберёт персональное CV и cover letter и отправит заявку.
-            Чувствительные вопросы всё равно придут вам на подтверждение.
+            Чувствительные вопросы всё равно придут тебе на подтверждение.
           </p>
           <div className="flex flex-wrap gap-2">
             <button ref={confirmRef} name="decision" value="apply" disabled={busy} aria-busy={busy || undefined} className={cx(pill, h, "bg-cta text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c]")}>
@@ -126,7 +127,7 @@ export function DecisionBar({ id, company, decision, status, blocked, pending = 
             disabled={busy || blocked}
             aria-pressed={decision === "auto"}
             className={cx(pill, h, decision === "auto" ? "bg-green-soft text-green ring-1 ring-green/25 hover:bg-green/15" : "glass !rounded-full text-head hover:bg-white")}
-            title={decision === "auto" ? "Агент подаст сам. Нажмите, чтобы снять." : "Агент сам решит, когда и как подать"}
+            title={decision === "auto" ? "Агент подаст сам. Нажми, чтобы снять." : "Агент сам решит, когда и как подать"}
           >
             {busy && (intent === "auto" || intent === "reset") ? <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : <Bot className="size-3.5" aria-hidden />}
             {decision === "auto" ? "Auto включён" : "Auto"}
@@ -135,8 +136,8 @@ export function DecisionBar({ id, company, decision, status, blocked, pending = 
             {busy && intent === "skip" ? "Пропускаем…" : "Skip"}
           </button>
           {pending > 0 && !state.message && (
-            <Link href="/app/approvals" className="text-[12.5px] text-amber underline-offset-2 hover:underline">
-              {decision === "apply" ? "Apply подтверждён · " : ""}{pending === 1 ? "1 вопрос ждёт вас" : `${pending} вопроса ждут вас`}
+            <Link href="/app/approvals" className="inline-flex min-h-10 items-center text-[12.5px] text-amber underline-offset-2 hover:underline">
+              {decision === "apply" ? "Apply подтверждён · " : ""}{pending} {plural(pending, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} тебя
             </Link>
           )}
         </div>

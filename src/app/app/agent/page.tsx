@@ -6,22 +6,31 @@ import { j } from "@/lib/db";
 import { AUTONOMY_LABELS, readAutonomy } from "@/lib/engine/autonomy";
 import { PLANS } from "@/lib/engine/taxonomy";
 import { runAgentNow, setCampaignStatus, updateCampaignSettings } from "@/lib/actions/campaign";
-import { runningCampaign } from "@/lib/ops-data";
+import { pendingApprovalsCount, runningCampaign } from "@/lib/ops-data";
+import { demoToolsEnabled } from "@/lib/demo";
 import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Field, Label, PageHeader, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { AutonomyForm } from "./_components/autonomy-form";
+import { AgentStatus } from "../../_components/agent-status";
+import { endSentence, plural } from "../../_components/ru";
+
+/** Row copy in the product's «ты» voice (engine labels stay the source of keys and English names). */
+const HINT_OVERRIDE: Record<string, string> = { changeSalary: "Отклоняться от твоей зарплатной вилки в ответах" };
 
 export const metadata: Metadata = { title: "Agent" };
 
 export default async function AgentPage() {
   const user = await requireUser();
   const autonomy = readAutonomy(user.autonomy);
-  const campaign = await runningCampaign(user.id);
+  const [campaign, approvals] = await Promise.all([runningCampaign(user.id), pendingApprovalsCount(user.id)]);
+  const demo = demoToolsEnabled(user);
+  const rows = AUTONOMY_LABELS.map((r) => (HINT_OVERRIDE[r.key] ? { ...r, hint: HINT_OVERRIDE[r.key] } : r));
   // The agent submits on its own only with the auto-submit consent; a running campaign carries it as campaign.autoSubmit.
   const autoSubmitConsent = campaign ? campaign.autoSubmit : j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false;
   const paused = campaign?.status === "paused";
   const plan = campaign ? PLANS[campaign.plan as keyof typeof PLANS] ?? PLANS.local : null;
+  const maxPerDay = plan?.dailyLimit ?? PLANS.local.dailyLimit;
 
   return (
     <>
@@ -31,8 +40,15 @@ export default async function AgentPage() {
         sub="Ты задаёшь границы один раз. Всё, что внутри них, Simplify делает без тебя; всё, что за ними, — только с твоего разрешения."
       />
 
+      <AgentStatus
+        needs={approvals ? [{ text: `${approvals} ${plural(approvals, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа`, href: "/app/approvals" }] : []}
+        idle={!campaign || paused}
+        working={!campaign ? "Кампания не запущена — настройки применятся с первого цикла." : paused ? "Кампания на паузе — агент ничего не отправляет." : "Агент действует в этих границах."}
+        className="-mt-3 mb-6"
+      />
+
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <AutonomyForm initial={autonomy} rows={AUTONOMY_LABELS} autoSubmitConsent={autoSubmitConsent} />
+        <AutonomyForm initial={autonomy} rows={rows} autoSubmitConsent={autoSubmitConsent} />
 
         <div className="flex flex-col gap-6 lg:sticky lg:top-6">
           <Card strong className="flex flex-col gap-5">
@@ -49,28 +65,28 @@ export default async function AgentPage() {
               <>
                 <p className="text-[14px] text-ink-2">
                   {paused ? "Агент на паузе: не ищет и не отправляет заявки. Интервью и ответы работодателей продолжают приходить." : "Агент работает каждый день в пределах дневного лимита."}
-                  {campaign.lastRunAt && <span className="text-ink-3"> Последний цикл {ago(campaign.lastRunAt)}.</span>}
+                  {campaign.lastRunAt && <span className="text-ink-3"> {endSentence(`Последний цикл ${ago(campaign.lastRunAt)}`)}</span>}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <form action={setCampaignStatus}>
                     <input type="hidden" name="status" value={paused ? "active" : "paused"} />
-                    <SubmitButton variant={paused ? "green" : "glass"} size="sm" pendingText="…">
-                      {paused ? <><Play className="size-4" strokeWidth={1.7} aria-hidden />Resume</> : <><Pause className="size-4" strokeWidth={1.7} aria-hidden />Pause</>}
+                    <SubmitButton variant={paused ? "green" : "glass"} size="sm" pendingText={paused ? "Возобновляем…" : "Ставим на паузу…"} className="!h-10">
+                      {paused ? <><Play className="size-4" strokeWidth={1.7} aria-hidden />Возобновить</> : <><Pause className="size-4" strokeWidth={1.7} aria-hidden />Пауза</>}
                     </SubmitButton>
                   </form>
-                  {!paused && (
+                  {!paused && demo && (
                     <form action={runAgentNow}>
-                      <SubmitButton variant="glass" size="sm" pendingText="Агент работает…"><Zap className="size-4" strokeWidth={1.7} aria-hidden />Run now</SubmitButton>
+                      <SubmitButton variant="glass" size="sm" pendingText="Агент работает…" className="!h-10"><Zap className="size-4" strokeWidth={1.7} aria-hidden />Запустить цикл агента</SubmitButton>
                     </form>
                   )}
                 </div>
                 <form action={updateCampaignSettings} className="flex flex-col gap-3 border-t border-line pt-5">
                   {/* updateCampaignSettings also writes autoSubmit (the consent mirror): pass the current value through unchanged. */}
                   {campaign.autoSubmit && <input type="hidden" name="autoSubmit" value="on" />}
-                  <Field label="Заявок в день" hint={`1–25. План ${plan?.label} рассчитан на ~${plan?.dailyLimit} в день: меньше — каждая заявка сильнее.`}>
-                    <input name="dailyLimit" type="number" min={1} max={25} required inputMode="numeric" defaultValue={campaign.dailyLimit} className="field" />
+                  <Field label="Лимит заявок в день" hint={`От 1 до ${maxPerDay} — максимум тарифа ${plan?.label}. Меньше заявок — каждая сильнее.`}>
+                    <input name="dailyLimit" type="number" min={1} max={maxPerDay} required inputMode="numeric" defaultValue={Math.min(campaign.dailyLimit, maxPerDay)} className="field" />
                   </Field>
-                  <div><SubmitButton variant="glass" size="sm" pendingText="Сохраняем…">Сохранить лимит</SubmitButton></div>
+                  <div><SubmitButton variant="glass" size="sm" pendingText="Сохраняем…" className="!h-10">Сохранить лимит</SubmitButton></div>
                 </form>
               </>
             ) : (
@@ -84,10 +100,10 @@ export default async function AgentPage() {
           <Card className="flex flex-col gap-3">
             <Label>Когда агент спрашивает тебя</Label>
             <p className="text-[13.5px] leading-relaxed text-ink-2">
-              Sensitive questions — пол, инвалидность, статус ветерана и похожие — агент по умолчанию <span className="text-head">всегда</span> оставляет тебе. Он может отвечать на них сам, только если ты выбрал «prefer not to say».
+              Sensitive questions — пол, инвалидность, статус ветерана и похожие — агент по умолчанию оставляет тебе. Сам он отвечает на них, только если выбран вариант «prefer not to say».
             </p>
             <p className="text-[13.5px] leading-relaxed text-ink-2">
-              Юридические декларации, спонсорство визы и нестандартные вопросы всегда ждут тебя в <Link href="/app/approvals" className="text-teal underline-offset-2 hover:underline">Подтверждениях</Link>. На повторяющиеся юридические вопросы и вопросы о спонсорстве агент дальше отвечает твоим прошлым ответом.
+              Юридические декларации, спонсорство визы и нестандартные вопросы агент сам не решает: в первый раз они ждут тебя в <Link href="/app/approvals" className="text-teal underline-offset-2 hover:underline">Подтверждениях</Link>. Когда такой юридический вопрос или вопрос о спонсорстве повторится, агент повторит твой прошлый ответ.
             </p>
           </Card>
         </div>

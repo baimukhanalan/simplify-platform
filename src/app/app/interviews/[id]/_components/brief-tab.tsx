@@ -3,12 +3,12 @@ import { Card, Chip, Label, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { regeneratePack } from "@/lib/actions/interview";
 import { aiEnabled } from "@/lib/ai";
-import type { StoredBrief } from "./brief";
+import { isEnglish, type StoredBrief } from "./brief";
 
 type Props = { id: string; brief: StoredBrief; company: string; role: string; skills: string[]; technologies: string[]; jobUrl: string; location: string; remote: string };
 
-const Bullets = ({ items, tone = "teal" }: { items: string[]; tone?: "teal" | "green" }) => (
-  <ul className="flex flex-col gap-2">
+const BulletList = ({ items, tone = "teal", en }: { items: string[]; tone?: "teal" | "green"; en?: boolean }) => (
+  <ul className="flex flex-col gap-2" lang={en ? "en" : undefined}>
     {items.map((x) => (
       <li key={x} className="flex gap-2.5 text-[14.5px] leading-relaxed text-ink-2">
         <span aria-hidden className={cx("mt-[9px] size-1.5 shrink-0 rounded-full", tone === "green" ? "bg-green" : "bg-teal/70")} />
@@ -17,6 +17,23 @@ const Bullets = ({ items, tone = "teal" }: { items: string[]; tone?: "teal" | "g
     ))}
   </ul>
 );
+
+/** Russian items as-is; lines quoted from an English JD are grouped and labelled, never mixed into Russian sentences. */
+const Bullets = ({ items, tone }: { items: string[]; tone?: "teal" | "green" }) => {
+  const ru = items.filter((x) => !isEnglish(x));
+  const en = items.filter(isEnglish);
+  return (
+    <div className="flex flex-col gap-3">
+      {ru.length > 0 && <BulletList items={ru} tone={tone} />}
+      {en.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {ru.length > 0 && <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-ink-4">Цитата из вакансии</span>}
+          <BulletList items={en} tone={tone} en />
+        </div>
+      )}
+    </div>
+  );
+};
 
 function Block({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -72,7 +89,7 @@ export function BriefTab({ id, brief, company, role, skills, technologies, jobUr
         </div>
         <div className="rounded-2xl border border-line bg-white/55 p-4">
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
-            <Label>{byClaude ? "Recent events" : "Recent events · проверьте перед звонком"}</Label>
+            <Label>{byClaude ? "Recent events" : "Recent events · проверь перед звонком"}</Label>
             <a href={news} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded text-[12.5px] text-teal underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-green">
               Новости {company}<ArrowUpRight className="size-3.5" strokeWidth={1.7} aria-hidden /><span className="sr-only">(Google News, в новой вкладке)</span>
             </a>
@@ -96,13 +113,13 @@ export function BriefTab({ id, brief, company, role, skills, technologies, jobUr
           </Block>
         </div>
         <div className="grid gap-6 border-t border-line pt-5 md:grid-cols-2">
-          <Block label="Ключевые требования">
+          <Block label={brief.role.requirements.every(isEnglish) ? "Ключевые требования · из вакансии" : "Ключевые требования"}>
             <ul className="flex flex-col gap-2">
               {brief.role.requirements.map((r) => {
                 const ok = covered(r);
                 const miss = !ok && gap(r);
                 return (
-                  <li key={r} className="flex gap-2.5 text-[14px] leading-relaxed text-ink-2">
+                  <li key={r} className="flex gap-2.5 text-[14px] leading-relaxed text-ink-2" lang={isEnglish(r) ? "en" : undefined}>
                     {ok ? (
                       <Check className="mt-1 size-3.5 shrink-0 text-green" strokeWidth={2.2} aria-label="есть в профиле" />
                     ) : (
@@ -110,7 +127,7 @@ export function BriefTab({ id, brief, company, role, skills, technologies, jobUr
                     )}
                     <span>
                       {r}
-                      {miss && <span className="ml-1.5 text-[12px] text-amber">подготовить</span>}
+                      {miss && <>{" "}<span lang="ru" className="whitespace-nowrap text-[12px] text-amber">· подготовить</span></>}
                     </span>
                   </li>
                 );

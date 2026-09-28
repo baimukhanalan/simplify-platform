@@ -3,19 +3,22 @@ import { Check } from "lucide-react";
 import { ONBOARDING_STEPS, LAST_STEP } from "@/lib/onboarding";
 import { cx } from "@/components/ui";
 
-/** Vertical progress rail on desktop; compact bar + step dots on mobile. */
-export function StepRail({ current, done }: { current: number; done: number[] }) {
-  const doneSet = new Set(done);
-  const reachable = (n: number) => n <= current || doneSet.has(n) || doneSet.has(n - 1);
-  const pct = Math.round((doneSet.size / LAST_STEP) * 100);
+/**
+ * Vertical progress rail on desktop; compact bar + step dots on mobile.
+ * `complete` (a campaign is running) marks every step done: the launch already happened.
+ */
+export function StepRail({ current, done, complete = false }: { current: number; done: number[]; complete?: boolean }) {
+  const doneSet = new Set(complete ? ONBOARDING_STEPS.map((s) => s.n) : done);
+  const reachable = (n: number) => complete || n <= current || doneSet.has(n) || doneSet.has(n - 1);
+  const pct = complete ? 100 : Math.round((doneSet.size / LAST_STEP) * 100);
 
   return (
     <nav aria-label="Шаги онбординга" className="lg:sticky lg:top-6 lg:self-start">
       {/* Mobile */}
       <div className="glass flex flex-col gap-3 p-4 lg:hidden">
         <div className="flex items-center justify-between text-[13px]">
-          <span className="text-head">{ONBOARDING_STEPS[current - 1].label}</span>
-          <span className="num text-ink-3">{current} / {LAST_STEP}</span>
+          <span className="text-head">{complete ? "Кампания запущена" : ONBOARDING_STEPS[current - 1].label}</span>
+          <span className="num text-ink-3">{complete ? "Готово" : `${current} / ${LAST_STEP}`}</span>
         </div>
         <ol className="grid grid-cols-5 gap-1.5">
           {ONBOARDING_STEPS.map((st) => {
@@ -24,9 +27,9 @@ export function StepRail({ current, done }: { current: number; done: number[] })
             return (
               <li key={st.n}>
                 {reachable(st.n) ? (
-                  <Link href={`/onboarding?step=${st.n}`} aria-label={`Шаг ${st.n}: ${st.label}${isDone ? " (пройден)" : ""}`} aria-current={st.n === current ? "step" : undefined} className="block py-2 focus-visible:outline-2 focus-visible:outline-green"><span className={cls} /></Link>
+                  <Link href={`/onboarding?step=${st.n}`} aria-label={`Шаг ${st.n}: ${st.label}${isDone ? " (пройден)" : ""}`} aria-current={st.n === current ? "step" : undefined} className="block py-[17px] focus-visible:outline-2 focus-visible:outline-green"><span className={cls} /></Link>
                 ) : (
-                  <span className="block py-2" aria-label={`Шаг ${st.n}: ${st.label}`}><span className={cls} /></span>
+                  <span className="block py-[17px]" aria-label={`Шаг ${st.n}: ${st.label}`}><span className={cls} /></span>
                 )}
               </li>
             );
@@ -37,7 +40,7 @@ export function StepRail({ current, done }: { current: number; done: number[] })
       {/* Desktop */}
       <div className="hidden flex-col gap-5 lg:flex">
         <div className="flex flex-col gap-2">
-          <span className="label">Запуск кампании</span>
+          <span className="label">{complete ? "Кампания запущена" : "Запуск кампании"}</span>
           <div className="flex items-center gap-2.5">
             <div className="h-1 flex-1 overflow-hidden rounded-full bg-head/10"><div className="h-full rounded-full bg-green transition-[width] duration-700" style={{ width: `${pct}%` }} /></div>
             <span className="num text-[12px] text-ink-3">{pct}%</span>

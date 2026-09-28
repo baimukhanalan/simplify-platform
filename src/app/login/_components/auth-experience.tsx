@@ -7,6 +7,9 @@ import { Logo, Script, cx } from "@/components/ui";
 import { Atmosphere } from "./atmosphere";
 import { AgentPreview } from "./agent-preview";
 import { WHERE_OPTIONS, fmtUsd, storeIntent, type Intent } from "../../_components/campaign-intent";
+import { RememberPlan } from "../../_components/remember-plan";
+import { LegalLinks } from "../../_components/legal-page";
+import type { PlanKey } from "../../_components/plan-pref";
 
 type Mode = "login" | "signup";
 type FieldKey = "name" | "email" | "password" | "terms";
@@ -26,7 +29,7 @@ function strength(pw: string) {
   return { score, label: ["", "Слабый", "Средний", "Хороший", "Сильный"][score] };
 }
 
-export function AuthExperience({ initialMode, refCode, next, intent = null }: { initialMode: Mode; refCode: string; next: string; intent?: Intent | null }) {
+export function AuthExperience({ initialMode, refCode, next, intent = null, plan = null }: { initialMode: Mode; refCode: string; next: string; intent?: Intent | null; plan?: PlanKey | null }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [loginState, loginAction, loginPending] = useActionState<AuthState, FormData>(login, undefined);
   const [signupState, signupAction, signupPending] = useActionState<AuthState, FormData>(signup, undefined);
@@ -51,9 +54,9 @@ export function AuthExperience({ initialMode, refCode, next, intent = null }: { 
 
   const errors = useMemo(() => {
     const e: Partial<Record<FieldKey, string>> = {};
-    if (mode === "signup" && name.trim().length < 2) e.name = "Введите имя — минимум 2 символа";
-    if (!EMAIL.test(email.trim())) e.email = email ? "Проверьте формат email" : "Введите email";
-    if (mode === "signup" ? password.length < 8 : !password) e.password = mode === "signup" ? "Минимум 8 символов" : "Введите пароль";
+    if (mode === "signup" && name.trim().length < 2) e.name = "Введи имя — минимум 2 символа";
+    if (!EMAIL.test(email.trim())) e.email = email ? "Проверь формат email" : "Введи email";
+    if (mode === "signup" ? password.length < 8 : !password) e.password = mode === "signup" ? "Минимум 8 символов" : "Введи пароль";
     if (mode === "signup" && !terms) e.terms = "Нужно согласие, чтобы создать аккаунт";
     return e;
   }, [mode, name, email, password, terms]);
@@ -111,10 +114,11 @@ export function AuthExperience({ initialMode, refCode, next, intent = null }: { 
   return (
     <div className="relative min-h-dvh overflow-x-clip">
       <Atmosphere progress={progress} />
+      <RememberPlan plan={plan} />
 
       <header className="mx-auto flex w-full max-w-[1240px] items-center justify-between gap-3 px-4 py-5 sm:px-8">
         <Link href="/" aria-label="Simplify — на главную" className="rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
-        <Link href="/check" className="rounded-full px-3 py-2 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
+        <Link href="/check" className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
           Бесплатный Career Check
         </Link>
       </header>
@@ -124,33 +128,33 @@ export function AuthExperience({ initialMode, refCode, next, intent = null }: { 
         <section className="flex min-w-0 flex-col gap-5 lg:gap-8" aria-label="О Simplify">
           <div className="flex flex-col gap-3 animate-rise">
             <span className="label">AI Career Agent</span>
-            <h1 className="h-serif text-[clamp(34px,5vw,64px)]">Stop applying. <Script>Start</Script> interviewing.</h1>
-            <p className="max-w-md text-[15.5px] text-ink-2">Tell us what job you want. We handle the rest — поиск, адаптация CV, заявки, трекинг и подготовка к интервью.</p>
+            <h1 className="h-serif text-[clamp(34px,5vw,64px)]">Задай цель. Simplify доведёт до <Script>оффера</Script>.</h1>
+            <p className="max-w-md text-[15.5px] text-ink-2">Скажи, какую работу ищешь, — остальное агент сделает сам: поиск, адаптация CV, заявки, трекинг и подготовка к интервью.</p>
           </div>
           <AgentPreview className="animate-rise [animation-delay:120ms] lg:max-w-[520px]" />
-          <p className="hidden max-w-md text-[12.5px] text-ink-3 lg:block">Один профиль — десятки персональных заявок. Вы подключаетесь только там, где нужно ваше решение.</p>
+          <p className="hidden max-w-md text-[12.5px] text-ink-3 lg:block">Один профиль — десятки персональных заявок. Ты подключаешься только там, где нужно твоё решение.</p>
         </section>
 
         {/* Form */}
         <section className="relative min-w-0 animate-rise [animation-delay:80ms]" aria-labelledby={`${uid}-title`}>
-          <LoopStroke progress={progress} complete={pending} />
+          {mode === "signup" && <LoopStroke progress={progress} complete={pending} />}
           <div ref={cardRef} className="glass-strong relative p-5 sm:p-8">
 
             <ModeSwitch mode={mode} onChange={switchMode} />
             {intent && <IntentSummary intent={intent} />}
 
-            <div className="mt-6 flex items-start justify-between gap-4">
+            <div className="mt-6">
               <div key={mode} className="flex flex-col gap-1.5 animate-rise">
                 <h2 id={`${uid}-title`} className="h-serif text-[30px] sm:text-[34px]">
-                  {mode === "signup" ? <>Начните <Script>кампанию</Script></> : <>С <Script>возвращением</Script></>}
+                  {mode === "signup" ? <>Начни <Script>кампанию</Script></> : <>С <Script>возвращением</Script></>}
                 </h2>
-                <p className="text-[13.5px] text-ink-3">{mode === "signup" ? "2 минуты — и агент начнёт собирать ваш Career Profile." : "Кампания продолжается — посмотрим, что нашёл агент."}</p>
+                <p className="text-[13.5px] text-ink-3">{mode === "signup" ? "2 минуты — и агент начнёт собирать твой Career Profile." : "Кампания продолжается — посмотрим, что нашёл агент."}</p>
               </div>
-              <LoopBadge done={pending ? required.length : done} total={required.length} />
             </div>
 
             <form ref={formRef} action={mode === "login" ? loginAction : signupAction} onSubmit={onSubmit} noValidate className="mt-6 flex flex-col gap-4">
               <input type="hidden" name="next" value={next} />
+              {plan && <input type="hidden" name="plan" value={plan} />}
 
               <Collapse open={mode === "signup"}>
                 <TextField
@@ -165,8 +169,11 @@ export function AuthExperience({ initialMode, refCode, next, intent = null }: { 
               />
 
               <div className="flex flex-col gap-1.5">
-                <div className="flex items-baseline justify-between">
+                <div className="flex items-baseline justify-between gap-3">
                   <label htmlFor={`${uid}-pw`} className="label">Пароль</label>
+                  {mode === "login" && (
+                    <Link href="/reset" className="-my-2 inline-flex min-h-10 items-center rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Забыли пароль?</Link>
+                  )}
                   {mode === "signup" && password && <span className="label !text-[10px]" aria-live="polite">Надёжность: <span className={cx(pw.score >= 3 ? "text-green" : pw.score === 2 ? "text-amber" : "text-rose")}>{pw.label}</span></span>}
                 </div>
                 <div className="relative">
@@ -212,7 +219,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null }: { 
                   ) : (
                     <>
                       <input type="hidden" name="ref" value="" />
-                      <button type="button" onClick={() => setRefOpen(true)} className="w-fit rounded text-[13px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Есть код партнёра?</button>
+                      <button type="button" onClick={() => setRefOpen(true)} className="inline-flex min-h-10 w-fit items-center rounded text-[13px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Есть код партнёра?</button>
                     </>
                   )}
 
@@ -222,7 +229,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null }: { 
                       name="terms" checked={terms} onChange={(v) => { setTerms(v); setTouched((t) => ({ ...t, terms: true })); }} field="terms"
                       invalid={Boolean(show("terms"))} describedBy={show("terms") ? errId("terms") : undefined}
                     >
-                      Принимаю условия сервиса и политику обработки данных. Агент подаёт заявки от моего имени только в рамках кампании — это можно изменить в настройках.
+                      Принимаю <LegalLinks newTab />. Агент подаёт заявки от моего имени только в рамках кампании — это можно изменить в настройках.
                     </Checkbox>
                     <Checkbox name="analytics" checked={analytics} onChange={setAnalytics}>
                       Разрешаю обезличенную аналитику для улучшения продукта <span className="text-ink-4">(необязательно)</span>
@@ -246,7 +253,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null }: { 
 
               {demoHint && mode === "login" && (
                 <p className="flex items-center gap-2 rounded-2xl bg-amber-soft px-4 py-2.5 text-[12.5px] text-amber animate-fade">
-                  <Sparkles className="size-3.5 shrink-0" />Демо-аккаунт: кампания с тестовыми данными. Нажмите «Войти».
+                  <Sparkles className="size-3.5 shrink-0" />Демо-аккаунт: кампания с тестовыми данными. Нажми «Войти».
                 </p>
               )}
 
@@ -269,7 +276,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null }: { 
               </button>
               <p>
                 {mode === "signup" ? "Уже есть аккаунт? " : "Нет аккаунта? "}
-                <button type="button" onClick={() => switchMode(mode === "signup" ? "login" : "signup")} className="text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green">
+                <button type="button" onClick={() => switchMode(mode === "signup" ? "login" : "signup")} className="inline-flex min-h-10 items-center text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green">
                   {mode === "signup" ? "Войти" : "Создать аккаунт"}
                 </button>
               </p>
@@ -293,7 +300,7 @@ function IntentSummary({ intent }: { intent: Intent }) {
         <div className="mt-0.5 text-[14.5px] font-medium text-head">{intent.role}</div>
         <div className="text-[12.5px] text-ink-3">{[where.join(", "), intent.salary ? `от ${fmtUsd(intent.salary)}` : ""].filter(Boolean).join(" · ")}</div>
       </div>
-      <Link href="/" className="shrink-0 rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Изменить</Link>
+      <Link href="/" className="inline-flex min-h-10 shrink-0 items-center rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Изменить</Link>
     </div>
   );
 }
@@ -305,7 +312,7 @@ function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
       {(["login", "signup"] as const).map((m) => (
         <button
           key={m} type="button" aria-pressed={mode === m} onClick={() => onChange(m)}
-          className={cx("relative z-10 h-9 rounded-full text-[13.5px] transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green", mode === m ? "text-white" : "text-ink-2 hover:text-head")}
+          className={cx("relative z-10 h-10 rounded-full text-[13.5px] transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green", mode === m ? "text-white" : "text-ink-2 hover:text-head")}
         >
           {m === "login" ? "Войти" : "Создать аккаунт"}
         </button>
@@ -364,18 +371,5 @@ function LoopStroke({ progress, complete }: { progress: number; complete: boolea
         style={{ transition: "stroke-dashoffset 900ms cubic-bezier(.16,1,.3,1), stroke 400ms" }}
       />
     </svg>
-  );
-}
-
-function LoopBadge({ done, total }: { done: number; total: number }) {
-  const r = 17, c = 2 * Math.PI * r, p = done / total;
-  return (
-    <div className="flex shrink-0 flex-col items-center gap-1" role="img" aria-label={`Заполнено ${done} из ${total}`}>
-      <svg width="44" height="44" viewBox="0 0 44 44" className="-rotate-90">
-        <circle cx="22" cy="22" r={r} fill="none" stroke="rgb(35 59 59 / .1)" strokeWidth="3" />
-        <circle cx="22" cy="22" r={r} fill="none" stroke={p >= 1 ? "var(--color-green)" : "var(--color-teal)"} strokeWidth="3" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - p)} style={{ transition: "stroke-dashoffset .7s cubic-bezier(.16,1,.3,1)" }} />
-      </svg>
-      <span className="label !text-[9px] whitespace-nowrap">Close the loop</span>
-    </div>
   );
 }

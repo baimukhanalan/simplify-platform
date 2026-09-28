@@ -38,7 +38,7 @@ export default async function InterviewsPage() {
     <>
       <PageHeader
         eyebrow="Интервью"
-        title={<>Ваши <Script>interviews</Script></>}
+        title={<>Твои <Script>interviews</Script></>}
         sub="Каждое приглашение — отдельная комната подготовки: brief о компании, вероятные вопросы, Mock Interview и разбор после звонка."
       />
 
@@ -59,7 +59,7 @@ export default async function InterviewsPage() {
               <MessageSquareText className="size-5 shrink-0 text-green" strokeWidth={1.7} aria-hidden />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="text-[15px] font-medium text-head">Как прошло интервью с {iv.opportunity.job.company}?</span>
-                <span className="text-[13px] text-ink-3">Расскажите за минуту — получите разбор, план подготовки и follow-up письмо.</span>
+                <span className="text-[13px] text-ink-3">Расскажи за минуту — получишь разбор, план подготовки и follow-up письмо.</span>
               </span>
               <ArrowRight className="size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />
             </Link>
@@ -188,8 +188,8 @@ function UpcomingCard({ iv, now }: { iv: Row; now: number }) {
           {isAssessment ? <ClipboardCheck className="size-4 text-amber" strokeWidth={1.7} aria-hidden /> : <CalendarClock className="size-4 text-teal" strokeWidth={1.7} aria-hidden />}
           {at ? (
             <span>
-              {isAssessment ? "до " : ""}{day(at)}, <span className="num">{time(at)}</span>
-              <span className={cx("ml-1.5", soon ? "font-medium text-green" : "text-ink-3")}>· {relDays(at, now)}</span>
+              {isAssessment ? "до " : ""}{day(at)}, <span className="num">{time(at)}</span>{" "}
+              <span className={soon ? "font-medium text-green" : "text-ink-3"}>· {relDays(at, now)}</span>
             </span>
           ) : (
             <span className="text-ink-3">Дата не назначена</span>

@@ -32,10 +32,10 @@ export function useSpeechSupported() {
 }
 
 export const SPEECH_ERROR: Record<string, string> = {
-  "not-allowed": "Доступ к микрофону запрещён. Разрешите его в настройках браузера или вводите текст.",
-  "service-not-allowed": "Распознавание речи недоступно в этом браузере. Используйте ввод текста.",
+  "not-allowed": "Доступ к микрофону запрещён. Разреши его в настройках браузера или вводи текст.",
+  "service-not-allowed": "Распознавание речи недоступно в этом браузере. Используй ввод текста.",
   "audio-capture": "Микрофон не найден.",
-  network: "Сервис распознавания речи недоступен (сеть). Используйте ввод текста.",
+  network: "Сервис распознавания речи недоступен (сеть). Используй ввод текста.",
 };
 
 function flushEnd(waiters: { current: (() => void)[] }) {
@@ -85,7 +85,7 @@ export function useSpeech(opts: { lang: string; continuous?: boolean; onFinal: (
   const start = useCallback(() => {
     const Ctor = getCtor();
     if (!Ctor) {
-      setError("Распознавание речи не поддерживается этим браузером (нужен Chrome, Edge или Safari). Используйте ввод текста.");
+      setError("Распознавание речи не поддерживается этим браузером (нужен Chrome, Edge или Safari). Используй ввод текста.");
       return;
     }
     // Replace any previous recognizer; its late events are ignored by the identity guards below.

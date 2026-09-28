@@ -14,6 +14,31 @@ export function DebriefTab({ iv, debrief }: Props) {
   const has = Boolean(debrief.savedAt || debrief.questions?.length);
   const next = nextRound(iv.round);
 
+  // Before the call: the debrief is secondary — a short note with the form collapsed.
+  if (!has && iv.upcoming)
+    return (
+      <Card className="mx-auto flex max-w-3xl flex-col gap-4">
+        <div className="flex items-start gap-3">
+          <CalendarClock className="mt-0.5 size-5 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
+          <div className="flex flex-col gap-1">
+            <Label>{iv.round === "assessment" ? "После теста" : "После звонка"}</Label>
+            <p className="text-[14.5px] text-ink-2">
+              {iv.round === "assessment"
+                ? `Тест ${iv.company} ещё впереди. Когда сдашь его, вернись сюда и запиши, какие были задания — это поможет на следующих этапах.`
+                : `Интервью с ${iv.company} ещё впереди. Сразу после звонка вернись сюда — разбор, план подготовки и thank-you письмо появятся за минуту.`}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink href={`/app/interviews/${iv.id}`} size="sm" scroll={false}>К подготовке<ArrowRight className="size-3.5" strokeWidth={1.7} aria-hidden /></ButtonLink>
+        </div>
+        <details className="group border-t border-line pt-4">
+          <summary className="w-fit cursor-pointer rounded text-[13.5px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">{iv.round === "assessment" ? "Тест уже позади? Заполнить debrief" : "Интервью уже прошло? Заполнить debrief"}</summary>
+          <div className="mt-4"><DebriefForm id={iv.id} /></div>
+        </details>
+      </Card>
+    );
+
   if (!has)
     return (
       <Card strong className="mx-auto flex max-w-3xl flex-col gap-6">
@@ -21,7 +46,7 @@ export function DebriefTab({ iv, debrief }: Props) {
           <Label>Interview Debrief</Label>
           <h2 className="h-serif text-[clamp(30px,3.6vw,44px)]">Как прошло?</h2>
           <p className="max-w-xl text-[14.5px] text-ink-2">
-            {iv.upcoming ? `Интервью с ${iv.company} ещё впереди — вернитесь сюда сразу после звонка, пока детали свежие.` : "Расскажите своими словами, пока детали свежие. Мы превратим рассказ в разбор, план подготовки и thank-you письмо."}
+            Расскажи своими словами, пока детали свежие. Мы превратим рассказ в разбор, план подготовки и thank-you письмо.
           </p>
         </div>
         <DebriefForm id={iv.id} />
@@ -101,7 +126,7 @@ export function DebriefTab({ iv, debrief }: Props) {
           {iv.status === "passed" && next && (
             <form action={createNextRound} className="flex flex-col gap-3 rounded-2xl border border-green/20 bg-green-soft/50 p-4">
               <input type="hidden" name="id" value={iv.id} />
-              <Field label={`Дата раунда ${ROUND_LABEL[next]}`} hint="Если ещё не назначили — оставьте пустым">
+              <Field label={`Дата раунда ${ROUND_LABEL[next]}`} hint="Если ещё не назначили — оставь пустым">
                 <input type="datetime-local" name="scheduledAt" className="field" />
               </Field>
               <div><SubmitButton pendingText="Создаём комнату…">Создать раунд {ROUND_LABEL[next]}<ArrowRight className="size-4" strokeWidth={1.7} aria-hidden /></SubmitButton></div>
@@ -122,7 +147,7 @@ export function DebriefTab({ iv, debrief }: Props) {
               <CopyButton text={debrief.followUpEmail} label="Копировать" />
             </div>
             <pre tabIndex={0} aria-label="Текст thank-you письма" className="scroll-thin max-h-72 overflow-auto whitespace-pre-wrap rounded-2xl border border-line bg-white/60 p-4 font-sans text-[13.5px] leading-relaxed text-ink-2 focus-visible:outline-2 focus-visible:outline-green">{debrief.followUpEmail}</pre>
-            <p className="text-[12px] text-ink-4">Отправьте со своей почты в течение 24 часов.</p>
+            <p className="text-[12px] text-ink-4">Отправь со своей почты в течение 24 часов.</p>
           </Card>
         )}
       </div>

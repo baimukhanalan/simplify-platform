@@ -55,7 +55,7 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
           <Ring value={score} size={76} stroke={6} />
           <div className="flex flex-col gap-0.5">
             <Label>Готовность</Label>
-            <p className="text-[13px] text-ink-3">{score >= 75 ? "Вы готовы к раунду" : score >= 55 ? "Почти готовы — пройдите Mock" : "Начните с Brief и Mock Interview"}</p>
+            <p className="text-[13px] text-ink-3">{score >= 75 ? "Хорошая форма для раунда" : score >= 55 ? "Почти на уровне — пройди Mock" : "Начни с Brief и Mock Interview"}</p>
           </div>
         </div>
         <ul className="mt-4 flex flex-col gap-2">
@@ -80,7 +80,7 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
               <ButtonLink href={`/app/interviews/${iv.id}/copilot`} size="sm" className="mt-4 w-full">Start Copilot<ArrowRight className="size-3.5" strokeWidth={1.7} aria-hidden /></ButtonLink>
             </>
           ) : (
-            <p className="text-[13.5px] leading-relaxed text-ink-2">Отмечено, что {ROUND_LABEL[iv.round] ?? "этот"}-раунд проходит без внешней помощи. Готовьтесь через Brief и Mock Interview.</p>
+            <p className="text-[13.5px] leading-relaxed text-ink-2">Отмечено, что {ROUND_LABEL[iv.round] ?? "этот"}-раунд проходит без внешней помощи. Готовься через Brief и Mock Interview.</p>
           )}
           <form action={setCopilotAllowed} className="mt-2">
             <input type="hidden" name="id" value={iv.id} />
@@ -115,7 +115,7 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
         )}
         <div className="mt-3 flex flex-col gap-1">
           <Link href={`/app/interviews/${iv.id}?tab=sent`} scroll={false} className="inline-flex items-center gap-1.5 rounded text-[13px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">
-            Перечитать перед звонком<ArrowRight className="size-3.5" strokeWidth={1.7} aria-hidden />
+            {isAssessment ? "Перечитать перед тестом" : "Перечитать перед звонком"}<ArrowRight className="size-3.5" strokeWidth={1.7} aria-hidden />
           </Link>
           <Link href={`/app/applications/${iv.opportunityId}`} className="inline-flex items-center gap-1.5 rounded text-[13px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">
             Карточка заявки<ArrowUpRight className="size-3.5" strokeWidth={1.7} aria-hidden />

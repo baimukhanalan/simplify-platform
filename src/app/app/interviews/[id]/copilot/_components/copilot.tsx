@@ -65,7 +65,7 @@ function buildCard(q: string, ctx: Ctx): { intent: Intent; card: Card } {
   return { intent: sc.intent, card: { mode: "general", strategy: sc.strategy, bullets: sc.bullets, opener: sc.opener, keyNumber: sc.keyNumber } };
 }
 
-export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: string; ctx: Ctx; title: string; blocked: "employer" | "assessment" | "consent" | null }) {
+export function Copilot({ interviewId, ctx, title, round, blocked }: { interviewId: string; ctx: Ctx; title: string; round?: string; blocked: "employer" | "assessment" | "consent" | null }) {
   const router = useRouter();
   const exitHref = `/app/interviews/${interviewId}`;
   const uid = useId();
@@ -225,21 +225,22 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
       {/* Calm backdrop hint (desktop only) */}
       <div aria-hidden className="pointer-events-none absolute left-8 top-8 hidden max-w-sm flex-col gap-2 text-white/70 lg:flex">
         <span className="font-mono text-[11px] uppercase tracking-[.1em] text-white/45">Interview Copilot</span>
-        <span className="font-serif text-[28px] leading-tight text-white/85">Смотрите в камеру. Карточка — только опора.</span>
+        <span className="font-serif text-[28px] leading-tight text-white/85">Смотри в камеру. Карточка — только опора.</span>
         <span className="text-[13px]">Space — слушать / стоп · Esc — закрыть</span>
       </div>
 
       <section
         className={cx(
           "relative flex w-full flex-col overflow-hidden bg-[#0f1a16] text-white shadow-[0_24px_80px_rgb(0_0_0/.45)] ring-1 ring-white/10 animate-rise",
-          popup ? "h-dvh sm:h-[calc(100dvh-48px)] sm:max-w-none sm:rounded-[22px]" : "max-h-[92dvh] rounded-t-[22px] sm:max-h-[calc(100dvh-48px)] sm:w-[420px] sm:rounded-[22px]",
+          popup ? "h-dvh sm:h-[calc(100dvh-48px)] sm:max-w-none sm:rounded-[22px]" : "h-dvh sm:h-auto sm:max-h-[calc(100dvh-48px)] sm:w-[420px] sm:rounded-[22px]",
         )}
       >
         {/* Header */}
         <header className="flex items-center gap-2.5 border-b border-white/10 px-4 py-3">
           <span className={cx("size-2 shrink-0 rounded-full", speech.listening ? "bg-[#4fd39a] animate-pulse-dot" : "bg-white/30")} aria-hidden />
-          <h1 id={`${uid}-title`} className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-[.08em] text-white/60">
-            Copilot · <span className="text-white/90">{title}</span>
+          <h1 id={`${uid}-title`} className="flex min-w-0 flex-1 flex-col font-mono text-[11px] uppercase leading-snug tracking-[.08em] text-white/60 sm:flex-row sm:gap-1">
+            <span className="truncate">Copilot · <span className="text-white/90">{title}</span></span>
+            {round && <span className="shrink-0 text-white/70"><span aria-hidden className="hidden sm:inline">· </span>{round}</span>}
           </h1>
           {latency != null && (
             <span className={cx("flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10.5px]", latency <= 150 ? "bg-[#4fd39a]/15 text-[#7fe3b6]" : "bg-amber-400/15 text-amber-200")} title="От конца вопроса до карточки на экране">
@@ -248,7 +249,7 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
             </span>
           )}
           {!popup && !blocked && (
-            <button type="button" onClick={popOut} className="hidden size-8 shrink-0 place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a] sm:grid" aria-label="Открыть в отдельном маленьком окне" title="Отдельное окно — поставьте рядом со звонком">
+            <button type="button" onClick={popOut} className="hidden size-8 shrink-0 place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a] sm:grid" aria-label="Открыть в отдельном маленьком окне" title="Отдельное окно — поставь рядом со звонком">
               <PictureInPicture2 className="size-4" strokeWidth={1.7} />
             </button>
           )}
@@ -313,7 +314,7 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
                   id={`${uid}-q`}
                   value={manual}
                   onChange={(e) => setManual(e.target.value)}
-                  placeholder="Или вставьте вопрос текстом…"
+                  placeholder="Или вставь вопрос текстом…"
                   autoComplete="off"
                   className="h-10 min-w-0 flex-1 rounded-full border border-white/15 bg-white/5 px-4 text-[14px] text-white placeholder:text-white/35 focus:border-[#4fd39a] focus:outline-none focus:ring-4 focus:ring-[#4fd39a]/15"
                 />
@@ -322,7 +323,7 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
                 </button>
               </form>
               {(speech.error || !supported) && (
-                <p role="alert" className="text-[12px] leading-snug text-amber-200">{speech.error ?? "Распознавание речи недоступно в этом браузере — вставляйте вопросы текстом, карточка появится мгновенно."}</p>
+                <p role="alert" className="text-[12px] leading-snug text-amber-200">{speech.error ?? "Распознавание речи недоступно в этом браузере — вставляй вопросы текстом, карточка появится мгновенно."}</p>
               )}
               <p className="text-[11px] leading-snug text-white/35">Речь распознаёт браузер, Simplify ничего не записывает.</p>
             </footer>
@@ -414,12 +415,13 @@ function CardView({ item }: { item: Item }) {
 
 function Idle({ listening, supported }: { listening: boolean; supported: boolean }) {
   return (
-    <div className="flex flex-col gap-3 py-6">
-      <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-white/45">{listening ? "Слушаю интервьюера" : "Готов"}</span>
+    <div className="flex h-full min-h-[40dvh] flex-col justify-center gap-3 py-6 sm:min-h-0 sm:justify-start">
+      <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-white/45">{listening ? "Слушаю интервьюера" : "Ждёт вопроса"}</span>
       <p className="font-serif text-[24px] leading-[1.15] text-white">
-        {listening ? "Как только вопрос закончится, здесь появится карточка." : supported ? "Нажмите «Слушать», когда начнётся звонок." : "Вставьте вопрос интервьюера в поле ниже."}
+        {listening ? "Как только вопрос закончится, здесь появится карточка." : supported ? "Нажми «Слушать», когда начнётся звонок." : "Вставь вопрос интервьюера в поле ниже."}
       </p>
-      <p className="text-[13px] leading-relaxed text-white/50">Первая фраза, структура ответа и ваша цифра. Для технических вопросов — пошаговый метод.</p>
+      <p className="text-[13px] leading-relaxed text-white/50">Первая фраза, структура ответа и твоя цифра. Для технических вопросов — пошаговый метод.</p>
+      <p className="mt-2 text-[13px] leading-relaxed text-white/40 lg:hidden">Смотри в камеру — карточка только опора.</p>
     </div>
   );
 }
@@ -434,7 +436,7 @@ function Blocked({ kind, exitHref }: { kind: "employer" | "assessment" | "consen
     <div className="flex flex-col gap-4 px-4 py-6">
       <Info className="size-6 text-[#7fe3b6]" strokeWidth={1.6} aria-hidden />
       <h2 className="font-serif text-[26px] leading-tight">Copilot не нужен в этом раунде</h2>
-      <p className="text-[14.5px] leading-relaxed text-white/70">{text} Подготовьтесь заранее — Mock Interview даёт тот же материал до звонка.</p>
+      <p className="text-[14.5px] leading-relaxed text-white/70">{text} Подготовься заранее — Mock Interview даёт тот же материал до звонка.</p>
       <div className="flex flex-wrap gap-2">
         <Link href={`${exitHref}?tab=mock`} className="flex h-10 items-center rounded-full bg-white px-4 text-[14px] font-medium text-[#0c1512] hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fd39a]">Mock Interview</Link>
         {kind === "consent" && <Link href="/app/settings" className="flex h-10 items-center rounded-full border border-white/20 px-4 text-[14px] text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#4fd39a]">Настройки</Link>}

@@ -96,7 +96,7 @@ function StoryForm({ story, facts }: { story?: Story; facts: Pick<Fact, "id" | "
         </Field>
         <Field label="Situation *"><textarea name="situation" required rows={2} defaultValue={story?.situation} className="field resize-y" /></Field>
         <Field label="Task *"><textarea name="task" required rows={2} defaultValue={story?.task} className="field resize-y" /></Field>
-        <Field label="Action *" hint="Что сделали именно вы"><textarea name="action" required rows={3} defaultValue={story?.action} className="field resize-y" /></Field>
+        <Field label="Action *" hint="Твой вклад: решения, действия, инструменты"><textarea name="action" required rows={3} defaultValue={story?.action} className="field resize-y" /></Field>
         <Field label="Result *"><textarea name="result" required rows={3} defaultValue={story?.result} className="field resize-y" /></Field>
         <Field label="Метрика" className="sm:col-span-2"><input name="metric" defaultValue={story?.metric} className="field" placeholder="activation 18% → 26%" /></Field>
       </div>
@@ -104,7 +104,7 @@ function StoryForm({ story, facts }: { story?: Story; facts: Pick<Fact, "id" | "
         <legend className="label mb-2">Темы вопросов</legend>
         <div className="flex flex-wrap gap-2">
           {TAGS.map((t) => (
-            <label key={t.key} className="cursor-pointer rounded-full border border-line bg-white/70 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[.06em] text-ink-2 transition-colors has-[:checked]:border-teal/30 has-[:checked]:bg-teal/10 has-[:checked]:text-teal has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green">
+            <label key={t.key} className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-line bg-white/70 px-3 font-mono text-[11px] uppercase tracking-[.06em] text-ink-2 transition-colors has-[:checked]:border-teal/30 has-[:checked]:bg-teal/10 has-[:checked]:text-teal has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green">
               <input type="checkbox" name="tags" value={t.key} defaultChecked={tags.includes(t.key)} className="sr-only" />
               {t.label}
             </label>

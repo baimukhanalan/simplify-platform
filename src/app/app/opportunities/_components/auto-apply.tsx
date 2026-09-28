@@ -23,7 +23,7 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
       try {
         await setAutoApply(next);
       } catch {
-        setError("Не удалось сохранить. Попробуйте ещё раз.");
+        setError("Не удалось сохранить. Попробуй ещё раз.");
       }
     });
   };
@@ -57,13 +57,13 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
                 ? `Включено — агент сам подаёт на вакансии с Match ≥ ${min}% и на отмеченные Auto`
                 : "Выключено — агент подаёт только на отмеченные Apply / Auto"}
           </span>
-          {!consent && <Link href="/app/settings" className="text-[12.5px] text-teal underline-offset-2 hover:underline">Включить автоподачу</Link>}
-          <Link href="/app/agent" className="text-[12px] text-ink-4 underline-offset-2 hover:text-head hover:underline">Порог Match — в настройках агента</Link>
+          {!consent && <Link href="/app/settings" className="inline-flex min-h-10 items-center text-[12.5px] text-teal underline-offset-2 hover:underline sm:min-h-0">Включить автоподачу</Link>}
+          <Link href="/app/agent" className="inline-flex min-h-10 items-center text-[12px] text-ink-3 underline-offset-2 hover:text-head hover:underline sm:min-h-0">Порог Match — в настройках агента</Link>
         </div>
       </div>
       <p id="auto-apply-hint" className="flex items-start gap-1.5 text-[12px] leading-snug text-ink-3">
         <ShieldCheck className="mt-px size-3.5 shrink-0 text-teal" aria-hidden />
-        Чувствительные вопросы (визы, юридические, self-identification) всё равно придут вам на подтверждение.
+        Чувствительные вопросы (визы, юридические, self-identification) всё равно придут тебе на подтверждение.
       </p>
       {error && <p role="alert" className="text-[12.5px] text-rose">{error}</p>}
     </div>

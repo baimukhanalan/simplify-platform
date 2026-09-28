@@ -13,12 +13,27 @@ export async function currentCampaign(userId: string) {
   return c && isOverdue(c) ? { ...c, status: "expired" } : c;
 }
 
+/** Prisma filter for a campaign the agent can still work on: active or paused, and not past its end date. */
+export const runningCampaignWhere = (now = new Date()) => ({ status: { in: ["active", "paused"] }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] });
+
 /** The campaign the agent can still work on (active or paused, and not past its end date). */
 export function runningCampaign(userId: string) {
-  return db.campaign.findFirst({
-    where: { userId, status: { in: ["active", "paused"] }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
-    orderBy: { createdAt: "desc" },
-  });
+  return db.campaign.findFirst({ where: { userId, ...runningCampaignWhere() }, orderBy: { createdAt: "desc" } });
+}
+
+/**
+ * Pending approvals that still matter: only those of the running campaign. Questions of a finished (HIRED / expired)
+ * campaign are closed when it ends; this filter also hides any left over from before that rule or from a campaign that
+ * ran out by date while nothing ticked it. Use for the nav badge, Today and the approvals list alike.
+ */
+export const pendingApprovalsWhere = (userId: string, now = new Date()) => ({
+  userId,
+  status: "pending",
+  opportunity: { campaign: { userId, ...runningCampaignWhere(now) } },
+});
+
+export function pendingApprovalsCount(userId: string) {
+  return db.approval.count({ where: pendingApprovalsWhere(userId) });
 }
 
 // ——— "Today" numbers (Today screen and Opportunities use the same window and the same definitions) ———

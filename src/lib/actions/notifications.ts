@@ -16,12 +16,6 @@ export async function dismissNotification(form: FormData) {
   revalidatePath("/app", "layout");
 }
 
-export async function dismissAllNotifications() {
-  const user = await requireUser();
-  await db.notification.updateMany({ where: { userId: user.id, readAt: null }, data: { readAt: new Date() } });
-  revalidatePath("/app", "layout");
-}
-
 /** Mark read and go where the moment points (the target is resolved server-side, never taken from the form). */
 export async function openNotification(form: FormData) {
   const user = await requireUser();

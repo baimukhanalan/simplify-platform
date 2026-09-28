@@ -4,12 +4,25 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { confirmUserSubmitted, resolveApproval, setOpportunityStatus } from "@/lib/actions/ops";
 import { APPROVAL_KIND, ago } from "@/lib/ops";
-import { Button, ButtonLink, Card, Chip, DemoBadge, Empty, Label, PageHeader, cx } from "@/components/ui";
+import { pendingApprovalsWhere } from "@/lib/ops-data";
+import { Button, ButtonLink, Card, Chip, Empty, Label, PageHeader, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
+import { AgentStatus } from "../../_components/agent-status";
+import { plural } from "../../_components/ru";
 
 export const metadata = { title: "Подтверждения" };
 
 const ORDER = ["handoff", "sponsorship", "legal", "sensitive", "salary", "unknown_question"];
+
+/** "Why the agent stopped", in the product's «ты» voice (labels still come from APPROVAL_KIND). */
+const WHY: Record<string, string> = {
+  sponsorship: "Компания не указала, спонсирует ли визу. Ответ «да, нужна» может отсечь заявку, «нет» — неправда. Такое решение агент за тебя не принимает.",
+  legal: "Согласие на background check и другие юридические заявления имеют последствия — агент никогда не подписывает их сам.",
+  sensitive: "Пол, инвалидность, статус ветерана, судимость — добровольные вопросы. Раскрывать их или нет, решаешь только ты.",
+  salary: "Цифра в анкете становится якорем на переговорах. Агент предлагает вилку, но подтверждаешь ты.",
+  unknown_question: "В форме вопрос, на который в твоём профиле нет готового ответа. Нужен твой ответ.",
+  handoff: "Это живая вакансия: автоматическая отправка недоступна. Пакет готов — отправь его через форму работодателя и отметь здесь.",
+};
 
 const QUICK: Record<string, string[]> = {
   sensitive: ["I don't wish to answer"],
@@ -21,7 +34,7 @@ export default async function ApprovalsPage() {
   const user = await requireUser();
   const [pending, resolved] = await Promise.all([
     db.approval.findMany({
-      where: { userId: user.id, status: "pending" },
+      where: pendingApprovalsWhere(user.id),
       orderBy: { createdAt: "asc" },
       include: { opportunity: { select: { id: true, status: true, job: { select: { title: true, company: true, source: true, url: true } }, _count: { select: { approvals: { where: { status: "pending", kind: { not: "handoff" } } } } } } } },
     }),
@@ -40,16 +53,21 @@ export default async function ApprovalsPage() {
       <PageHeader
         eyebrow="Exception queue"
         title="Подтверждения"
-        sub="Агент делает всё сам — кроме решений, которые принадлежат только вам: юридические декларации, чувствительные данные, спорное спонсорство, отправка живых вакансий. Здесь — только они."
+        sub="Агент делает всё сам — кроме решений, которые принадлежат только тебе: юридические декларации, чувствительные данные, спорное спонсорство, отправка живых вакансий. Здесь — только они."
+      />
+
+      <AgentStatus
+        needs={pending.length ? [{ text: `${pending.length} ${plural(pending.length, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа — ниже` }] : []}
+        className="-mt-3"
       />
 
       {pending.length === 0 ? (
-        <Empty title="Очередь пуста" sub="Все вопросы решены — агент продолжает отправлять заявки без вашего участия. Новые исключения появятся здесь и в счётчике меню." action={<ButtonLink href="/app" variant="glass" size="sm">К обзору</ButtonLink>} />
+        <Empty title="Очередь пуста" sub="Все вопросы решены — агент продолжает отправлять заявки без твоего участия. Новые исключения появятся здесь и в счётчике меню." action={<ButtonLink href="/app" variant="glass" size="sm">К Today</ButtonLink>} />
       ) : (
         <>
           <nav aria-label="Типы вопросов" className="flex flex-wrap gap-2">
             {kinds.map((k) => (
-              <a key={k} href={`#kind-${k}`} className="glass inline-flex items-center gap-2 !rounded-full px-3.5 py-1.5 text-[13px] text-head hover:bg-white focus-visible:outline-2 focus-visible:outline-green">
+              <a key={k} href={`#kind-${k}`} className="glass inline-flex min-h-10 items-center gap-2 !rounded-full px-3.5 py-1.5 text-[13px] text-head hover:bg-white focus-visible:outline-2 focus-visible:outline-green">
                 {APPROVAL_KIND[k]?.label ?? k}
                 <span className="num rounded-full bg-green px-1.5 text-[11px] leading-[18px] text-white">{pending.filter((a) => a.kind === k).length}</span>
               </a>
@@ -58,7 +76,7 @@ export default async function ApprovalsPage() {
 
           {kinds.map((k) => {
             const items = pending.filter((a) => a.kind === k);
-            const meta = APPROVAL_KIND[k] ?? { label: k, why: "Агент не может решить это без вас." };
+            const meta = { label: APPROVAL_KIND[k]?.label ?? k, why: WHY[k] ?? "Агент не может решить это без тебя." };
             return (
               <section key={k} id={`kind-${k}`} aria-labelledby={`kind-${k}-h`} className="flex scroll-mt-6 flex-col gap-3">
                 <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
@@ -81,11 +99,11 @@ export default async function ApprovalsPage() {
           <Label>Недавно решённые</Label>
           <ul className="divide-y divide-line">
             {resolved.map((r) => (
-              <li key={r.id} className="flex flex-col gap-0.5 py-2.5 text-[13px] sm:flex-row sm:items-center sm:gap-3">
-                <Chip tone={r.status === "rejected" ? "rose" : "green"} className="w-fit">{r.status}</Chip>
-                <span className="min-w-0 flex-1 truncate text-ink-2">
+              <li key={r.id} className="flex flex-col gap-1 py-2.5 text-[13px] sm:flex-row sm:items-start sm:gap-3">
+                <Chip tone={r.status === "rejected" ? "rose" : "green"} className="w-fit">{r.status === "rejected" ? "отклонено" : "решено"}</Chip>
+                <span className="min-w-0 flex-1 break-words text-ink-2 [overflow-wrap:anywhere]">
                   {r.opportunity ? <Link href={`/app/opportunities/${r.opportunity.id}`} className="text-head hover:underline">{r.opportunity.job.company}</Link> : null}
-                  {r.opportunity ? " · " : ""}{r.kind === "handoff" ? "отправлено вами через официальную форму" : r.question}
+                  {r.opportunity ? " · " : ""}{r.kind === "handoff" ? "отправлено тобой через официальную форму" : r.question}
                   {r.answer && r.kind !== "handoff" && <span className="text-ink-3"> → {r.answer}</span>}
                 </span>
                 <span className="shrink-0 text-[12px] text-ink-4">{ago(r.resolvedAt)}</span>
@@ -107,6 +125,7 @@ function ApprovalItem({ a }: { a: Item }) {
   const o = a.opportunity;
   const job = o?.job;
   const fieldId = `answer-${a.id}`;
+  const quick = (QUICK[a.kind] ?? []).filter((q) => q !== a.proposed);
   return (
     <article className="glass flex flex-col gap-4 p-4 sm:p-5">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -115,27 +134,29 @@ function ApprovalItem({ a }: { a: Item }) {
         ) : (
           <span className="text-[14.5px] text-ink-3">Без привязки к вакансии</span>
         )}
-        {job?.source === "demo" && <DemoBadge />}
+        {job?.source === "demo" && <span className="text-[12px] text-ink-3">демо-вакансия</span>}
         <span className="ml-auto text-[12px] text-ink-4">{ago(a.createdAt)}</span>
       </header>
 
       <div className="flex flex-col gap-2">
-        <p className="text-[15.5px] leading-snug text-ink">{a.question}</p>
+        <p className="break-words text-[15.5px] leading-snug text-ink">{a.question}</p>
         {a.kind !== "handoff" && (
           a.proposed ? (
             <div className="rounded-xl border border-green/15 bg-green-soft/50 px-3.5 py-2.5 text-[14px]">
               <span className="label mr-2 !text-[9.5px] !text-green">Предложение агента</span>
-              <span className="text-ink">{a.proposed}</span>
+              <span className="break-words text-ink">{a.proposed}</span>
             </div>
+          ) : quick.length === 0 ? (
+            <p className="text-[13px] italic text-ink-3">Агент не предлагает ответ — это решаешь только ты.</p>
           ) : (
-            <p className="text-[13px] italic text-ink-3">Агент не предлагает ответ — это решаете только вы.</p>
+            <p className="text-[13px] text-ink-3">Выбери ответ или напиши свой.</p>
           )
         )}
       </div>
 
       {a.kind === "handoff" && o ? (
         <div className="flex flex-col gap-2.5">
-          {o._count.approvals > 0 && <p className="text-[13px] text-amber">Сначала ответьте на {o._count.approvals} {o._count.approvals === 1 ? "вопрос" : "вопроса"} по этой вакансии выше — их нужно вписать в форму.</p>}
+          {o._count.approvals > 0 && <p className="text-[13px] text-amber">Сначала ответь на {o._count.approvals} {plural(o._count.approvals, ["вопрос", "вопроса", "вопросов"])} по этой вакансии выше — их нужно вписать в форму.</p>}
           <div className="flex flex-wrap items-center gap-2">
             {(a.proposed || job?.url) && (
               <a href={a.proposed || job!.url} target="_blank" rel="noopener noreferrer" className="inline-flex h-9 items-center gap-1.5 rounded-full bg-cta px-4 text-[13px] font-medium text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">
@@ -144,11 +165,11 @@ function ApprovalItem({ a }: { a: Item }) {
             )}
             <ButtonLink href={`/app/opportunities/${o.id}`} variant="glass" size="sm">Пакет для вставки</ButtonLink>
             {o._count.approvals > 0 ? (
-              <Button size="sm" variant="green" disabled><Check className="size-4" aria-hidden />Я отправил</Button>
+              <Button size="sm" variant="green" disabled><Check className="size-4" aria-hidden />Отправлено</Button>
             ) : (
               <form action={confirmUserSubmitted}>
                 <input type="hidden" name="id" value={o.id} />
-                <SubmitButton size="sm" variant="green" pendingText="Отмечаем…"><Check className="size-4" aria-hidden />Я отправил</SubmitButton>
+                <SubmitButton size="sm" variant="green" pendingText="Отмечаем…"><Check className="size-4" aria-hidden />Отправлено</SubmitButton>
               </form>
             )}
             <form action={setOpportunityStatus}>
@@ -168,12 +189,12 @@ function ApprovalItem({ a }: { a: Item }) {
                 <SubmitButton size="sm" variant="green" pendingText="Подтверждаем…"><Check className="size-4" aria-hidden />Подтвердить</SubmitButton>
               </form>
             )}
-            {(QUICK[a.kind] ?? []).filter((q) => q !== a.proposed).length > 0 && (
+            {quick.length > 0 && (
               <form action={resolveApproval} className="flex flex-wrap gap-2" aria-label="Быстрые ответы">
                 <input type="hidden" name="id" value={a.id} />
                 <input type="hidden" name="decision" value="edit" />
-                {(QUICK[a.kind] ?? []).filter((q) => q !== a.proposed).map((q) => (
-                  <button key={q} name="answer" value={q} className="inline-flex h-9 items-center rounded-full border border-line bg-white/70 px-4 text-[13px] text-head transition-colors hover:border-green hover:text-green focus-visible:outline-2 focus-visible:outline-green">
+                {quick.map((q) => (
+                  <button key={q} name="answer" value={q} className="inline-flex h-10 items-center rounded-full border border-line bg-white/70 px-4 text-[13px] text-head transition-colors hover:border-green hover:text-green focus-visible:outline-2 focus-visible:outline-green">
                     Ответить «{q}»
                   </button>
                 ))}
@@ -186,13 +207,13 @@ function ApprovalItem({ a }: { a: Item }) {
             </form>
           </div>
           <details className="group rounded-2xl border border-stroke bg-white/50">
-            <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-2.5 text-[13.5px] text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-2xl px-4 py-2.5 text-[13.5px] text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
               <PenLine className="size-4 text-teal" aria-hidden />{a.proposed ? "Изменить и подтвердить" : "Написать ответ"}
             </summary>
             <form action={resolveApproval} className="flex flex-col gap-2.5 border-t border-line p-4">
               <input type="hidden" name="id" value={a.id} />
               <input type="hidden" name="decision" value="edit" />
-              <label htmlFor={fieldId} className="label">Ваш ответ</label>
+              <label htmlFor={fieldId} className="label">Твой ответ</label>
               <textarea id={fieldId} name="answer" required minLength={1} maxLength={2000} rows={3} defaultValue={a.proposed} className={cx("field resize-y text-[14px]")} />
               <div><SubmitButton size="sm" pendingText="Сохраняем…">Подтвердить этот ответ</SubmitButton></div>
             </form>

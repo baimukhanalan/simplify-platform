@@ -14,7 +14,7 @@ export function DeleteAccount({ email }: { email: string }) {
   return (
     <form action={action} className="flex flex-col gap-3">
       <label htmlFor={id} className="text-[13.5px] text-ink-2">
-        Для подтверждения введите email аккаунта: <span className="font-mono text-head">{email}</span>
+        Для подтверждения введи email аккаунта: <span className="font-mono text-head">{email}</span>
       </label>
       <div className="flex flex-col gap-2 sm:flex-row">
         <input
@@ -34,7 +34,7 @@ export function DeleteAccount({ email }: { email: string }) {
         </Button>
       </div>
       <p id={`${id}-hint`} className="text-[12.5px] text-ink-3">
-        Удалятся профиль, факты, истории, кампании, заявки, письма, интервью, офферы и журнал. Восстановить нельзя — сначала скачайте экспорт.
+        Удалятся профиль, факты, истории, кампании, заявки, письма, интервью, офферы и журнал. Восстановить нельзя — сначала скачай экспорт.
       </p>
       <FormMessage state={state} />
     </form>

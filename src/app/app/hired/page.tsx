@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ButtonLink, Card, Label, Script } from "@/components/ui";
+import { agentState } from "../_components/today-data";
 import { ShareJourney } from "./_components/share-journey";
 import { firstName, journeyStats, latestHiredCampaign, plural } from "./_lib/journey";
 
@@ -14,24 +16,24 @@ export default async function HiredPage() {
   const campaign = await latestHiredCampaign(user.id);
 
   if (!campaign) {
-    const openOffer = await db.offer.findFirst({ where: { userId: user.id, status: { in: ["received", "negotiating"] } }, select: { company: true } });
+    // An offer that is still waiting for a decision belongs on the Offer Desk, not on a "HIRED soon" placeholder.
+    const openOffer = await db.offer.findFirst({ where: { userId: user.id, status: { in: ["received", "negotiating"] } }, select: { id: true } });
+    if (openOffer) redirect("/app/offers");
     return (
       <Card strong className="mx-auto mt-6 flex max-w-2xl animate-rise flex-col items-start gap-4 sm:p-10">
         <Label>HIRED</Label>
         <h1 className="h-serif text-[clamp(30px,4vw,44px)]">HIRED <Script>soon</Script></h1>
         <p className="text-[15px] text-ink-2">
-          {openOffer
-            ? `У вас есть оффер от ${openOffer.company}. Когда примете его в Offer Desk, кампания завершится статусом HIRED и здесь появится итог.`
-            : "Когда вы примете оффер, кампания завершится статусом HIRED и здесь появится итог: заявки, интервью и дни до оффера."}
+          Когда ты примешь оффер, кампания завершится статусом HIRED и здесь появится итог: заявки, интервью и дни до оффера.
         </p>
-        <ButtonLink href={openOffer ? "/app/offers" : "/app/campaign"}>
-          {openOffer ? "Открыть Offer Desk" : "К кампании"}<ArrowRight className="size-4" strokeWidth={1.7} aria-hidden />
+        <ButtonLink href="/app/campaign">
+          К кампании<ArrowRight className="size-4" strokeWidth={1.7} aria-hidden />
         </ButtonLink>
       </Card>
     );
   }
 
-  const s = await journeyStats(campaign);
+  const [s, agent] = await Promise.all([journeyStats(campaign), agentState(user)]);
   const name = firstName(user.name);
   const hiredOn = (campaign.hiredAt ?? campaign.createdAt).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long", year: "numeric" });
   const stats: { v: number; l: string }[] = [
@@ -39,7 +41,12 @@ export default async function HiredPage() {
     { v: s.interviews, l: plural(s.interviews, ["интервью", "интервью", "интервью"]) },
     ...(s.daysToOffer != null ? [{ v: s.daysToOffer, l: `${plural(s.daysToOffer, ["день", "дня", "дней"])} до оффера` }] : []),
   ];
-  const shareText = s.offer ? `${name}: hired as ${s.offer.role} at ${s.offer.company} with Simplify.` : `${name} got hired with Simplify.`;
+  const shareText = s.offer ? `${name}: HIRED. ${s.offer.role} в ${s.offer.company} — вместе с Simplify.` : `${name}: HIRED. Новая работа — вместе с Simplify.`;
+  const after = agent.running
+    ? "Новая кампания уже идёт — прогресс на Today."
+    : user.careerMode === "passive"
+      ? "Passive Mode включён: заявки не подаются, Simplify следит за рынком и скажет, когда стоит двигаться."
+      : "Заявки по этой кампании больше не подаются. Passive Mode можно включить в Career Mode.";
 
   return (
     <section aria-labelledby="hired-h" className="relative isolate flex min-h-[calc(100dvh-7.5rem)] flex-col overflow-hidden rounded-[32px] bg-[#0c1512] px-6 py-9 text-white shadow-[0_30px_80px_-30px_rgb(12_21_18/.6)] sm:px-12 sm:py-12 lg:min-h-[calc(100dvh-9rem)]">
@@ -79,7 +86,7 @@ export default async function HiredPage() {
           <Link href="/app/career" className="inline-flex h-12 w-fit items-center gap-2 rounded-full bg-[#7fe3b6] px-6 text-[15px] font-medium text-[#0c1512] transition hover:bg-[#9aeec7] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]">
             Перейти в Career Mode<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </Link>
-          <p className="max-w-sm text-[12.5px] text-white/50">Passive Mode включён: заявки не подаются, Simplify следит за рынком и скажет, когда стоит двигаться.</p>
+          <p className="max-w-sm text-[12.5px] text-white/50">{after}</p>
         </div>
         <ShareJourney initialPath={campaign.shareToken ? `/share/${campaign.shareToken}` : null} shareText={shareText} />
       </div>

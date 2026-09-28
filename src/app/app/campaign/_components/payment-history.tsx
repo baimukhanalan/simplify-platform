@@ -1,6 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import { j } from "@/lib/db";
 import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
+import { isKaspiProvider } from "@/lib/payments/kaspi";
 import { ButtonLink, Card, Chip, Label } from "@/components/ui";
 
 type Payment = {
@@ -8,12 +9,12 @@ type Payment = {
   paidAt: Date | null; createdAt: Date; partnerCode: string | null; campaign: { plan: string } | null;
 };
 
-const PROVIDER: Record<string, string> = { kaspi_mock: "Kaspi Pay · тестовый шлюз", test: "Тестовый платёж" };
+const PROVIDER: Record<string, string> = { kaspi: "Kaspi Pay", kaspi_mock: "Kaspi Pay · тестовый шлюз", test: "Тестовый платёж" };
 const STATUS: Record<string, { label: string; tone: "green" | "amber" | "rose" | "neutral" }> = {
-  paid: { label: "Paid", tone: "green" },
-  pending: { label: "Pending", tone: "amber" },
-  failed: { label: "Failed", tone: "rose" },
-  expired: { label: "Expired", tone: "neutral" },
+  paid: { label: "Оплачено", tone: "green" },
+  pending: { label: "Ждёт оплаты", tone: "amber" },
+  failed: { label: "Отклонено", tone: "rose" },
+  expired: { label: "Истёк", tone: "neutral" },
 };
 
 const date = (d: Date) => d.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
@@ -50,15 +51,17 @@ export function PaymentHistory({ payments }: { payments: Payment[] }) {
                       <Chip tone={st.tone}>{st.label}</Chip>
                     </div>
                   </div>
-                  <dl className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-3">
-                    <div className="flex gap-1.5"><dt>Invoice</dt><dd className="break-all font-mono text-ink-2">{p.externalId ?? "—"}</dd></div>
-                    {p.partnerCode && <div className="flex gap-1.5"><dt>Партнёр</dt><dd className="font-mono text-ink-2">{p.partnerCode}</dd></div>}
-                  </dl>
-                  {status === "pending" && p.externalId && p.provider === "kaspi_mock" && (
+                  {(p.externalId || p.partnerCode) && (
+                    <dl className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-ink-3">
+                      {p.externalId && <div className="flex min-w-0 gap-1.5"><dt>Счёт</dt><dd className="break-all font-mono text-ink-2">{p.externalId}</dd></div>}
+                      {p.partnerCode && <div className="flex gap-1.5"><dt>Партнёр</dt><dd className="font-mono text-ink-2">{p.partnerCode}</dd></div>}
+                    </dl>
+                  )}
+                  {status === "pending" && p.externalId && isKaspiProvider(p.provider) && (
                     <ButtonLink href={`/pay/kaspi/${p.externalId}`} size="sm" className="self-start">Продолжить оплату<ArrowRight className="size-3.5" aria-hidden /></ButtonLink>
                   )}
                   {status === "failed" && <p className="text-[12.5px] text-rose">Kaspi отклонил оплату. Деньги не списаны.</p>}
-                  {status === "expired" && <p className="text-[12.5px] text-ink-4">Счёт истёк через 30 минут без оплаты.</p>}
+                  {status === "expired" && <p className="text-[12.5px] text-ink-3">Счёт истёк через 30 минут без оплаты — деньги не списаны.</p>}
                 </li>
               );
             })}

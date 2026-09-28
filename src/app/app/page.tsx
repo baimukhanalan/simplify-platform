@@ -4,21 +4,18 @@ import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { runAgentNow, simulateEmployers } from "@/lib/actions/campaign";
+import { demoToolsEnabled } from "@/lib/demo";
 import { currentCampaign } from "@/lib/ops-data";
 import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Chip, Label, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { dayKey, greeting, hhmm, loadToday, type Today } from "./_components/today-data";
 import { KeyNumbers, NextActionCard, StageBar, StatusDot, Timeline, TodayStrip, type NextAction } from "./_components/today";
+import { plural } from "../_components/ru";
 
 export const metadata: Metadata = { title: "Today" };
 
 const HOUR = 3600000;
-
-function plural(n: number, [one, few, many]: [string, string, string]) {
-  const m10 = n % 10, m100 = n % 100;
-  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-}
 
 function relDay(d: Date, now: number) {
   const k = dayKey(d);
@@ -47,7 +44,7 @@ function pickNext(d: Today): { action: NextAction; also: { label: string; href: 
   if (a) cands.push({
     eyebrow: "Assessment",
     title: `Assessment от ${a.opportunity.job.company}`,
-    sub: a.scheduledAt ? `Дедлайн: ${a.scheduledAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" })}. Ты прошёл на следующий этап.` : "Ты прошёл на следующий этап.",
+    sub: a.scheduledAt ? `Дедлайн: ${a.scheduledAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" })}. Ты на следующем этапе.` : "Ты на следующем этапе.",
     href: `/app/interviews/${a.id}`, cta: "Start preparation", icon: ClipboardCheck,
   });
   if (d.approvals) cands.push({
@@ -76,6 +73,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const isActive = status === "active";
   const t = d.today;
   const tagline = { active: "Your agent is working.", paused: "Your agent is paused.", hired: "You got hired.", expired: "Your campaign is complete." }[status] ?? "Your agent is working.";
+  const demo = demoToolsEnabled(user);
 
   const story = t.found || t.submitted
     ? [
@@ -104,7 +102,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
               <p className="mt-2 max-w-2xl text-[14.5px] text-ink-2">
                 Агент уже провёл первый цикл{t.found ? <>: нашёл <span className="num text-head">{t.found}</span> {plural(t.found, ["вакансию", "вакансии", "вакансий"])}</> : ""}
                 {t.submitted ? <> и отправил <span className="num text-head">{t.submitted}</span> {plural(t.submitted, ["заявку", "заявки", "заявок"])}</> : ""}.
-                Дальше он работает сам — каждый день, до {campaign.dailyLimit} заявок. Мы позовём тебя, только когда без тебя нельзя.
+                Дальше он работает сам — каждый день, до {campaign.dailyLimit} {plural(campaign.dailyLimit, ["заявки", "заявок", "заявок"])}. Мы позовём тебя, только когда без тебя нельзя.
               </p>
             </div>
             <Link href="/app" scroll={false} className="grid size-9 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-white hover:text-head focus-visible:outline-2 focus-visible:outline-green" aria-label="Скрыть сообщение"><X className="size-4" aria-hidden /></Link>
@@ -112,9 +110,12 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         </section>
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-        {/* Where am I + what is the agent doing */}
-        <section aria-label="Статус кампании" className="glass-strong relative flex animate-rise flex-col gap-6 overflow-hidden p-5 sm:p-8">
+      {/*
+        Mobile order: greeting → Next action → what the agent is doing. On desktop the greeting and the details are two
+        halves of one card in the left column (joined edges), and Next action sits on the right spanning both rows.
+      */}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
+        <section aria-label="Статус кампании" className="glass-strong relative flex animate-rise flex-col gap-6 overflow-hidden p-5 sm:p-8 lg:col-start-1 lg:row-start-1 lg:!rounded-b-none lg:!border-b-0 lg:pb-0 lg:!shadow-none">
           <div className="flex flex-wrap items-center gap-2.5">
             <StatusDot status={status} />
             <span className="label">Campaign Day <span className="num text-head">{d.clock.day}</span> / {d.clock.total}</span>
@@ -123,6 +124,11 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             <p className="h-serif text-[clamp(32px,4.6vw,54px)]">{greeting()}, <Script>{firstName}</Script>.</p>
             <p className="h-serif text-[clamp(22px,2.6vw,30px)] !text-teal">{tagline}</p>
           </div>
+        </section>
+
+        <NextActionCard action={action} also={also} paused={status === "paused"} className="animate-rise lg:col-start-2 lg:row-span-2 lg:row-start-1" />
+
+        <section aria-label="Что делает агент" className="glass-strong flex animate-rise flex-col gap-6 p-5 sm:p-8 lg:col-start-1 lg:row-start-2 lg:-mt-5 lg:!rounded-t-none lg:!border-t-0 lg:pt-6">
           {d.goalLine && (
             <Link href="/app/goal" className="group inline-flex w-fit max-w-full items-center gap-2 font-mono text-[11.5px] uppercase tracking-[.08em] text-ink-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
               <span className="text-ink-4">Goal</span><span className="min-w-0 break-words">{d.goalLine}</span>
@@ -136,8 +142,6 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
             {story && <p className="text-[14.5px] leading-relaxed text-ink-2">{story}{!action && isActive ? " Тебе ничего делать не нужно." : ""}</p>}
           </div>
         </section>
-
-        <NextActionCard action={action} also={also} paused={status === "paused"} />
       </div>
 
       <Card className="flex animate-rise flex-col gap-7">
@@ -145,7 +149,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           <Label>Где ты сейчас</Label>
           <Link href="/app/applications" className="inline-flex items-center gap-1 text-[13px] text-teal hover:text-head">Applications <ArrowRight className="size-3.5" aria-hidden /></Link>
         </div>
-        <StageBar stage={d.stage} totals={d.totals} goalRole={user.goal?.primaryRole ?? ""} />
+        <StageBar stage={d.stage} values={d.stageValues} />
         <div className="flex flex-col gap-4 border-t border-line pt-6">
           <KeyNumbers t={d.totals} />
           <TodayStrip d={t} />
@@ -160,20 +164,20 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         <Timeline days={d.timeline} now={d.now} />
       </Card>
 
-      {/* Manual controls: available, not advertised. */}
-      <div className="flex flex-wrap items-center gap-2 px-1 pt-2 text-[12.5px] text-ink-4">
-        <span className="label mr-1 !text-[9.5px] !text-ink-4">Ручное управление</span>
-        {isActive ? (
-          <form action={runAgentNow}>
-            <SubmitButton variant="ghost" size="sm" pendingText="Агент работает…" className="!h-8 !px-3 !text-[12.5px] text-ink-3"><Play className="size-3.5" strokeWidth={1.7} aria-hidden />Запустить цикл агента</SubmitButton>
+      {/* Demo tools (demo account, staff, local dev): available, not advertised. */}
+      {demo && (
+        <div className="flex flex-wrap items-center gap-2 px-1 pt-2 text-[12.5px] text-ink-4">
+          <span className="label mr-1 !text-[9.5px] !text-ink-4">Демо-инструменты</span>
+          {isActive && (
+            <form action={runAgentNow}>
+              <SubmitButton variant="ghost" size="sm" pendingText="Агент работает…" className="!h-10 !px-3 !text-[12.5px] text-ink-3"><Play className="size-3.5" strokeWidth={1.7} aria-hidden />Запустить цикл агента</SubmitButton>
+            </form>
+          )}
+          <form action={simulateEmployers}>
+            <SubmitButton variant="ghost" size="sm" pendingText="Симулируем…" className="!h-10 !px-3 !text-[12.5px] text-ink-3"><Sparkles className="size-3.5 text-amber" strokeWidth={1.7} aria-hidden />Симулировать ответы</SubmitButton>
           </form>
-        ) : (
-          <Link href="/app/agent" className="rounded-full px-3 py-1.5 hover:bg-white/60 hover:text-head">Кампания не активна — Agent</Link>
-        )}
-        <form action={simulateEmployers}>
-          <SubmitButton variant="ghost" size="sm" pendingText="Симулируем…" className="!h-8 !px-3 !text-[12.5px] text-ink-3"><Sparkles className="size-3.5 text-amber" strokeWidth={1.7} aria-hidden />Симулировать ответы <span className="font-mono text-[9.5px] uppercase tracking-[.06em] text-amber">демо</span></SubmitButton>
-        </form>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -181,7 +185,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 async function NoCampaign({ userId, firstName, hasGoal, hasCv }: { userId: string; firstName: string; hasGoal: boolean; hasCv: boolean }) {
   const [facts, invoice] = await Promise.all([
     db.fact.count({ where: { userId } }),
-    db.payment.findFirst({ where: { userId, provider: "kaspi_mock", status: "pending" }, orderBy: { createdAt: "desc" }, select: { externalId: true, meta: true } }),
+    db.payment.findFirst({ where: { userId, provider: { in: ["kaspi", "kaspi_mock"] }, status: "pending" }, orderBy: { createdAt: "desc" }, select: { externalId: true, meta: true } }),
   ]);
   const openInvoice = invoice?.externalId && new Date(j<{ expiresAt?: string }>(invoice.meta, {}).expiresAt ?? 0).getTime() > (await nowMs()) ? invoice.externalId : null;
   const steps = [

@@ -48,25 +48,28 @@ export function Metric({ label, value, tone, className }: { label: string; value
 export const matchTone = (m: number) => (m >= 75 ? "green" : m >= 55 ? "teal" : m >= 40 ? "amber" : "rose") as "green" | "teal" | "amber" | "rose";
 
 const GROUP_LABEL = { prep: "Подготовка", applied: "Подано", interview: "Интервью", result: "Результат" } as const;
+type Group = keyof typeof GROUP_LABEL;
+const ALL_GROUPS: Group[] = ["prep", "applied", "interview", "result"];
 
 /**
  * Disclosure menu to move an opportunity to another pipeline status. One form, one button per status —
- * keyboard operable without JS, no accidental moves from arrow keys on a <select>.
+ * keyboard operable without JS, no accidental moves from arrow keys on a <select>. `groups` limits the choices
+ * (an application page hides the prep stages); `label` names the trigger for screen readers.
  */
-export function StatusMover({ id, current, label = "Переместить", align = "left" }: { id: string; current: string; label?: string; align?: "left" | "right" }) {
-  const groups = (["prep", "applied", "interview", "result"] as const).map((g) => ({ g, items: PIPELINE.filter((p) => p.group === g) }));
+export function StatusMover({ id, current, label = "Переместить", ariaLabel, groups = ALL_GROUPS, align = "left" }: { id: string; current: string; label?: string; ariaLabel?: string; groups?: Group[]; align?: "left" | "right" }) {
+  const sets = groups.map((g) => ({ g, items: PIPELINE.filter((p) => p.group === g) }));
   return (
     <details className="group/mover relative">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-full px-2 py-1 font-mono text-[10px] uppercase tracking-[.06em] text-teal transition-colors hover:bg-white hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+      <summary aria-label={ariaLabel} className="inline-flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded-full border border-line bg-white/70 px-4 text-[13px] text-head transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
         {label}
-        <ChevronDown className="size-3 transition-transform group-open/mover:rotate-180" aria-hidden />
+        <ChevronDown className="size-3.5 text-teal transition-transform group-open/mover:rotate-180" aria-hidden />
       </summary>
-      <form action={setOpportunityStatus} className={cx("mt-2 flex flex-col gap-2 rounded-2xl border border-stroke bg-white p-2.5 shadow-(--shadow-glass)", align === "right" && "sm:ml-auto")}>
+      <form action={setOpportunityStatus} className={cx("mt-2 flex flex-col gap-2.5 rounded-2xl border border-stroke bg-white p-3 shadow-(--shadow-glass)", align === "right" && "sm:ml-auto")}>
         <input type="hidden" name="id" value={id} />
-        {groups.map(({ g, items }) => (
+        {sets.map(({ g, items }) => (
           <fieldset key={g} className="flex flex-col gap-1">
             <legend className="label mb-1 !text-[9px]">{GROUP_LABEL[g]}</legend>
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {items.map((p) => (
                 <button
                   key={p.key}
@@ -74,7 +77,7 @@ export function StatusMover({ id, current, label = "Переместить", ali
                   value={p.key}
                   disabled={p.key === current}
                   aria-current={p.key === current ? "true" : undefined}
-                  className="rounded-full border border-line px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-green hover:bg-green-soft hover:text-green focus-visible:outline-2 focus-visible:outline-green disabled:border-transparent disabled:bg-cta disabled:text-white"
+                  className="inline-flex min-h-10 items-center rounded-full border border-line px-3 text-[12.5px] text-ink-2 transition-colors hover:border-green hover:bg-green-soft hover:text-green focus-visible:outline-2 focus-visible:outline-green disabled:border-transparent disabled:bg-cta disabled:text-white"
                 >
                   {p.label}
                 </button>
@@ -82,8 +85,8 @@ export function StatusMover({ id, current, label = "Переместить", ali
             </div>
           </fieldset>
         ))}
-        {current !== "skipped" && (
-          <button name="status" value="skipped" className="self-start rounded-full px-2.5 py-1 text-[12px] text-ink-3 underline-offset-2 hover:text-rose hover:underline focus-visible:outline-2 focus-visible:outline-green">
+        {current !== "skipped" && groups.includes("prep") && (
+          <button name="status" value="skipped" className="inline-flex min-h-10 items-center self-start rounded-full px-3 text-[12.5px] text-ink-3 underline-offset-2 hover:text-rose hover:underline focus-visible:outline-2 focus-visible:outline-green">
             Пропустить вакансию
           </button>
         )}

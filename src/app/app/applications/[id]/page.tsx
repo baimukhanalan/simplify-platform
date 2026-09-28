@@ -5,9 +5,12 @@ import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import type { Answer } from "@/lib/engine/personalize";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
-import { REMOTE_LABEL, fmtDate, salaryLabel, statusLabel, statusTone, submitMethodLabel } from "@/lib/ops";
-import { Card, Chip, DemoBadge, Label, PageHeader, cx } from "@/components/ui";
+import { REMOTE_LABEL, fmtDate, salaryLabel, statusLabel, statusTone } from "@/lib/ops";
+import { Card, Chip, Label, PageHeader, cx } from "@/components/ui";
 import { cleanRequirement, cvVersionLabel } from "../../opportunities/_lib/fit";
+import { StatusMover } from "../../opportunities/_components/bits";
+import { AgentStatus, type Need } from "../../../_components/agent-status";
+import { endSentence, shortDate } from "../../../_components/ru";
 import { Timeline, type Step } from "./_components/timeline";
 
 export const metadata = { title: "Application" };
@@ -31,7 +34,11 @@ const NEXT: Record<string, string> = {
   offer: "Решение по офферу",
 };
 
-const ANSWER_LABEL: Record<string, string> = { auto: "агент", rule: "по правилу", approval: "вы" };
+const ANSWER_LABEL: Record<string, string> = { auto: "агент", rule: "по правилу", approval: "ты" };
+
+/** How the package went out, without internal codes ("ats:demo" → "демо-ATS"). */
+const sentVia = (m: string) =>
+  m === "user-handoff" ? "ты, через официальную форму" : m.startsWith("ats:demo") ? "демо-ATS (симуляция)" : m.startsWith("ats:") ? `ATS ${m.slice(4)}` : "";
 
 export default async function ApplicationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -55,8 +62,8 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   const steps: Step[] = [];
   // The package always precedes the submission, even if the rows were written in the same instant.
   const preparedAt = pkg ? new Date(Math.min(pkg.createdAt.getTime(), (opp.submittedAt ?? pkg.createdAt).getTime() - 1)) : null;
-  if (pkg && preparedAt) steps.push({ at: preparedAt, kind: "prepared", title: "CV и cover letter подготовлены", detail: `CV: ${cvVersionLabel(pkg.cvVersion)}` });
-  if (opp.submittedAt) steps.push({ at: opp.submittedAt, kind: "submitted", title: "Submitted", detail: pkg?.submitMethod ? submitMethodLabel(pkg.submitMethod) : undefined });
+  if (pkg && preparedAt) steps.push({ at: preparedAt, kind: "prepared", title: "CV и cover letter подготовлены", detail: cvVersionLabel(pkg.cvVersion) });
+  if (opp.submittedAt) steps.push({ at: opp.submittedAt, kind: "submitted", title: "Submitted", detail: pkg?.submitMethod ? sentVia(pkg.submitMethod) || undefined : undefined });
   for (const m of opp.inbox) {
     steps.push({ at: m.receivedAt, kind: MAIL[m.classification] ? m.classification : "inbox", title: MAIL[m.classification] ?? "Письмо от работодателя", detail: m.subject, href: `/app/inbox?m=${m.id}`, tag: m.simulated ? "симуляция" : undefined });
   }
@@ -69,7 +76,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
     if (e.type !== "status_change") continue; // everything else is derived from its own rows above
     const d = j<{ from?: string; to?: string; by?: string }>(e.data, {});
     if (!d.to || d.to === "skipped") continue;
-    steps.push({ at: e.createdAt, kind: "status_change", title: `Статус: ${statusLabel(d.to)}`, detail: d.by === "user" ? "изменено вручную" : undefined });
+    steps.push({ at: e.createdAt, kind: "status_change", title: `Статус: ${statusLabel(d.to)}`, detail: d.by === "user" ? "изменено тобой" : undefined });
   }
   steps.sort((a, b) => (a.at?.getTime() ?? 0) - (b.at?.getTime() ?? 0));
   if (NEXT[opp.status]) steps.push({ at: null, kind: "next", title: NEXT[opp.status], upcoming: true });
@@ -78,6 +85,12 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   const requirements = j<string[]>(job.requirements, []).map(cleanRequirement).filter(Boolean);
   const hasCyrillic = pkg ? /[Ѐ-ӿ]/.test(pkg.cvText) : false;
   const salary = salaryLabel(job.salaryMin, job.salaryMax, job.currency);
+  const isDemo = job.source === "demo";
+  const pendingAnswers = answers.filter((a) => a.status === "pending").length;
+  const needs: Need[] = [];
+  if (opp.status === "offer") needs.push({ text: "Оффер ждёт твоего решения", href: "/app/offers" });
+  if (["assessment", "recruiter", "hiring_manager", "technical", "final"].includes(opp.status)) needs.push({ text: "Подготовься к следующему этапу", href: "/app/interviews" });
+  if (pendingAnswers) needs.push({ text: "Ответь на вопрос из анкеты", href: "/app/approvals" });
 
   return (
     <div className="flex flex-col gap-5">
@@ -90,19 +103,28 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
         sub={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <Chip tone={statusTone(opp.status)}>{statusLabel(opp.status)}</Chip>
-            <span>Submitted: <span className="num text-head">{fmtDate(opp.submittedAt)}</span></span>
-            {pkg && <span>CV: <span className="text-head">{cvVersionLabel(pkg.cvVersion)}</span></span>}
-            {job.source === "demo" && <DemoBadge />}
+            <span>Подано <span className="num text-head">{shortDate(opp.submittedAt)}</span></span>
+            {pkg && <span className="text-head">{cvVersionLabel(pkg.cvVersion)}</span>}
+            {isDemo && <span className="text-ink-3">демо-вакансия: ответы работодателя симулируются</span>}
           </span>
         }
       />
 
+      <AgentStatus needs={needs} working={opp.status === "rejected" ? "Агент учёл этот отказ при выборе следующих вакансий." : undefined} className="-mt-3" />
+
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Timeline first in the DOM: on mobile it is the answer to "where is my application?" */}
-        <aside className="lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1" aria-labelledby="timeline-h">
+        <aside className="flex flex-col gap-5 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1" aria-label="Статус заявки">
           <Card className="flex flex-col gap-4">
-            <h2 id="timeline-h" className="label">Timeline</h2>
+            <h2 className="label">Timeline</h2>
             <Timeline steps={steps} />
+          </Card>
+          <Card className="flex flex-col gap-2.5">
+            <h2 className="label">Статус</h2>
+            <p className="text-[13px] text-ink-3">
+              Статус обновляется сам по письмам работодателя. Если что-то произошло вне почты — например, звонок рекрутера, — поменяй его здесь.
+            </p>
+            <StatusMover id={opp.id} current={opp.status} groups={["applied", "interview", "result"]} label="Сменить статус" ariaLabel={`Сменить статус заявки: ${job.company} — ${job.title}`} />
           </Card>
         </aside>
 
@@ -126,7 +148,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             {pkg ? (
               <>
                 <p className="text-[12.5px] text-ink-3">
-                  Ровно тот текст, который ушёл работодателю{opp.submittedAt ? ` ${fmtDate(opp.submittedAt)}` : ""}.
+                  {endSentence(`Ровно тот текст, который ушёл работодателю${opp.submittedAt ? ` ${fmtDate(opp.submittedAt)}` : ""}`)}
                   {hasCyrillic && " В PDF кириллица записана латиницей (транслитерация) — стандартный шрифт PDF её не поддерживает."}
                 </p>
                 <pre tabIndex={0} aria-label="Текст отправленного CV" className="scroll-thin max-h-[520px] overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-stroke bg-white/85 p-4 font-mono text-[12.5px] leading-[1.65] text-ink focus-visible:outline-2 focus-visible:outline-green sm:p-5">{pkg.cvText}</pre>
@@ -155,7 +177,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
                     </div>
                     <div className="flex items-start sm:justify-end">
                       <Chip tone={a.status === "pending" ? "amber" : a.category === "approval" ? "green" : "neutral"}>
-                        {a.status === "pending" ? "ждёт вас" : `ответил: ${ANSWER_LABEL[a.category] ?? a.category}`}
+                        {a.status === "pending" ? "ждёт тебя" : `ответ: ${ANSWER_LABEL[a.category] ?? a.category}`}
                       </Chip>
                     </div>
                   </li>
@@ -184,9 +206,9 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
               <div className="whitespace-pre-line break-words border-t border-line px-4 py-4 text-[14px] leading-relaxed text-ink-2">{job.description || "Описание не предоставлено источником."}</div>
             </details>
             <div className="flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
-              <Link href={`/app/opportunities/${opp.id}`} className="text-teal hover:text-head">Почему агент выбрал эту вакансию</Link>
-              {job.url && (
-                <a href={job.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-teal hover:text-head">
+              <Link href={`/app/opportunities/${opp.id}`} className="inline-flex min-h-10 items-center text-teal hover:text-head">Почему агент выбрал эту вакансию</Link>
+              {job.url && !isDemo && (
+                <a href={job.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-1.5 text-teal hover:text-head">
                   Оригинал<ExternalLink className="size-3.5" aria-hidden /><span className="sr-only">(откроется в новой вкладке)</span>
                 </a>
               )}

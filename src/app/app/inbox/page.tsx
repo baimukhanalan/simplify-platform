@@ -5,10 +5,13 @@ import type { LucideIcon } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { simulateEmployers } from "@/lib/actions/campaign";
+import { demoToolsEnabled } from "@/lib/demo";
 import { INBOX_CLASS, ago, fmtDate, fmtDateTime, statusLabel } from "@/lib/ops";
 import { ButtonLink, Chip, Empty, PageHeader, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { PasteEmail } from "./_components/paste-email";
+import { AgentStatus, type Need } from "../../_components/agent-status";
+import { plural } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Responses" };
 
@@ -62,6 +65,21 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
   ]);
   const count = (k: string) => (k ? counts.find((c) => c.classification === k)?._count ?? 0 : counts.reduce((a, c) => a + c._count, 0));
   const total = count("");
+  const demo = demoToolsEnabled(user);
+
+  // What in the mail still needs the user: an offer awaiting a decision, an interview/assessment still ahead.
+  const needs: Need[] = [];
+  for (const m of messages) {
+    if (needs.length >= 3) break;
+    const o = m.opportunity;
+    if (!o) continue;
+    if (m.classification === "offer" && o.status === "offer") needs.push({ text: `Оффер от ${o.job.company} ждёт твоего решения`, href: "/app/offers" });
+    else if (m.classification === "interview" || m.classification === "assessment") {
+      const iv = o.interviews.find((i) => (m.classification === "assessment" ? i.round === "assessment" : i.round !== "assessment") && i.status === "upcoming");
+      if (iv) needs.push({ text: `${m.classification === "assessment" ? "Assessment" : "Интервью"} — ${o.job.company}: подготовься`, href: `/app/interviews/${iv.id}` });
+    }
+  }
+  const uniqueNeeds = needs.filter((n, i) => needs.findIndex((x) => x.text === n.text) === i);
 
   // Confirmations are reassurance, not news: fold them into one line unless explicitly filtered.
   const main = cls ? messages : messages.filter((m) => m.classification !== "confirmation");
@@ -75,6 +93,8 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
         sub="Simplify читает каждый ответ, понимает, что это, и сам двигает заявку дальше. Здесь — что пришло и что с этим сделать."
       />
 
+      <AgentStatus needs={uniqueNeeds} working="Ответы работодателей агент разбирает сам." className="-mt-3" />
+
       {total > 0 && (
         <nav aria-label="Фильтр по типу ответа" className="flex flex-wrap gap-1.5">
           {FILTERS.map((f) => {
@@ -87,7 +107,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
                 href={f.key ? `/app/inbox?c=${f.key}` : "/app/inbox"}
                 scroll={false}
                 aria-current={active ? "page" : undefined}
-                className={cx("inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green", active ? "border-transparent bg-cta text-white" : "border-stroke bg-white/60 text-head hover:bg-white")}
+                className={cx("inline-flex min-h-10 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green", active ? "border-transparent bg-cta text-white" : "border-stroke bg-white/60 text-head hover:bg-white")}
               >
                 {f.label}<span className={cx("num text-[11.5px]", active ? "text-white/70" : "text-ink-3")}>{n}</span>
               </Link>
@@ -110,7 +130,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
             <li>
               <Link href="/app/inbox?c=confirmation" className="glass flex items-center gap-3 !rounded-2xl px-5 py-4 text-[14px] text-ink-2 hover:bg-white focus-visible:outline-2 focus-visible:outline-green">
                 <Mail className="size-4 text-ink-4" strokeWidth={1.7} aria-hidden />
-                <span className="flex-1"><span className="num text-head">{count("confirmation")}</span> {count("confirmation") === 1 ? "компания подтвердила" : "компаний подтвердили"} получение заявки. Ждём решения.</span>
+                <span className="flex-1"><span className="num text-head">{count("confirmation")}</span> {plural(count("confirmation"), ["компания подтвердила", "компании подтвердили", "компаний подтвердили"])} получение заявки. Ждём решения.</span>
                 <ArrowRight className="size-4 text-teal" aria-hidden />
               </Link>
             </li>
@@ -122,7 +142,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
       <details className="group rounded-[var(--radius-card)] border border-dashed border-line bg-white/30">
         <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4 text-[13.5px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
           <span className="label !text-[10px]">Инструменты</span>
-          <span>Вставить письмо вручную · демо-симуляция ответов</span>
+          <span>{demo ? "Вставить письмо вручную · демо-симуляция ответов" : "Вставить письмо вручную"}</span>
           <span className="ml-auto font-mono text-[11px] text-ink-4 group-open:hidden">показать</span>
           <span className="ml-auto hidden font-mono text-[11px] text-ink-4 group-open:inline">скрыть</span>
         </summary>
@@ -131,12 +151,16 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
             <p className="text-[13.5px] text-ink-2">Пока почта не подключена, перешли письмо сюда — Simplify разберёт его так же, как будет делать автоматически.</p>
             <PasteEmail sample={sampleOpp ? { company: sampleOpp.job.company, title: sampleOpp.job.title } : null} />
           </div>
-          <div className="flex flex-wrap items-center gap-3 border-t border-line pt-5">
-            <form action={simulateEmployers}>
-              <SubmitButton variant="glass" size="sm" pendingText="Симулируем…"><Sparkles className="size-4 text-amber" aria-hidden />Симулировать ответы <span className="font-mono text-[10px] uppercase tracking-[.06em] text-amber">демо</span></SubmitButton>
-            </form>
-            <span className="text-[12.5px] text-ink-3">Только для демо-вакансий. Подключение Gmail / Outlook — скоро.</span>
-          </div>
+          {demo ? (
+            <div className="flex flex-wrap items-center gap-3 border-t border-line pt-5">
+              <form action={simulateEmployers}>
+                <SubmitButton variant="glass" size="sm" pendingText="Симулируем…" className="!h-10"><Sparkles className="size-4 text-amber" aria-hidden />Симулировать ответы</SubmitButton>
+              </form>
+              <span className="text-[12.5px] text-ink-3">Демо-инструмент: только для демо-вакансий.</span>
+            </div>
+          ) : (
+            <p className="border-t border-line pt-5 text-[12.5px] text-ink-3">Подключение Gmail / Outlook — скоро.</p>
+          )}
         </div>
       </details>
     </div>
@@ -178,9 +202,9 @@ function ResponseCard({ m }: { m: Msg }) {
           </div>
           <h2 id={titleId} className={cx(big ? "h-serif text-[22px] sm:text-[24px]" : "text-[15px] text-head")}>
             {m.classification === "interview" && <>Интервью с {company}</>}
-            {m.classification === "assessment" && <>Ты прошёл на следующий этап — {company}</>}
+            {m.classification === "assessment" && <>Следующий этап — {company}</>}
             {m.classification === "offer" && <>Оффер от {company}</>}
-            {m.classification === "rejection" && <>{company}: application declined</>}
+            {m.classification === "rejection" && <>{company}: отказ</>}
             {m.classification === "confirmation" && <>{company} получили заявку</>}
             {!["interview", "assessment", "offer", "rejection", "confirmation"].includes(m.classification) && m.subject}
           </h2>
@@ -190,7 +214,7 @@ function ResponseCard({ m }: { m: Msg }) {
       </div>
 
       {m.classification === "rejection" && (
-        <p className="text-[13.5px] text-ink-2">Application declined. Simplify автоматически меняет статус и учитывает этот ответ при выборе следующих вакансий.</p>
+        <p className="text-[13.5px] text-ink-2">Работодатель отказал. Simplify сам поменял статус и учтёт этот ответ при выборе следующих вакансий.</p>
       )}
       {m.classification === "confirmation" && <p className="text-[13.5px] text-ink-3">Заявку получили. Статус обновлён автоматически, ждём решения.</p>}
 
@@ -216,7 +240,7 @@ function ResponseCard({ m }: { m: Msg }) {
       )}
 
       <details className="group">
-        <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 text-[12.5px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+        <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded text-[12.5px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
           <span className="group-open:hidden">Показать письмо</span><span className="hidden group-open:inline">Скрыть письмо</span>
         </summary>
         <div className="mt-3 flex flex-col gap-2 rounded-2xl border border-line bg-white/70 p-4">

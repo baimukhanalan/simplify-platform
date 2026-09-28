@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Logo } from "@/components/ui";
 import { plural } from "@/app/app/hired/_lib/journey";
-import { headline, loadShare } from "./data";
+import { headline, loadShare, statsLine } from "./data";
 
 type Props = { params: Promise<{ token: string }> };
 
@@ -13,12 +13,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const d = await loadShare(token);
   if (!d) return { title: "Simplify", robots: { index: false, follow: false } };
   const title = headline(d);
-  const parts = [
-    `${d.applications} ${d.applications === 1 ? "application" : "applications"}`,
-    `${d.interviews} ${d.interviews === 1 ? "interview" : "interviews"}`,
-    ...(d.daysToOffer != null ? [`${d.daysToOffer} days to offer`] : []),
-  ];
-  const description = `${parts.join(" · ")} — with Simplify, the autonomous AI Career Agent.`;
+  const description = `${statsLine(d)} — вместе с Simplify, персональным AI Career Agent.`;
   return {
     title: { absolute: `${title} · Simplify` },
     description,
@@ -43,7 +38,7 @@ export default async function SharePage({ params }: Props) {
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 py-6 sm:px-8 sm:py-10">
       <header className="flex items-center justify-between gap-4">
         <Link href="/" className="rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
-        <span className="label">Simplify journey</span>
+        <span className="label">История поиска</span>
       </header>
 
       <article aria-labelledby="share-h" className="relative isolate mt-8 flex flex-1 flex-col overflow-hidden rounded-[32px] bg-[#0c1512] px-6 py-10 text-white shadow-[0_30px_80px_-30px_rgb(12_21_18/.6)] sm:mt-10 sm:px-12 sm:py-14">
@@ -55,8 +50,11 @@ export default async function SharePage({ params }: Props) {
         </div>
 
         <span className="animate-fade font-mono text-[11px] uppercase tracking-[.14em] text-[#8fc7ad]">Career Campaign · HIRED</span>
-        <h1 id="share-h" className="h-serif mt-6 animate-rise text-[clamp(52px,11vw,128px)] leading-[.88] tracking-[-0.02em] !text-white">
-          {d.name} <span className="script !text-[#7fe3b6]">got hired</span><span className="text-[#7fe3b6]">.</span>
+        <h1 id="share-h" className="mt-6 flex flex-col gap-4">
+          <span className="h-serif animate-rise text-[clamp(72px,17vw,188px)] leading-[.84] tracking-[-0.03em] !text-white">HIRED<span className="text-[#7fe3b6]">.</span></span>
+          <span className="h-serif animate-rise text-[clamp(26px,4vw,44px)] !text-white/90" style={{ animationDelay: "60ms" }}>
+            {d.name} <span className="script !text-[#7fe3b6]">получает оффер</span>
+          </span>
         </h1>
         {(d.role || d.company) && (
           <p className="mt-6 max-w-3xl animate-rise text-[clamp(19px,2.4vw,28px)] leading-snug text-white/85" style={{ animationDelay: "100ms" }}>
@@ -82,11 +80,11 @@ export default async function SharePage({ params }: Props) {
 
       <section aria-label="Simplify" className="glass mt-5 flex flex-col items-start gap-4 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8">
         <div>
-          <p className="h-serif text-[clamp(22px,2.6vw,30px)]">Ваша очередь.</p>
-          <p className="mt-1 text-[14px] text-ink-3">Скажите, какую работу хотите — остальное сделает агент.</p>
+          <p className="h-serif text-[clamp(22px,2.6vw,30px)]">Твоя очередь.</p>
+          <p className="mt-1 text-[14px] text-ink-3">Скажи, какую работу хочешь — остальное сделает агент.</p>
         </div>
         <Link href="/" className="inline-flex h-12 items-center gap-2 rounded-full bg-cta px-6 text-[15px] font-medium text-white shadow-(--shadow-cta) transition hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">
-          Start your campaign<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
+          Запустить свою кампанию<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
         </Link>
       </section>
     </main>

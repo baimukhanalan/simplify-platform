@@ -11,7 +11,7 @@ console.log("role match", low.match, low.status);
 await c.action("campaign.prepareOpportunity", [form({ id: low.id })], { page: `/app/opportunities/${low.id}` });
 const aps = await db.approval.findMany({ where: { opportunityId: low.id, status: "pending" } });
 console.log("pending approvals:", aps.map((x) => x.kind));
-// then answers the self-identification question in Approvals (it's in the queue)
+// a preview routes no questions any more (aps should be empty); if any exist, answering them must still not submit
 for (const ap of aps) await c.action("ops.resolveApproval", [form({ id: ap.id, decision: "edit", answer: "I don't wish to answer" })], { page: "/app/approvals" });
 const after = await db.opportunity.findUnique({ where: { id: low.id } });
 check(after.status !== "submitted", "J7.bypass", `answering approvals of a ${low.match}% role (below 85% threshold, never Apply/Auto; only previewed) must not submit it`, after.status);

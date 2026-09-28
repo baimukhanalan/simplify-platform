@@ -13,6 +13,7 @@ import { RangeBar } from "./range-bar";
 import { NegotiationTabs } from "./negotiation-tabs";
 import { ConfirmAction } from "./confirm-action";
 import { compBreakdown, kMoney, kRange } from "./comp";
+import { callScript, fallbackLevers, negotiationEmail, talkingPoints } from "./negotiation-copy";
 
 export const STYLES: { level: Aggressiveness; label: string; hint: string }[] = [
   { level: "soft", label: "Conservative", hint: "мягко" },
@@ -21,8 +22,6 @@ export const STYLES: { level: Aggressiveness; label: string; hint: string }[] = 
 ];
 
 const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
-/** The engine prefixes profile metrics with a label; the UI shows the metric itself. */
-const cleanArg = (a: string) => a.replace(/^Verified impact:\s*/i, "");
 
 type Props = { offer: Offer; level: Aggressiveness; roleFamily: string; seniority: string; regions: string[]; strengths: string[]; name: string };
 
@@ -31,7 +30,17 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
   const bm = benchmarkOffer({ base: Math.round(o.base * fx), roleFamily, seniority, regions });
   const range = { low: Math.round(bm.range.low / fx), mid: Math.round(bm.range.mid / fx), high: Math.round(bm.range.high / fx) };
   const plans = Object.fromEntries(
-    STYLES.map((s) => [s.level, negotiationPlan({ company: o.company, role: o.role, base: o.base, currency: o.currency, range, strengths, name, level: s.level })]),
+    STYLES.map((s) => {
+      const plan = negotiationPlan({ company: o.company, role: o.role, base: o.base, currency: o.currency, range, strengths, name, level: s.level });
+      const m = (n: number) => kMoney(n, o.currency);
+      return [s.level, {
+        ...plan,
+        args: talkingPoints({ role: o.role, low: m(range.low), high: m(range.high), strengths }),
+        callScript: callScript({ ask: m(plan.ask), walkaway: m(plan.walkaway) }),
+        fallback: fallbackLevers(m(Math.max(3000, (plan.target - o.base) * 0.6))),
+        email: negotiationEmail({ role: o.role, company: o.company, name, level: s.level, ask: m(plan.ask), low: m(range.low), high: m(range.high), strengths }),
+      }];
+    }),
   ) as Record<Aggressiveness, ReturnType<typeof negotiationPlan>>;
   const saved = j<{ level?: string; ask?: number; notes?: string; savedAt?: string }>(o.negotiation, {});
   const c = compBreakdown(o);
@@ -77,14 +86,6 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
           </div>
         </div>
 
-        <div className="mt-8 flex flex-wrap gap-2">
-          <a href={`#${ids.decide}`} className="inline-flex h-11 items-center gap-2 rounded-full bg-[#7fe3b6] px-5 text-[14.5px] font-medium text-[#0c1512] transition hover:bg-[#9aeec7] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]">
-            Принять решение<ArrowDown className="size-4" strokeWidth={1.8} aria-hidden />
-          </a>
-          <a href={`#${ids.neg}`} className="inline-flex h-11 items-center gap-2 rounded-full border border-white/20 px-5 text-[14.5px] text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]">
-            Negotiation Assistant
-          </a>
-        </div>
       </div>
 
       {/* ── Compensation + benchmark ───────────────────────────── */}
@@ -114,7 +115,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
             {c.benefits.length ? (
               <ul className="flex flex-wrap gap-1.5">{c.benefits.map((b) => <li key={b}><Chip>{b}</Chip></li>)}</ul>
             ) : (
-              <p className="text-[13.5px] text-ink-3">Не указаны — уточните у рекрутера страховку, отпуск и learning budget.</p>
+              <p className="text-[13.5px] text-ink-3">Не указаны — уточни у рекрутера страховку, отпуск и learning budget.</p>
             )}
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-2.5 border-t border-line pt-4 text-[13px] sm:grid-cols-3">
@@ -164,12 +165,54 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
         </Card>
       </div>
 
+      {/* ── Decision: one block with all three outcomes ───────── */}
+      <div id={ids.decide} className="scroll-mt-24 rounded-[24px] bg-[#0c1512] px-5 py-7 text-white sm:px-8" role="group" aria-labelledby={`${ids.decide}-h`}>
+        <span className="font-mono text-[10.5px] uppercase tracking-[.12em] text-[#8fc7ad]">Решение</span>
+        <h3 id={`${ids.decide}-h`} className="h-serif mt-2 text-[clamp(24px,3vw,34px)] !text-white">Ready to say <span className="script !text-[#7fe3b6]">yes</span>?</h3>
+        <p className="mt-2 max-w-2xl text-[14px] text-white/65">
+          {negotiate
+            ? <>Оффер ниже медианы рынка — есть смысл сначала поторговаться. Когда условия устроят, прими оффер здесь.</>
+            : <>Оффер на уровне рынка или выше. Можно принимать — или всё равно попробовать поднять base.</>}
+          {" "}Принятие завершает кампанию статусом HIRED: агент перестаёт подавать заявки.
+        </p>
+        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
+          <ConfirmAction
+            action={markHired}
+            offerId={o.id}
+            tone="accept"
+            trigger={<><Check className="size-4" strokeWidth={2} aria-hidden />Принять оффер</>}
+            title={`Принять оффер ${o.company}?`}
+            confirmLabel="Да, принимаю"
+            pendingLabel="Завершаем кампанию…"
+          >
+            {o.role}, base <span className="num text-white">{c.money(o.finalBase ?? o.base)}</span>. Кампания закроется, история и Career Profile сохранятся.
+          </ConfirmAction>
+          <a href={`#${ids.neg}`} className="inline-flex h-13 w-fit items-center gap-2 rounded-full border border-white/20 px-6 text-[15px] text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]">
+            Сначала поторговаться<ArrowDown className="size-4" strokeWidth={1.8} aria-hidden />
+          </a>
+          <div className="sm:ml-auto">
+            <ConfirmAction
+              action={declineOffer}
+              offerId={o.id}
+              tone="decline"
+              onDark
+              trigger="Отклонить оффер"
+              title={`Отклонить оффер ${o.company}?`}
+              confirmLabel="Отклонить"
+              pendingLabel="Отклоняем…"
+            >
+              Кампания продолжит работу, оффер останется в истории.
+            </ConfirmAction>
+          </div>
+        </div>
+      </div>
+
       {/* ── Negotiation Assistant ──────────────────────────────── */}
       <Card id={ids.neg} className="scroll-mt-24 animate-rise" style={{ animationDelay: "180ms" }}>
         <div className="mb-5 flex flex-col gap-1.5">
           <Label>Переговоры</Label>
           <h3 className="h-serif text-[clamp(24px,2.6vw,32px)]">Negotiation <Script>Assistant</Script></h3>
-          <p className="max-w-2xl text-[14px] text-ink-3">Выберите стиль — цифры, письмо и сценарий звонка пересчитаются. Simplify ничего не отправляет за вас.</p>
+          <p className="max-w-2xl text-[14px] text-ink-3">Выбери стиль — цифры, письмо и сценарий звонка пересчитаются. Simplify ничего не отправляет за тебя.</p>
         </div>
         <NegotiationTabs
           initial={level}
@@ -182,49 +225,13 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
         />
         <form action={recordFinal} className="mt-6 flex flex-col gap-3 border-t border-line pt-5 sm:flex-row sm:items-end">
           <input type="hidden" name="offerId" value={o.id} />
-          <Field label="Итог переговоров: финальная base" hint="Зафиксируйте цифру, согласованную письменно" className="sm:max-w-xs sm:flex-1">
+          <Field label="Итог переговоров: финальная base" hint="Зафиксируй цифру, согласованную письменно" className="sm:max-w-xs sm:flex-1">
             <input name="finalBase" type="number" inputMode="numeric" min={1000} step={500} required defaultValue={o.finalBase ?? ""} className="field num" placeholder={String(plans.balanced.target)} />
           </Field>
           <SubmitButton size="md" variant="glass" pendingText="Сохраняем…" className="sm:mb-6">Записать итог</SubmitButton>
         </form>
       </Card>
 
-      {/* ── Decision ───────────────────────────────────────────── */}
-      <div id={ids.decide} className="scroll-mt-24 rounded-[24px] bg-[#0c1512] px-5 py-7 text-white sm:px-8">
-        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-          <div className="max-w-xl">
-            <span className="font-mono text-[10.5px] uppercase tracking-[.12em] text-[#8fc7ad]">Решение</span>
-            <h3 className="h-serif mt-2 text-[clamp(24px,3vw,34px)] !text-white">Ready to say <span className="script !text-[#7fe3b6]">yes</span>?</h3>
-            <p className="mt-2 text-[14px] text-white/65">Принятие завершает кампанию статусом HIRED: агент перестаёт подавать заявки и включает Passive Mode.</p>
-          </div>
-          <div className="md:min-w-[320px]">
-            <ConfirmAction
-              action={markHired}
-              offerId={o.id}
-              tone="accept"
-              trigger={<><Check className="size-4" strokeWidth={2} aria-hidden />Принять оффер</>}
-              title={`Принять оффер ${o.company}?`}
-              confirmLabel="Да, принимаю"
-              pendingLabel="Завершаем кампанию…"
-            >
-              {o.role}, base <span className="num text-white">{c.money(o.finalBase ?? o.base)}</span>. Кампания закроется, история и Career Profile сохранятся.
-            </ConfirmAction>
-          </div>
-        </div>
-      </div>
-      <div className="-mt-2 flex justify-end">
-        <ConfirmAction
-          action={declineOffer}
-          offerId={o.id}
-          tone="decline"
-          trigger="Отклонить оффер"
-          title={`Отклонить оффер ${o.company}?`}
-          confirmLabel="Отклонить"
-          pendingLabel="Отклоняем…"
-        >
-          Кампания продолжит работу, оффер останется в истории.
-        </ConfirmAction>
-      </div>
     </section>
   );
 }
@@ -257,13 +264,14 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           <div>
-            <div className="label mb-2.5">Talking points</div>
+            <div className="label mb-2.5">Talking points · что сказать</div>
             <ul className="flex flex-col gap-2">
               {plan.args.map((a) => (
-                <li key={a} className="flex gap-2.5 text-[14px] text-ink-2"><Check className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />{cleanArg(a)}</li>
+                <li key={a} className="flex gap-2.5 text-[14px] text-ink-2"><Check className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />{a}</li>
               ))}
             </ul>
-            {strengths === 0 && <p className="mt-2 text-[12.5px] text-ink-3">Добавьте измеримые результаты в Career Profile — аргументы станут сильнее.</p>}
+            <p className="mt-2.5 text-[12.5px] text-ink-3">Совет: сначала покажи, что хочешь присоединиться, — переговоры про fit, а не про давление.</p>
+            {strengths === 0 && <p className="mt-1 text-[12.5px] text-ink-3">Добавь измеримые результаты в Career Profile — аргументы станут сильнее.</p>}
           </div>
           <div>
             <div className="label mb-2.5">Сценарий звонка</div>

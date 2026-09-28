@@ -66,7 +66,8 @@ const lastTick = async (userId) => (await db.event.findFirst({ where: { userId, 
   const autoRole = await db.opportunity.findFirst({ where: { campaignId: camp.id, status: "qualified" }, orderBy: { match: "desc" } });
   await c.action("opportunities.decideOpportunity", [{}, form({ id: autoRole.id, decision: "auto" })], { page: "/app/opportunities" });
   // answer anything the role would ask (sponsorship etc.) so only the Submit switch decides
-  await c.action("campaign.prepareOpportunity", [form({ id: autoRole.id })], { page: `/app/opportunities/${autoRole.id}` });
+  // (prepareOpportunity is a preview now and routes no questions — a cycle prepares the Auto role for real)
+  await run(c);
   for (const ap of await db.approval.findMany({ where: { opportunityId: autoRole.id, status: "pending" } })) await c.action("ops.resolveApproval", [form({ id: ap.id, decision: "edit", answer: "Yes" })], { page: "/app/approvals" });
   await newDay(camp.id);
   const before = await db.opportunity.count({ where: { campaignId: camp.id, status: "submitted" } });

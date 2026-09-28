@@ -91,7 +91,7 @@ export function PasteEmail({ sample }: { sample: { company: string; title: strin
                 )}
               </div>
             ) : (
-              <p className="flex items-start gap-2 text-[13.5px] text-amber"><Link2Off className="mt-0.5 size-4 shrink-0" aria-hidden />Не удалось связать с заявкой: в адресе и тексте нет компании, куда вы подавались. Письмо сохранено без изменения Pipeline.</p>
+              <p className="flex items-start gap-2 text-[13.5px] text-amber"><Link2Off className="mt-0.5 size-4 shrink-0" aria-hidden />Не удалось связать с заявкой: в адресе и тексте нет компании из твоих заявок. Письмо сохранено без изменения Pipeline.</p>
             )}
             {r.deadline && (
               <p className={cx("flex items-center gap-2 text-[13px] text-ink-2")}><CalendarClock className="size-4 text-teal" aria-hidden />Дедлайн: {new Date(r.deadline).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" })}</p>

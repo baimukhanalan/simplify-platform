@@ -1,4 +1,4 @@
-import { Clock, Sparkles } from "lucide-react";
+import { Clock, Lightbulb, Sparkles } from "lucide-react";
 import { ButtonLink, Card, Chip, Label } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { regeneratePack } from "@/lib/actions/interview";
@@ -11,6 +11,10 @@ type Props = { id: string; pack: Pack | null; generatedBy?: string; ctx: LikelyC
 
 export function QuestionsTab({ id, pack, generatedBy, ctx, stories }: Props) {
   const likely = buildLikely(pack, ctx);
+  // Claude's list is written for this user; the engine fallback is replaced with «ты»-copy.
+  const redFlags = generatedBy === "claude" && pack
+    ? pack.redFlags
+    : [ctx.yearsExperience < 2 ? "Не преувеличивай стаж — рассказывай о глубине задач." : "Жди вопросов о масштабе задач.", "Не называй цифру зарплаты первым без вилки."];
   return (
     <div className="flex flex-col gap-8">
       <section aria-labelledby="likely-h" className="flex flex-col gap-4">
@@ -18,7 +22,7 @@ export function QuestionsTab({ id, pack, generatedBy, ctx, stories }: Props) {
           <div className="flex flex-col gap-1.5">
             <Label>Most likely</Label>
             <h2 id="likely-h" className="h-serif text-[clamp(24px,2.6vw,32px)]">Вопросы, которые почти наверняка зададут</h2>
-            <p className="text-[13.5px] text-ink-3">Ответы собраны из вашего опыта и историй. Это опора, а не текст для заучивания.</p>
+            <p className="text-[13.5px] text-ink-3">Ответы на английском собраны из твоего опыта и историй. Это опора, а не текст для заучивания.</p>
           </div>
           <form action={regeneratePack} className="shrink-0">
             <input type="hidden" name="id" value={id} />
@@ -55,6 +59,14 @@ export function QuestionsTab({ id, pack, generatedBy, ctx, stories }: Props) {
                     ))}
                   </ul>
                   {l.story?.metric && <p className="text-[13px] text-ink-3">Ключевая цифра: <span className="num text-green">{l.story.metric}</span></p>}
+                  {l.tips && l.tips.length > 0 && (
+                    <aside aria-label="Советы" className="flex gap-2.5 rounded-2xl border border-amber/25 bg-amber-soft/60 px-4 py-3">
+                      <Lightbulb className="mt-0.5 size-4 shrink-0 text-amber" strokeWidth={1.7} aria-hidden />
+                      <ul className="flex flex-col gap-1 text-[13px] leading-relaxed text-ink-2">
+                        {l.tips.map((t) => <li key={t}><span className="font-medium text-head">Совет: </span>{t}</li>)}
+                      </ul>
+                    </aside>
+                  )}
                 </div>
               </details>
             </li>
@@ -70,18 +82,18 @@ export function QuestionsTab({ id, pack, generatedBy, ctx, stories }: Props) {
       {pack && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card>
-            <Label className="mb-3">Ваши вопросы интервьюеру</Label>
+            <Label className="mb-3">Твои вопросы интервьюеру</Label>
             <ol className="flex flex-col gap-2.5">
               {pack.questionsToAsk.slice(0, 6).map((q, i) => (
                 <li key={q} className="flex gap-3 text-[14.5px] text-ink-2"><span className="num w-4 shrink-0 text-ink-4">{i + 1}</span>{q}</li>
               ))}
             </ol>
           </Card>
-          {pack.redFlags.length > 0 && (
+          {redFlags.length > 0 && (
             <Card>
               <Label className="mb-3">Чего избегать</Label>
               <ul className="flex flex-col gap-2">
-                {pack.redFlags.map((r) => <li key={r} className="flex gap-2.5 text-[14px] text-ink-2"><span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-amber" />{r}</li>)}
+                {redFlags.map((r) => <li key={r} className="flex gap-2.5 text-[14px] text-ink-2"><span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-amber" />{r}</li>)}
               </ul>
             </Card>
           )}

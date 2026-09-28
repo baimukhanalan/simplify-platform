@@ -17,11 +17,11 @@ const TOPIC_OF: [RegExp, string, string, string][] = [
 export const PRACTICE: Record<string, PracticeQ[]> = {
   sql: [
     { topic: "SQL", q: "Таблица orders(user_id, amount, created_at). Выручка по месяцам за 2025 год.", a: "SELECT date_trunc('month', created_at) AS m, SUM(amount) FROM orders WHERE created_at >= '2025-01-01' AND created_at < '2026-01-01' GROUP BY 1 ORDER BY 1;" },
-    { topic: "SQL", q: "Найдите пользователей, у которых больше 3 заказов.", a: "SELECT user_id FROM orders GROUP BY user_id HAVING COUNT(*) > 3; — HAVING фильтрует после агрегации, WHERE — до." },
-    { topic: "SQL", q: "Второй по величине заказ каждого пользователя.", a: "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rn, затем WHERE rn = 2. Учтите ничьи: DENSE_RANK." },
+    { topic: "SQL", q: "Найди пользователей, у которых больше 3 заказов.", a: "SELECT user_id FROM orders GROUP BY user_id HAVING COUNT(*) > 3; — HAVING фильтрует после агрегации, WHERE — до." },
+    { topic: "SQL", q: "Второй по величине заказ каждого пользователя.", a: "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rn, затем WHERE rn = 2. Учти ничьи: DENSE_RANK." },
   ],
   analytics: [
-    { topic: "Analytics", q: "Конверсия в покупку упала с 4% до 3% за неделю. Ваши первые три шага?", a: "1) Проверить данные и трекинг (релизы, баги). 2) Сегментировать: платформа, канал, страна, новый/старый. 3) Найти шаг воронки с падением и сопоставить с изменениями продукта/маркетинга." },
+    { topic: "Analytics", q: "Конверсия в покупку упала с 4% до 3% за неделю. Твои первые три шага?", a: "1) Проверить данные и трекинг (релизы, баги). 2) Сегментировать: платформа, канал, страна, новый/старый. 3) Найти шаг воронки с падением и сопоставить с изменениями продукта/маркетинга." },
     { topic: "Analytics", q: "Как посчитать retention D7?", a: "Когорта = пользователи с первым действием в день X. D7 = доля когорты, активная на 7-й день. Считать по когортам, сравнивать одинаковые дни." },
   ],
   logic: [
@@ -44,6 +44,16 @@ export const PRACTICE: Record<string, PracticeQ[]> = {
   viz: [
     { topic: "Visualization", q: "Какой график для доли каналов в выручке по месяцам?", a: "Stacked bar (100%) по месяцам; pie — только для одного периода и 3–5 категорий." },
   ],
+};
+
+/** What to drill first for the main topic of the test. */
+const DRILL: Record<string, string> = {
+  sql: "агрегаты, JOIN, фильтры",
+  python: "pandas: groupby, merge, фильтры",
+  excel: "XLOOKUP, SUMIFS, сводные таблицы",
+  stats: "p-value, доверительные интервалы, размер выборки",
+  viz: "выбор графика под вопрос",
+  analytics: "воронки, retention, падение метрики",
 };
 
 export type AssessmentInfo = {
@@ -81,30 +91,31 @@ export function assessmentInfo(i: { technologies: string[]; skills: string[]; se
   const level = (Math.max(1, Math.min(3, score)) as 1 | 2 | 3);
   const difficulty = {
     level,
-    label: ["", "Лёгкий", "Средний", "Сложный"][level],
+    label: ["", "лёгкая", "средняя", "высокая"][level],
     why: [
       senior ? "уровень роли выше junior" : "junior-уровень роли",
-      gaps ? `${gaps} ${gaps === 1 ? "тема" : "темы"} вне вашего профиля` : "все темы есть в вашем профиле",
+      gaps ? `${gaps} ${gaps === 1 ? "тема" : gaps < 5 ? "темы" : "тем"} вне твоего профиля` : "все темы есть в твоём профиле",
       i.massHiring ? "массовый найм — обычно стандартный тест" : "",
     ].filter(Boolean).join(" · "),
   };
 
   const hoursLeft = i.deadline ? Math.round((i.deadline.getTime() - i.now) / 3600000) : null;
   const first = main[0]?.label ?? "Ключевой навык";
+  const drill = DRILL[main[0]?.key ?? ""] ?? "типовые задачи";
   const weak = list.find((t) => !t.have)?.label;
   const plan =
     hoursLeft != null && hoursLeft <= 24
       ? [
-          { when: "Сейчас · 30 мин", what: `Повторите шпаргалку по ${first}: синтаксис и 3 типовые задачи` },
-          { when: "Затем · 20 мин", what: "Решите практические вопросы ниже на время" },
-          { when: "Перед тестом", what: "Тихое место, стабильный интернет, калькулятор и черновик под рукой" },
+          { when: "Сейчас · 30 мин", what: `Повтори шпаргалку по ${first}: синтаксис и 3 типовые задачи` },
+          { when: "Затем · 20 мин", what: "Реши практические вопросы ниже на время" },
+          { when: "За час до теста", what: "Тихое место, стабильный интернет, калькулятор и черновик под рукой" },
         ]
       : [
-          { when: "День 1", what: `${first}: 5–6 задач на время — агрегаты, JOIN, фильтры` },
-          { when: "День 1", what: weak ? `Закройте пробел: ${weak} — базовые задачи и шпаргалка` : "Analytics: разбор 2 кейсов «почему упала метрика»" },
+          { when: "День 1", what: `${first}: 5–6 задач на время — ${drill}` },
+          { when: "День 1", what: weak ? `Закрой пробел: ${weak} — базовые задачи и шпаргалка` : "Analytics: разбор 2 кейсов «почему упала метрика»" },
           { when: "День 2", what: "Logic & numerical: 15 минут задач на проценты и последовательности" },
           { when: "День 2", what: `Полная репетиция: ${durationMin} минут без пауз на практических вопросах ниже` },
-          { when: "Перед тестом", what: "Прочтите правила платформы: можно ли возвращаться к вопросам, штраф за ошибки" },
+          { when: "За час до теста", what: "Прочитай правила платформы: можно ли возвращаться к вопросам, есть ли штраф за ошибки" },
         ];
 
   const practice = [...main.flatMap((t) => (PRACTICE[t.key] ?? []).slice(0, 2)).slice(0, 6), ...PRACTICE.logic.slice(0, 2)];

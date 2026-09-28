@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ONBOARDING_STEPS, LAST_STEP, STEP, completedSteps, resumeStep, buildChatTurns } from "@/lib/onboarding";
 import { ROLE_FAMILIES, classifyRole, seniorityFromYears } from "@/lib/engine/taxonomy";
 import { suggestAdjacentRoles } from "@/lib/engine/readiness";
 import { Label } from "@/components/ui";
+import { currentCampaign, runningCampaign } from "@/lib/ops-data";
 import { SiteHeader } from "../_components/site-header";
+import { PLAN_COOKIE, cleanPlan } from "../_components/plan-pref";
+import { RememberPlan } from "../_components/remember-plan";
 import { intentFromParams, intentToGoal } from "../_components/campaign-intent";
 import { loadReadiness } from "../app/readiness/_components/data";
 import { StepRail } from "./_components/step-rail";
@@ -24,12 +28,18 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
   const user = await requireUser();
   const sp = await searchParams;
   const intent = intentFromParams(sp);
-  const [facts, answers, done, campaign] = await Promise.all([
+  const urlPlan = cleanPlan(sp.plan);
+  const [facts, answers, done, campaign, latest, jar] = await Promise.all([
     db.fact.findMany({ where: { userId: user.id }, orderBy: [{ createdAt: "asc" }] }),
     db.miniInterviewAnswer.findMany({ where: { userId: user.id }, select: { factId: true, question: true, answer: true } }),
     completedSteps(user.id),
-    db.campaign.findFirst({ where: { userId: user.id, status: { in: ["active", "paused"] } }, orderBy: { createdAt: "desc" } }),
+    // Running = active/paused and not past endsAt; a campaign past its end date counts as ended here.
+    runningCampaign(user.id),
+    currentCampaign(user.id),
+    cookies(),
   ]);
+  const plan = urlPlan ?? cleanPlan(jar.get(PLAN_COOKIE)?.value);
+  const ended = !campaign && latest && ["expired", "hired"].includes(latest.status) ? latest.status : null;
   const profile = user.profile;
   const goal = user.goal;
   const goalEmpty = !goal?.primaryRole;
@@ -80,15 +90,16 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     const data = goalEmpty ? null : await loadReadiness(user.id);
     body = data ? <StepReadiness data={data} /> : <NeedGoal />;
   } else {
-    body = goalEmpty ? <NeedGoal /> : <StepPlan partner={user.referredByCode ?? ""} activeCampaign={Boolean(campaign)} />;
+    body = goalEmpty ? <NeedGoal /> : <StepPlan partner={user.referredByCode ?? ""} activeCampaign={Boolean(campaign)} ended={ended} preferred={plan} />;
   }
 
   return (
     <div className="min-h-dvh overflow-x-clip">
       <IntentSync goalEmpty={goalEmpty} urlIntent={intent} />
-      <SiteHeader right={<Link href="/app" className="rounded-full px-3 py-2 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Продолжить позже</Link>} />
+      <RememberPlan plan={urlPlan} />
+      <SiteHeader right={<Link href="/app" className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Продолжить позже</Link>} />
       <div className="mx-auto grid w-full max-w-[1180px] gap-6 px-4 pb-24 sm:px-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12 lg:pt-6">
-        <StepRail current={step} done={Array.from(done)} />
+        <StepRail current={step} done={Array.from(done)} complete={Boolean(campaign)} />
         <main className="flex min-w-0 flex-col gap-6" id="main">
           <div key={step} className="flex flex-col gap-2.5 animate-rise">
             <Label>Шаг {step} из {LAST_STEP} · {meta.label}</Label>

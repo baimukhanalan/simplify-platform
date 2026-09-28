@@ -1,22 +1,23 @@
 import { ImageResponse } from "next/og";
 import { headline, loadShare } from "./data";
+import { plural } from "@/app/app/hired/_lib/journey";
 
-export const alt = "Simplify journey — HIRED";
+export const alt = "HIRED. — история поиска с Simplify";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default async function Image({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const d = await loadShare(token);
-  const title = d ? headline(d) : "Hired with Simplify";
+  const title = d ? headline(d).replace(/:\s*HIRED\.\s*/, " · ").replace(/:\s*HIRED\.$/, "") : "Новая работа вместе с Simplify";
   // Role/company are clamped in loadShare; long (e.g. Kazakh) titles still get a smaller size to stay inside the card.
   // Default next/og font (Geist) covers Cyrillic incl. Kazakh letters, so names/roles render without transliteration.
   const titleSize = title.length > 110 ? 30 : title.length > 70 ? 34 : 40;
   const stats = d
     ? [
-        [String(d.applications), "applications"],
-        [String(d.interviews), "interviews"],
-        ...(d.daysToOffer != null ? [[String(d.daysToOffer), "days to offer"]] : []),
+        [String(d.applications), plural(d.applications, ["заявка", "заявки", "заявок"])],
+        [String(d.interviews), "интервью"],
+        ...(d.daysToOffer != null ? [[String(d.daysToOffer), `${plural(d.daysToOffer, ["день", "дня", "дней"])} до оффера`]] : []),
       ]
     : [];
 

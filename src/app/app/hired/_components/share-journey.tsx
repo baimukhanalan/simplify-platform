@@ -26,7 +26,7 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
         if (res.ok) setPath(res.path);
         else setError(res.error);
       } catch {
-        setError("Не удалось создать ссылку. Проверьте соединение и попробуйте ещё раз.");
+        setError("Не удалось создать ссылку. Проверь соединение и попробуй ещё раз.");
       }
     });
 
@@ -38,7 +38,7 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
         if (res.ok) setPath(res.path);
         else setError(res.error);
       } catch {
-        setError("Не удалось обновить ссылку. Попробуйте ещё раз.");
+        setError("Не удалось обновить ссылку. Попробуй ещё раз.");
       }
     });
 
@@ -49,7 +49,7 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
         await revokeShareLink();
         setPath(null);
       } catch {
-        setError("Не удалось отключить ссылку. Попробуйте ещё раз.");
+        setError("Не удалось отключить ссылку. Попробуй ещё раз.");
       }
     });
 
@@ -67,9 +67,9 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
   const share = async () => {
     if (!url) return;
     try {
-      await navigator.share({ title: "Simplify journey", text: shareText, url });
+      await navigator.share({ title: "HIRED. · Simplify", text: shareText, url });
     } catch (e) {
-      if ((e as Error)?.name !== "AbortError") setError("Системное меню «Поделиться» недоступно — скопируйте ссылку.");
+      if ((e as Error)?.name !== "AbortError") setError("Системное меню «Поделиться» недоступно — скопируй ссылку.");
     }
   };
 
@@ -90,7 +90,7 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
     <div className="flex w-full max-w-xl flex-col gap-2.5">
       <div className="flex min-w-0 items-center gap-2 rounded-full border border-white/15 bg-white/[.06] py-1.5 pl-4 pr-1.5">
         <Link2 className="size-4 shrink-0 text-[#8fc7ad]" strokeWidth={1.7} aria-hidden />
-        <input readOnly value={url ?? ""} aria-label="Публичная ссылка на ваш Simplify journey" onFocus={(e) => e.currentTarget.select()} className={cx("min-w-0 flex-1 truncate bg-transparent text-[13.5px] text-white/85 outline-none", "focus-visible:underline")} />
+        <input readOnly value={url ?? ""} aria-label="Публичная ссылка на твою историю в Simplify" onFocus={(e) => e.currentTarget.select()} className={cx("min-w-0 flex-1 truncate bg-transparent text-[13.5px] text-white/85 outline-none", "focus-visible:underline")} />
         <button type="button" onClick={copy} className={cx("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#7fe3b6] px-4 text-[13px] font-medium text-[#0c1512] transition hover:bg-[#9aeec7]", ring)}>
           {copied === "ok" ? <Check className="size-3.5" strokeWidth={2} aria-hidden /> : <Copy className="size-3.5" strokeWidth={1.8} aria-hidden />}
           <span aria-live="polite">{copied === "ok" ? "Скопировано" : copied === "fail" ? "Не вышло" : "Копировать"}</span>
@@ -112,7 +112,7 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
           <Unlink className="size-3.5" strokeWidth={1.7} aria-hidden />Отключить ссылку
         </button>
       </div>
-      {copied === "fail" && <p role="alert" className="text-[13px] text-[#f2a7a8]">Не удалось скопировать — выделите ссылку и скопируйте вручную.</p>}
+      {copied === "fail" && <p role="alert" className="text-[13px] text-[#f2a7a8]">Не удалось скопировать — выдели ссылку и скопируй вручную.</p>}
       {error && <p role="alert" className="text-[13px] text-[#f2a7a8]">{error}</p>}
     </div>
   );

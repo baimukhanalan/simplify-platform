@@ -10,7 +10,7 @@ type Tone = "accept" | "decline";
  * Focus moves into the confirmation, Escape / "Отмена" return it to the trigger,
  * and the submit button locks on the first submit (pending + a ref guard against double clicks).
  */
-export function ConfirmAction({ action, offerId, tone, trigger, title, children, confirmLabel, pendingLabel }: {
+export function ConfirmAction({ action, offerId, tone, trigger, title, children, confirmLabel, pendingLabel, onDark = tone === "accept" }: {
   action: (form: FormData) => void | Promise<void>;
   offerId: string;
   tone: Tone;
@@ -19,6 +19,8 @@ export function ConfirmAction({ action, offerId, tone, trigger, title, children,
   children: ReactNode;
   confirmLabel: string;
   pendingLabel: string;
+  /** Rendered on the dark decision block: the quiet trigger needs light text. */
+  onDark?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -49,7 +51,9 @@ export function ConfirmAction({ action, offerId, tone, trigger, title, children,
             "inline-flex w-fit items-center justify-center gap-2 rounded-full font-medium transition-all focus-visible:outline-2 focus-visible:outline-offset-3 active:scale-[.98]",
             tone === "accept"
               ? "h-13 bg-[#7fe3b6] px-7 text-[15.5px] text-[#0c1512] shadow-[0_8px_30px_rgb(127_227_182/.25)] hover:bg-[#9aeec7] focus-visible:outline-[#7fe3b6]"
-              : "h-11 px-5 text-[14px] text-ink-3 underline-offset-4 hover:text-head hover:underline focus-visible:outline-green",
+              : onDark
+                ? "h-13 px-5 text-[14px] text-white/70 underline-offset-4 hover:text-white hover:underline focus-visible:outline-[#7fe3b6]"
+                : "h-11 px-5 text-[14px] text-ink-3 underline-offset-4 hover:text-head hover:underline focus-visible:outline-green",
           )}
         >
           {trigger}

@@ -26,7 +26,8 @@ export default async function CopilotPage({ params }: { params: Promise<{ id: st
     <Copilot
       interviewId={iv.id}
       blocked={blocked}
-      title={`${job.company} · ${ROUND_LABEL[iv.round] ?? iv.round}`}
+      title={job.company}
+      round={ROUND_LABEL[iv.round] ?? iv.round}
       ctx={{
         stories: stories.map((s) => ({ ...s, tags: j<string[]>(s.tags, []) })),
         facts: facts.map((f) => ({ ...f, tech: j<string[]>(f.tech, []) })),

@@ -17,14 +17,14 @@ export function CheckForm({ roles }: { roles: string[] }) {
     <form action={formAction} onSubmit={onSubmit} className="flex flex-col gap-6" aria-busy={pending}>
       <fieldset disabled={pending} className="flex flex-col gap-6 disabled:opacity-60">
         <div role="group" aria-labelledby="cv-label" className="flex flex-col gap-2.5">
-          <div id="cv-label" className="label">01 · Ваше CV</div>
+          <div id="cv-label" className="label">01 · Твоё CV</div>
           <CvInput onTextChange={(t) => setChars(t.trim().length)} />
         </div>
         <div className="flex flex-col gap-2">
           <label htmlFor="target" className="label">02 · Целевая роль <span className="normal-case tracking-normal text-ink-4">(необязательно)</span></label>
           <input id="target" name="target" list="check-roles" defaultValue={state?.fields?.target ?? ""} maxLength={120} placeholder="Например, Data Analyst" className="field" autoComplete="off" aria-describedby="target-hint" />
           <datalist id="check-roles">{roles.map((r) => <option key={r} value={r} />)}</datalist>
-          <span id="target-hint" className="text-[12px] text-ink-3">Если оставить пустым — определим по вашему опыту.</span>
+          <span id="target-hint" className="text-[12px] text-ink-3">Если оставить пустым — определим по твоему опыту.</span>
         </div>
       </fieldset>
 
@@ -37,7 +37,7 @@ export function CheckForm({ roles }: { roles: string[] }) {
           <button type="submit" disabled={!ready} className="inline-flex h-12 items-center gap-2 rounded-full bg-cta px-6 text-[15px] font-medium text-white shadow-(--shadow-cta) transition-all hover:bg-[#2f2c2c] active:scale-[.98] disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">
             Проверить бесплатно <ArrowRight className="size-4" />
           </button>
-          <span className="text-[12.5px] text-ink-3">{ready ? "Без регистрации · около 10 секунд" : "Сначала добавьте CV"}</span>
+          <span className="text-[12.5px] text-ink-3">{ready ? "Без регистрации · около 10 секунд" : "Сначала добавь CV"}</span>
         </div>
       )}
     </form>

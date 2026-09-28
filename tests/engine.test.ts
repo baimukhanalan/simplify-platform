@@ -12,7 +12,7 @@ import { detectIntent, scaffold, type StoryLite, type FactLite as IvFact } from 
 import { benchmarkOffer, negotiationPlan } from "../src/lib/engine/offer";
 import { marketRange, percentileIn } from "../src/lib/engine/market";
 import { parseCVHeuristic } from "../src/lib/engine/profile";
-import { buildPackageHeuristic, type ProfileLite, type FactLite, type JobLite } from "../src/lib/engine/personalize";
+import { buildPackageHeuristic, achievementClause, achievementGerund, achievementLines, possessive, stripTitle, type ProfileLite, type FactLite, type JobLite } from "../src/lib/engine/personalize";
 import { segmentStats, type OppLite } from "../src/lib/engine/insights";
 import { AUTONOMY_DEFAULTS, AUTONOMY_LABELS, agentMaySubmit, readAutonomy } from "../src/lib/engine/autonomy";
 import { startOfToday } from "../src/lib/time";
@@ -363,6 +363,69 @@ describe("personalize.buildPackageHeuristic", () => {
   test("empty profile and facts do not throw", () => {
     const pkg = buildPackageHeuristic({ ...profile, skills: [], yearsExperience: 0 }, [], jobL);
     assert.deepEqual(pkg.skillsOrder, []);
+  });
+
+  const richFacts: FactLite[] = [
+    {
+      id: "e1", kind: "employment", title: "Data Analyst", org: "Kaspi-like Fintech", startDate: "Jan 2024", endDate: "present", verified: true, tech: ["SQL", "Python"],
+      details: [
+        "Built SQL + Python customer segmentation that found 3 high-value segments; recommendation changed campaign targeting",
+        "Ran onboarding A/B test with product team; activation grew 18% → 26%",
+        "Maintained Power BI dashboards for 40+ stakeholders, cut weekly reporting time by 6 hours",
+        "Wrote SQL data-quality checks",
+        "Mentored two junior analysts",
+      ].join("\n"),
+      metrics: "Ran onboarding A/B test with product team; activation grew 18% → 26%",
+    },
+    { id: "p1", kind: "project", title: "Credit scoring EDA", org: "", startDate: "", endDate: "", details: "Credit scoring EDA: Python, pandas, scikit-learn exploratory model on open data", metrics: "", tech: ["Python"], verified: false },
+  ];
+  const silk: JobLite = { ...jobL, company: "Silkroad Markets", industry: "Fintech", title: "Data Analyst" };
+
+  test("CV keeps whole achievements in original order (split on newlines only, never on '; ')", () => {
+    const pkg = buildPackageHeuristic(profile, richFacts, silk);
+    const block = pkg.cvText.split("EXPERIENCE\n")[1].split("\n\n")[0];
+    const bullets = block.split("\n").filter((l) => l.startsWith("  • ")).map((l) => l.slice(4));
+    assert.deepEqual(bullets, achievementLines(richFacts[0].details), "all 5 achievements, verbatim, in CV order");
+    assert.ok(!bullets.some((b) => b === "activation grew 18% → 26%"), "no half-bullets from splitting on ';'");
+  });
+
+  test("CV caps a long role at 6 bullets but keeps their original order", () => {
+    const many = Array.from({ length: 9 }, (_, i) => `Did task ${i + 1}${i === 7 ? " with SQL, +20%" : ""}`).join("\n");
+    const pkg = buildPackageHeuristic(profile, [{ ...richFacts[0], details: many, metrics: "" }], silk);
+    const bullets = pkg.cvText.split("\n").filter((l) => l.startsWith("  • ")).map((l) => l.slice(4));
+    assert.equal(bullets.length, 6);
+    const nums = bullets.map((b) => Number(b.match(/task (\d+)/)?.[1]));
+    assert.deepEqual([...nums].sort((a, b) => a - b), nums, "original order preserved");
+    assert.ok(nums.includes(8), "the job-relevant achievement survives the cap");
+  });
+
+  test("project titles are not duplicated in the project bullet", () => {
+    const pkg = buildPackageHeuristic(profile, richFacts, silk);
+    assert.ok(!pkg.cvText.includes("Credit scoring EDA: Credit scoring EDA"));
+    assert.ok(!/•\s*Credit scoring EDA/.test(pkg.cvText), "bullet starts after the title");
+    assert.ok(pkg.cvText.includes("  • Python, pandas, scikit-learn exploratory model on open data"));
+    assert.equal(stripTitle("Credit scoring EDA — model on open data", "Credit scoring EDA"), "Model on open data");
+    assert.equal(stripTitle("Something else", "Credit scoring EDA"), "Something else");
+  });
+
+  test("cover letter embeds the achievement grammatically and uses the right possessive", () => {
+    const pkg = buildPackageHeuristic(profile, richFacts, silk);
+    const cl = pkg.coverLetter;
+    assert.ok(cl.includes("I ran an onboarding A/B test with the product team, and activation grew from 18% to 26%."), cl);
+    assert.ok(!/;/.test(cl), "no semicolons spliced into prose");
+    assert.ok(!/— [A-Z]/.test(cl), "no '— Ran…' splice");
+    assert.ok(!/I [A-Z][a-z]/.test(cl.replace(/I'm|I'd|I work/g, "")), "achievement starts lowercase after 'I'");
+    assert.ok(cl.includes("Silkroad Markets' work in Fintech"));
+    assert.ok(!cl.includes("Markets's"));
+    assert.equal(possessive("Kaspi"), "Kaspi's");
+  });
+
+  test("achievement phrasing helpers rephrase the user's own line without adding facts", () => {
+    const line = "Ran onboarding A/B test with product team; activation grew 18% → 26%";
+    assert.equal(achievementGerund(line), "running an onboarding A/B test with the product team (activation grew from 18% to 26%)");
+    assert.equal(achievementClause("Analyzed churn drivers; proposed loyalty offer that reduced churn 9%"), "analyzed churn drivers and proposed a loyalty offer that reduced churn 9%");
+    assert.equal(achievementClause("Maintained Power BI dashboards for 40+ stakeholders, cut weekly reporting time by 6 hours"), "maintained Power BI dashboards for 40+ stakeholders and cut weekly reporting time by 6 hours");
+    assert.equal(achievementClause("activation grew 18% → 26%"), null, "no leading action verb → caller falls back");
   });
 });
 

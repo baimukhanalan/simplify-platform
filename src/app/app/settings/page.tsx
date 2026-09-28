@@ -8,14 +8,15 @@ import { updateConsents, type Consents } from "@/lib/actions/account";
 import { ActionForm, FormSubmit } from "../profile/_components/action-form";
 import { SectionTitle } from "../profile/_components/bits";
 import { DeleteAccount } from "./_components/delete-account";
+import { AgentStatus } from "../../_components/agent-status";
 
 export const metadata: Metadata = { title: "Приватность и данные" };
 
 const CONSENTS = [
-  { key: "autoSubmit", title: "Автоподача заявок", text: "Агент подаёт заявки от вашего имени в пределах дневного лимита. Выключено — каждая заявка ждёт вашего подтверждения, а активная кампания переходит в ручной режим." },
+  { key: "autoSubmit", title: "Автоподача заявок", text: "Агент подаёт заявки от твоего имени в пределах дневного лимита. Выключено — каждая заявка ждёт твоего подтверждения, а активная кампания переходит в ручной режим." },
   { key: "emailScan", title: "Разбор писем работодателей", text: "Simplify классифицирует ответы работодателей (подтверждение, отказ, assessment, интервью, оффер) и обновляет Pipeline. Без согласия статусы обновляются вручную." },
-  { key: "copilot", title: "AI Interview Copilot", text: "Подсказки во время интервью — только из ваших STAR-историй и подтверждённых фактов. Используйте лишь там, где это допускают правила интервью." },
-  { key: "analytics", title: "Продуктовая аналитика", text: "Обезличенные метрики использования, чтобы улучшать продукт. Мы не продаём и не передаём ваши данные рекламным сетям." },
+  { key: "copilot", title: "AI Interview Copilot", text: "Подсказки во время интервью — из твоего профиля и STAR-историй. Используй Copilot только там, где это допускают правила интервью." },
+  { key: "analytics", title: "Продуктовая аналитика", text: "Обезличенные метрики использования, чтобы улучшать продукт. Мы не продаём и не передаём твои данные рекламным сетям." },
 ] as const;
 
 const PER_PAGE = 20;
@@ -33,8 +34,14 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     <>
       <PageHeader
         eyebrow="Privacy & data"
-        title={<>Ваши данные — <Script>ваши</Script></>}
-        sub="Управляйте тем, что агент может делать от вашего имени, скачивайте всё, что мы храним, и удаляйте аккаунт без обращений в поддержку."
+        title={<>Твои данные — <Script>твои</Script></>}
+        sub="Управляй тем, что агент может делать от твоего имени, скачивай всё, что мы храним, и удаляй аккаунт без обращений в поддержку."
+      />
+
+      <AgentStatus
+        needs={[]}
+        working={consents.autoSubmit === false ? "Автоподача выключена — агент готовит пакеты, а отправляешь ты." : "Агент действует в рамках этих согласий."}
+        className="-mt-3 mb-8"
       />
 
       <div className="flex flex-col gap-12">
@@ -90,7 +97,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <h3 className="h-serif text-[19px]">Безопасность</h3>
             <ul className="flex flex-col gap-1.5 text-[13.5px] text-ink-3">
               <li>Шифрование при хранении (at rest) и TLS при передаче в production.</li>
-              <li>RBAC: доступ к данным кандидата только у вас; операторы видят лишь то, что нужно для поддержки.</li>
+              <li>RBAC: доступ к твоим данным есть только у тебя; операторы видят лишь то, что нужно для поддержки.</li>
               <li>Audit log: каждое действие агента и изменение согласий записывается.</li>
               <li>Пароли хранятся только в виде bcrypt-хэша.</li>
             </ul>
@@ -98,7 +105,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </section>
 
         <section aria-labelledby="audit-h" id="audit" className="scroll-mt-24">
-          <SectionTitle eyebrow="03 · Audit log" title={<span id="audit-h">Журнал действий</span>} sub={`Последние ${LIMIT} событий по вашему аккаунту — действия агента, ваши изменения и системные события.`} />
+          <SectionTitle eyebrow="03 · Audit log" title={<span id="audit-h">Журнал действий</span>} sub={`Последние ${LIMIT} событий по твоему аккаунту — действия агента, твои изменения и системные события.`} />
           <Card className="!p-0">
             {slice.length === 0 ? (
               <p className="px-6 py-10 text-center text-[14px] text-ink-3">Событий пока нет.</p>
@@ -140,7 +147,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 }
 
 function PageLink({ page, disabled, label, children }: { page: number; disabled: boolean; label: string; children: React.ReactNode }) {
-  const cls = "inline-flex h-9 items-center gap-1 rounded-full px-3 text-[13px] transition-colors";
+  const cls = "inline-flex h-10 items-center gap-1 rounded-full px-3 text-[13px] transition-colors";
   if (disabled) return <span aria-disabled className={cx(cls, "text-ink-4")}>{children}</span>;
   return <Link href={`/app/settings?page=${page}#audit`} scroll={false} aria-label={`${label} события`} className={cx(cls, "text-head hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-green")}>{children}</Link>;
 }

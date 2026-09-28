@@ -53,7 +53,7 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
 
   const yearsFit = job.minYears <= c.yearsExperience ? 1 : job.minYears - c.yearsExperience <= 1 ? 0.7 : 0.3;
   if (job.minYears) reasons.push({ label: `${job.minYears}+ years`, ok: yearsFit === 1 });
-  if (yearsFit < 1) softGaps.push(`Требуется ${job.minYears}+ лет, у вас ${c.yearsExperience}`);
+  if (yearsFit < 1) softGaps.push(`Требуется ${job.minYears}+ лет, у тебя ${c.yearsExperience}`);
 
   const senGap = seniorityIndex(job.seniority) - seniorityIndex(seniorityFromYears(c.yearsExperience));
   const senFit = senGap <= 0 ? (senGap < -1 ? 0.7 : 1) : senGap === 1 ? 0.6 : 0.15;
@@ -62,7 +62,7 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
   if (c.goal.minSalary && job.salaryMax) {
     salaryFit = job.salaryMax >= c.goal.minSalary ? 1 : job.salaryMax >= c.goal.minSalary * 0.85 ? 0.6 : 0.2;
     reasons.push({ label: `Salary ≥ $${Math.round(c.goal.minSalary / 1000)}k`, ok: salaryFit === 1 });
-    if (salaryFit < 1) softGaps.push("Вилка ниже вашего минимума");
+    if (salaryFit < 1) softGaps.push("Вилка ниже твоего минимума");
   }
   const industryFit = !c.goal.industries.length || !job.industry ? 0.8 : c.goal.industries.some((i) => job.industry.toLowerCase().includes(i.toLowerCase())) ? 1 : 0.6;
 
@@ -89,7 +89,7 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
     else blockers.push(`${job.workAuth.join(", ")} authorization required`);
   }
   if (!c.goal.workModes.includes(job.remote) && !c.goal.workModes.includes("any")) {
-    if (job.remote === "onsite") blockers.push("Только onsite — не входит в ваши форматы");
+    if (job.remote === "onsite") blockers.push("Только onsite — не входит в твои форматы");
     else softGaps.push(`Формат ${job.remote} вне предпочтений`);
   }
   const en = EN[c.englishLevel] ?? 3;
@@ -99,7 +99,7 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
   for (const l of jobLangs.filter((l) => l !== "English")) if (!spoken.has(l)) blockers.push(`Требуется язык: ${l}`);
   if (ADVANCED_DEGREE.test(job.education) && (c.educationLevel === "none" || c.educationLevel === "bachelor")) blockers.push(`Обязательное образование: ${job.education}`);
   if (senGap >= 2) blockers.push(`Уровень ${job.seniority} недостижим с текущим опытом`);
-  if (c.goal.blockedCompanies.some((b) => b && job.company.toLowerCase().includes(b.toLowerCase()))) blockers.push("Компания в вашем стоп-листе");
+  if (c.goal.blockedCompanies.some((b) => b && job.company.toLowerCase().includes(b.toLowerCase()))) blockers.push("Компания в твоём стоп-листе");
 
   const eligibility = blockers.length ? "blocked" : softGaps.length > 2 ? "soft" : "eligible";
 

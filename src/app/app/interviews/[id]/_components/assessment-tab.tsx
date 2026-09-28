@@ -39,7 +39,7 @@ export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
           <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-line bg-white/60 p-3.5">
             <dt className="label !text-[10px]">Сложность</dt>
             <dd className="flex items-center gap-2">
-              <span className="text-[18px] text-head">{a.difficulty.label}</span>
+              <span className="text-[18px] text-head first-letter:uppercase">{a.difficulty.label}</span>
               <span className="flex gap-1" aria-label={`${a.difficulty.level} из 3`}>
                 {[1, 2, 3].map((n) => <span key={n} aria-hidden className={cx("h-2.5 w-1.5 rounded-full", n <= a.difficulty.level ? (a.difficulty.level === 3 ? "bg-amber" : "bg-green") : "bg-head/10")} />)}
               </span>
@@ -53,8 +53,8 @@ export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
           <ul className="flex flex-col gap-3">
             {a.topics.map((t) => (
               <li key={t.key} className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1.5">
-                <span className="flex items-center gap-2 text-[14.5px] text-head">
-                  {t.label}
+                <span className="flex flex-wrap items-center gap-2 text-[14.5px] text-head">
+                  {t.label}{" "}
                   {t.have ? <Check className="size-3.5 text-green" strokeWidth={2.2} aria-label="есть в профиле" /> : <Chip tone="amber">подтянуть</Chip>}
                 </span>
                 <span className="num text-[13px] text-ink-3">≈{t.weight}%</span>
@@ -83,7 +83,7 @@ export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
       <Card>
         <div className="mb-4 flex flex-col gap-1">
           <Label>Mock questions</Label>
-          <p className="text-[13px] text-ink-3">Решите сами, потом откройте разбор. Засекайте ~2 минуты на вопрос.</p>
+          <p className="text-[13px] text-ink-3">Сначала реши задачу, потом открой разбор. Засекай ~2 минуты на вопрос.</p>
         </div>
         <ol className="flex flex-col divide-y divide-line">
           {a.practice.map((p, i) => (

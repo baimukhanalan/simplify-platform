@@ -2,15 +2,15 @@ import Link from "next/link";
 import { ArrowRight, ArrowUpRight, BadgeDollarSign, FileText, Mail, Mic, Search, Send, SkipForward, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ButtonLink, cx } from "@/components/ui";
-import { STAGES, dayLabel, hhmm, type TimelineDay, type TimelineItem, type Totals } from "./today-data";
+import { count } from "../../_components/ru";
+
+const VAC = ["вакансия", "вакансии", "вакансий"] as const;
+import { STAGES, dayLabel, hhmm, type StageKey, type TimelineDay, type TimelineItem, type Totals } from "./today-data";
 
 // ——— Main progress bar: Career Goal → … → Hired ———
 
-export function StageBar({ stage, totals, goalRole }: { stage: number; totals: Totals; goalRole: string }) {
-  const value: Record<string, string> = {
-    goal: goalRole, search: String(totals.found), applications: String(totals.submitted), assessments: String(totals.assessments),
-    interviews: String(totals.interviews), offers: String(totals.offers), hired: totals.hired ? "Да" : "",
-  };
+export function StageBar({ stage, values }: { stage: number; values: Record<StageKey, string> }) {
+  const value = values;
   const pctDone = (stage / (STAGES.length - 1)) * 100;
   return (
     <div className="flex flex-col gap-3">
@@ -97,10 +97,11 @@ export function TodayStrip({ d }: { d: { found: number; qualified: number; submi
 
 export type NextAction = { eyebrow: string; title: string; sub?: string; href: string; cta: string; icon: LucideIcon } | null;
 
-export function NextActionCard({ action, also, paused }: { action: NextAction; also: { label: string; href: string }[]; paused: boolean }) {
+/** `id` keeps headings unique: Today renders the card in two layout slots (mobile / desktop), one hidden at a time. */
+export function NextActionCard({ action, also, paused, id = "next-h", className }: { action: NextAction; also: { label: string; href: string }[]; paused: boolean; id?: string; className?: string }) {
   return (
-    <section aria-labelledby="next-h" className={cx("flex h-full flex-col gap-5 rounded-[var(--radius-card)] p-5 sm:p-6", action ? "glass-strong" : "glass")}>
-      <h2 id="next-h" className="label">Next action</h2>
+    <section aria-labelledby={id} className={cx("flex h-full flex-col gap-5 rounded-[var(--radius-card)] p-5 sm:p-6", action ? "glass-strong" : "glass", className)}>
+      <h2 id={id} className="label">Next action</h2>
       {action ? (
         <>
           <div className="flex items-start gap-3.5">
@@ -122,7 +123,7 @@ export function NextActionCard({ action, also, paused }: { action: NextAction; a
           {paused ? (
             <>
               <p className="h-serif text-[26px]">Агент на паузе.</p>
-              <p className="text-[14px] text-ink-2">Пока кампания на паузе, от тебя ничего не нужно. Возобнови её, когда будешь готов.</p>
+              <p className="text-[14px] text-ink-2">Пока кампания на паузе, от тебя ничего не нужно. Возобнови её, когда будет удобно.</p>
               <ButtonLink href="/app/agent" variant="glass" size="md" className="self-start">Открыть Agent</ButtonLink>
             </>
           ) : (
@@ -137,7 +138,7 @@ export function NextActionCard({ action, also, paused }: { action: NextAction; a
         <ul className="flex flex-col gap-1 border-t border-line pt-4">
           {also.map((a) => (
             <li key={a.href + a.label}>
-              <Link href={a.href} className="group flex items-center justify-between gap-3 rounded-lg py-1.5 text-[13.5px] text-ink-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
+              <Link href={a.href} className="group flex min-h-10 items-center justify-between gap-3 rounded-lg py-1.5 text-[13.5px] text-ink-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
                 {a.label}<ArrowUpRight className="size-3.5 shrink-0 text-teal transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" aria-hidden />
               </Link>
             </li>
@@ -195,7 +196,7 @@ export function Timeline({ days, now }: { days: TimelineDay[]; now: number }) {
           </ol>
           {(d.moreFound > 0 || d.moreSkipped > 0 || d.hidden > 0) && (
             <p className="mt-2 pl-[80px] text-[12.5px] text-ink-4 sm:pl-[90px]">
-              {[d.moreFound > 0 && `ещё ${d.moreFound} найдено`, d.moreSkipped > 0 && `ещё ${d.moreSkipped} пропущено`, d.hidden > 0 && `ещё ${d.hidden} событий`].filter(Boolean).join(" · ")}
+              {[d.moreFound > 0 && `найдено ещё ${count(d.moreFound, VAC)}`, d.moreSkipped > 0 && `пропущено ещё ${count(d.moreSkipped, VAC)}`, d.hidden > 0 && `ещё ${count(d.hidden, ["событие", "события", "событий"])}`].filter(Boolean).join(" · ")}
               {" · "}<Link href="/app/opportunities" className="text-teal hover:text-head">все вакансии</Link>
             </p>
           )}

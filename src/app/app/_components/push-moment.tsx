@@ -11,9 +11,9 @@ function when(d: Date | null) {
 
 const KIND: Record<string, { eyebrow: string; headline: string; tone: "forest" | "ink" | "soft" }> = {
   interview: { eyebrow: "Новое интервью", headline: "INTERVIEW", tone: "forest" },
-  assessment: { eyebrow: "Assessment", headline: "Ты прошёл на следующий этап", tone: "forest" },
+  assessment: { eyebrow: "Assessment", headline: "Ты на следующем этапе", tone: "forest" },
   offer: { eyebrow: "Offer", headline: "YOU GOT THE OFFER", tone: "ink" },
-  hired: { eyebrow: "Hired", headline: "HIRED", tone: "ink" },
+  hired: { eyebrow: "Hired", headline: "HIRED.", tone: "ink" },
 };
 
 /**

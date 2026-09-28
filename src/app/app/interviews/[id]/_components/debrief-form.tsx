@@ -9,8 +9,8 @@ import { DEBRIEF_PROMPTS } from "./debrief-engine";
 
 const OUTCOMES = [
   { v: "done", label: "Ждём ответа" },
-  { v: "passed", label: "Прошёл дальше" },
-  { v: "failed", label: "Не прошёл" },
+  { v: "passed", label: "Следующий этап" },
+  { v: "failed", label: "Отказ" },
 ] as const;
 
 const TARGET_S = 60;
@@ -117,7 +117,7 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
               <span className="sr-only">{listening ? "Остановить запись" : "Рассказать голосом"}</span>
             </button>
             <div className="flex flex-col gap-1">
-              <span className="text-[15px] font-medium text-head">{listening ? "Слушаю — говорите свободно" : secs ? "Можно продолжить или отредактировать текст" : "Рассказать голосом"}</span>
+              <span className="text-[15px] font-medium text-head">{listening ? "Слушаю — говори свободно" : secs ? "Можно продолжить или отредактировать текст" : "Рассказать голосом"}</span>
               <span id={`${uid}-timer`} className="num text-[13px] text-ink-3" aria-live="off">
                 {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")} / ~1:00
               </span>
@@ -129,10 +129,10 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
             </div>
           </div>
         ) : (
-          <p className="text-[13.5px] text-ink-3">Голосовой ввод недоступен в этом браузере — напишите пару предложений.</p>
+          <p className="text-[13.5px] text-ink-3">Голосовой ввод недоступен в этом браузере — напиши пару предложений.</p>
         )}
         <div className="flex-1 sm:border-l sm:border-line sm:pl-5">
-          <Label className="mb-2">Расскажите за минуту</Label>
+          <Label className="mb-2">Расскажи за минуту</Label>
           <ul className="flex flex-wrap gap-1.5">
             {DEBRIEF_PROMPTS.map((p) => <li key={p} className="rounded-full border border-line bg-white/60 px-3 py-1 text-[12.5px] text-ink-2">{p}</li>)}
           </ul>
@@ -140,7 +140,7 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
       </div>
 
       <div className="flex flex-col gap-2">
-        <label htmlFor={`${uid}-t`} className="label">{supported ? "Расшифровка — можно поправить" : "Ваш рассказ"}</label>
+        <label htmlFor={`${uid}-t`} className="label">{supported ? "Расшифровка — можно поправить" : "Твой рассказ"}</label>
         <textarea
           id={`${uid}-t`}
           name="transcript"
@@ -172,7 +172,7 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
       {state?.error && <p id={`${uid}-err`} role="alert" className="rounded-xl bg-rose-soft px-3 py-2 text-[13.5px] text-rose">{state.error}</p>}
       <div className="flex flex-wrap items-center gap-3">
         <PendingButton pending={pending} pendingText="Разбираем интервью…" size="lg" disabled={words < 3}>Разобрать интервью</PendingButton>
-        <span className="text-[12.5px] text-ink-3">Получите оценку, сильные и слабые места, план подготовки и thank-you письмо.</span>
+        <span className="text-[12.5px] text-ink-3">Получишь оценку, сильные и слабые места, план подготовки и thank-you письмо.</span>
       </div>
     </form>
   );

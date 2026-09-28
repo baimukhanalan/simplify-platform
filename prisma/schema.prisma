@@ -166,8 +166,8 @@ model Campaign {
 
 model Payment {
   id          String    @id @default(cuid())
-  userId      String
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String? // kept (nulled) when the account is deleted — payments are accounting records
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
   campaignId  String?
   campaign    Campaign? @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   amount      Int

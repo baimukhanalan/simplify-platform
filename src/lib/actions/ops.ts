@@ -2,11 +2,11 @@
 // Agent C — mutations for the campaign operating screens (pipeline, approvals, inbox, opportunity detail).
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
-import { db, j, s, noNul } from "../db";
+import { db, noNul } from "../db";
 import { PIPELINE, APPLIED_OR_LATER } from "../engine/taxonomy";
-import { ingestEmail, logEvent, submit } from "../engine/agent";
-import { agentMaySubmit, readAutonomy } from "../engine/autonomy";
-import type { Answer } from "../engine/personalize";
+import { ingestEmail, logEvent, submit, STANDING_KINDS } from "../engine/agent";
+import { readAutonomy } from "../engine/autonomy";
+import { answerMatchingApprovals, continueIfReady, patchPackageAnswer } from "../engine/approvals";
 
 const MOVABLE = new Set([...PIPELINE.map((p) => p.key), "skipped"]);
 
@@ -33,20 +33,6 @@ export async function setOpportunityStatus(form: FormData) {
   const from = opp.status;
   await logEvent(user.id, "status_change", `${opp.job.company}: ${from} → ${status} (вручную)`, id, { from, to: status, by: "user" });
   refresh(id);
-}
-
-/** Replace the matching screening answer inside ApplicationPackage.answers (matched by question text). */
-async function patchAnswer(opportunityId: string, question: string, answer: string, status: Answer["status"]) {
-  const pkg = await db.applicationPackage.findUnique({ where: { opportunityId } });
-  if (!pkg) return;
-  const answers = j<Answer[]>(pkg.answers, []);
-  let hit = false;
-  const next = answers.map((a) => {
-    if (a.q.trim() !== question.trim()) return a;
-    hit = true;
-    return { ...a, a: answer, status };
-  });
-  if (hit) await db.applicationPackage.update({ where: { opportunityId }, data: { answers: s(next) } });
 }
 
 /**
@@ -76,18 +62,20 @@ export async function resolveApproval(form: FormData) {
     return;
   }
 
-  const answer = decision === "edit" ? str(form, "answer") : approval.proposed.trim();
+  const answer = (decision === "edit" ? str(form, "answer") : approval.proposed.trim()).slice(0, 2000);
   if (!answer) return; // nothing to approve — the form requires a value, this is a server-side guard
-  await db.approval.update({ where: { id }, data: { status: decision === "edit" ? "edited" : "approved", answer: answer.slice(0, 2000), resolvedAt: new Date() } });
+  const status = decision === "edit" ? "edited" : "approved";
+  // Conditional: a double submit resolves the row once.
+  const won = await db.approval.updateMany({ where: { id, status: "pending" }, data: { status, answer, resolvedAt: new Date() } });
+  if (!won.count) return;
   if (opp) {
-    await patchAnswer(opp.id, approval.question, answer.slice(0, 2000), "approved");
+    await patchPackageAnswer(opp.id, approval.question, answer, "approved");
     await logEvent(user.id, "approval", `Подтверждено: «${approval.question}» — ${opp.job.company}`, opp.id, { kind: approval.kind, decision, answer });
-    const left = await db.approval.count({ where: { opportunityId: opp.id, status: "pending", kind: { not: "handoff" } } });
-    // Same rule as the agent cycle: consent (campaign.autoSubmit) + an active, unexpired campaign + the role is allowed
-    // (Apply/Auto, or auto-apply on and Match ≥ threshold). Otherwise the package stays prepared for the user to decide.
-    const live = opp.campaign.status === "active" && (!opp.campaign.endsAt || opp.campaign.endsAt > new Date());
-    if (!left && opp.status === "prepared" && opp.campaign.autoSubmit && live && agentMaySubmit(opp, readAutonomy(user.autonomy))) await submit(opp.id);
+    await continueIfReady(opp.id, readAutonomy(user.autonomy));
   }
+  // A standing question (sensitive / legal / sponsorship) is answered once: the same answer goes to every other
+  // pending copy of it, and those opportunities continue by the same rule.
+  if (STANDING_KINDS.has(approval.kind)) await answerMatchingApprovals(user.id, { kind: approval.kind, question: approval.question, answer, status, excludeId: id });
   refresh(opp?.id);
 }
 
@@ -96,7 +84,8 @@ export async function confirmUserSubmitted(form: FormData) {
   const user = await requireUser();
   const id = str(form, "id"); // opportunity id
   const opp = await db.opportunity.findFirst({ where: { id, campaign: { userId: user.id } }, include: { pkg: { select: { id: true } } } });
-  if (!opp || !opp.pkg || APPLIED_OR_LATER.includes(opp.status)) return;
+  // Only a prepared package can go out: a preview ("Показать версию сейчас") has no approvals routed yet.
+  if (!opp || !opp.pkg || opp.status !== "prepared") return;
   const open = await db.approval.count({ where: { opportunityId: id, status: "pending", kind: { not: "handoff" } } });
   if (open) return; // sensitive questions must be answered first
   await submit(id, "user");

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Chip, PageHeader, Script } from "@/components/ui";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { goalTitle } from "../readiness/_components/model";
 import { Facts } from "../profile/_components/editable";
@@ -26,7 +27,7 @@ export default async function GoalPage({ searchParams }: { searchParams: Promise
   const [user, sp] = await Promise.all([requireUser(), searchParams]);
   const [g, campaign] = await Promise.all([
     db.goal.findUnique({ where: { userId: user.id } }),
-    db.campaign.findFirst({ where: { userId: user.id, status: { in: ["active", "paused"] } }, select: { status: true } }),
+    runningCampaign(user.id),
   ]);
   const initial: GoalValues = {
     primaryRole: g?.primaryRole ?? "",
@@ -90,7 +91,7 @@ export default async function GoalPage({ searchParams }: { searchParams: Promise
         <p role="status" className="mb-4 flex items-center gap-2 text-[13.5px] text-green animate-fade"><CircleCheck className="size-4" strokeWidth={1.8} aria-hidden />Цель сохранена. Агент учтёт её в следующем цикле.</p>
       )}
 
-      <AgentStatus needs={needs} working={campaign?.status === "paused" ? "Кампания на паузе — цель сохранена и ждёт." : "Simplify ищет вакансии под эту цель каждый день."} className="mb-5 animate-rise [animation-delay:60ms]" />
+      <AgentStatus needs={needs} idle={campaign?.status === "paused"} working={campaign?.status === "paused" ? "Кампания на паузе — цель сохранена и ждёт." : "Агент ищет вакансии под эту цель каждый день."} className="mb-5 animate-rise [animation-delay:60ms]" />
 
       <section aria-labelledby="prefs-h" className="glass p-5 animate-rise [animation-delay:100ms] sm:p-7">
         <h2 id="prefs-h" className="h-serif mb-5 text-[clamp(21px,2.2vw,26px)]">Preferences</h2>

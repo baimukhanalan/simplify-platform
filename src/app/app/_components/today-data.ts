@@ -3,7 +3,8 @@ import { db, j } from "@/lib/db";
 import { reachedInterview } from "@/lib/engine/insights";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { regionsFor } from "@/lib/regions";
-import { windowNumbers } from "@/lib/ops-data";
+import { currentCampaign, pendingApprovalsCount, runningCampaign, windowNumbers } from "@/lib/ops-data";
+import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { APP_TZ as TZ, startOfToday } from "@/lib/time";
 
 const DAY = 86400000;
@@ -83,8 +84,11 @@ export const STAGES = [
 
 type OppRow = { status: string; match: number; createdAt: Date; submittedAt: Date | null; interviews: { round: string }[]; _count: { offers: number } };
 
+/** Sent: has a submittedAt or is at "submitted" or any later pipeline status. The one definition for "Подано" and the Applications stage. */
+export const isSubmitted = (o: { status: string; submittedAt: Date | null }) => o.submittedAt != null || APPLIED_OR_LATER.includes(o.status);
+
 export function totals(opps: OppRow[]) {
-  const submitted = opps.filter((o) => o.submittedAt);
+  const submitted = opps.filter(isSubmitted);
   return {
     found: opps.length,
     qualified: opps.filter((o) => !["found", "skipped"].includes(o.status)).length,
@@ -97,7 +101,26 @@ export function totals(opps: OppRow[]) {
   };
 }
 export type Totals = ReturnType<typeof totals>;
+export type StageKey = (typeof STAGES)[number]["key"];
 
+/**
+ * The number shown under each stage of the progress rail — each stage counts only its own thing:
+ * Search = found, Applications = submitted-or-later (the same number as «Подано»), and so on. Empty = nothing shown.
+ */
+export function stageValues(t: Totals, goalRole: string): Record<StageKey, string> {
+  const n = (v: number) => (v ? String(v) : "");
+  return {
+    goal: goalRole,
+    search: n(t.found),
+    applications: n(t.submitted),
+    assessments: n(t.assessments),
+    interviews: n(t.interviews),
+    offers: n(t.offers),
+    hired: t.hired ? "Да" : "",
+  };
+}
+
+/** Index into STAGES of the furthest stage reached, from the same totals as stageValues (so rail and numbers agree). */
 export function currentStage(t: Totals, campaignStatus: string) {
   if (campaignStatus === "hired" || t.hired) return 6;
   if (t.offers) return 5;
@@ -227,7 +250,8 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
       select: { status: true, match: true, createdAt: true, submittedAt: true, interviews: { select: { round: true } }, _count: { select: { offers: true } } },
     }),
     windowNumbers(campaign.id, dayStart, autonomy.autoApplyMinMatch),
-    db.approval.count({ where: { userId: user.id, status: "pending" } }),
+    // Only the running campaign's questions: a finished campaign no longer asks anything.
+    pendingApprovalsCount(user.id),
     db.interview.findMany({
       where: { userId: user.id, status: "upcoming" },
       orderBy: { scheduledAt: "asc" },
@@ -240,12 +264,15 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
   ]);
 
   const t = totals(opps);
+  const stage = currentStage(t, campaign.status);
   const today = { found: day.found, qualified: day.fit, strong: day.strong, submitted: day.submitted, responses: responsesToday };
   const { line, regions } = goalLine(user.goal);
   return {
     clock: campaignDay(campaign, now),
     totals: t,
-    stage: currentStage(t, campaign.status),
+    stage,
+    /** Use for the progress rail values (StageBar) instead of reading totals directly. */
+    stageValues: stageValues(t, user.goal?.primaryRole ?? ""),
     today,
     strongThreshold: autonomy.autoApplyMinMatch,
     goalLine: line,
@@ -258,3 +285,23 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
   };
 }
 export type Today = Awaited<ReturnType<typeof loadToday>>;
+
+// ——— Agent state for screens outside Today (e.g. Career Mode) ———
+
+/**
+ * Whether the agent is actually searching for this user right now, so copy like «Агент ищет за вас» is only shown
+ * when true. hasCampaign = any non-draft campaign ever; running = active or paused and not past endsAt;
+ * searching = running, active (not paused) and Find jobs is on.
+ */
+export async function agentState(user: { id: string; autonomy: string }) {
+  const [latest, running] = await Promise.all([currentCampaign(user.id), runningCampaign(user.id)]);
+  const findJobs = readAutonomy(user.autonomy).findJobs;
+  return {
+    hasCampaign: Boolean(latest),
+    status: latest?.status ?? null,
+    running: Boolean(running),
+    paused: running?.status === "paused",
+    searching: running?.status === "active" && findJobs,
+  };
+}
+export type AgentState = Awaited<ReturnType<typeof agentState>>;

@@ -32,15 +32,15 @@ export function missingPoints(question: string, answer: string, s: Score, ctx: M
   const out: string[] = [];
   const low = answer.toLowerCase();
   if (intent === "behavioral" || intent === "leadership") {
-    const names = { s: "контекст (Situation)", t: "ваша задача (Task)", a: "ваши конкретные действия (Action)", r: "результат (Result)" } as const;
+    const names = { s: "контекст (Situation)", t: "твоя задача (Task)", a: "твои конкретные действия (Action)", r: "результат (Result)" } as const;
     (Object.keys(names) as (keyof typeof names)[]).forEach((k) => !s.star[k] && out.push(names[k]));
-    if (!/(learn|lesson|next time|вывод|научил|понял)/i.test(answer)) out.push("чему это вас научило");
+    if (!/(learn|lesson|next time|вывод|научил|понял)/i.test(answer)) out.push("чему это научило");
   }
   if (!/\d/.test(answer)) out.push("цифра результата (было → стало)");
   if ((intent === "motivation" || /why .*compan/i.test(question)) && !low.includes(ctx.company.toLowerCase())) out.push(`конкретика о ${ctx.company}`);
-  if (intent === "intro" && !/(now|currently|сейчас)/i.test(answer)) out.push("кто вы сейчас (Present)");
+  if (intent === "intro" && !/(now|currently|сейчас)/i.test(answer)) out.push("кто ты сейчас (Present)");
   if (intent === "technical" && !/(first|then|step|сначала|затем)/i.test(answer)) out.push("пошаговый подход");
-  if (intent === "closing" && !answer.includes("?")) out.push("1–2 ваших вопроса");
+  if (intent === "closing" && !answer.includes("?")) out.push("1–2 твоих вопроса");
   return [...new Set(out)].slice(0, 4);
 }
 
