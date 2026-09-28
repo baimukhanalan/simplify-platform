@@ -2,24 +2,74 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { Mic, MicOff, X, ShieldAlert, CornerDownLeft, Lock, Gauge } from "lucide-react";
-import { scaffold, type FactLite, type Scaffold, type StoryLite } from "@/lib/engine/interview";
+import { CornerDownLeft, Gauge, Info, Mic, MicOff, PictureInPicture2, X } from "lucide-react";
+import { retrieveStories, scaffold, type FactLite, type Intent, type Scaffold, type StoryLite } from "@/lib/engine/interview";
 import { cx } from "@/components/ui";
 import { useSpeech, useSpeechSupported } from "../../../_components/use-speech";
+import { matchMethod, type Method } from "./methods";
 
 type Ctx = { stories: StoryLite[]; facts: FactLite[]; skills: string[]; yearsExperience: number; company: string; role: string; salary?: { low: number; high: number } };
-type Item = { q: string; sc: Scaffold; at: number };
+type Row = { k: string; v: string };
+type Card =
+  | { mode: "technical"; method: Method; opener: string; keyNumber: string }
+  | { mode: "behavioral"; rows: Row[]; opener: string; keyNumber: string; storyTitle: string | null }
+  | { mode: "general"; strategy: string; bullets: string[]; opener: string; keyNumber: string };
+type Item = { q: string; intent: Intent; card: Card; at: number };
 
 const QUESTION_START = /^(what|why|how|when|where|who|which|tell|describe|walk|can you|could you|would you|have you|do you|did you|are you|give|explain|share|talk|any questions|расскаж|почему|как|что|когда|где|опиш|приведите|какие|какой|есть ли)/i;
 const looksLikeQuestion = (t: string) => /\?\s*$/.test(t) || QUESTION_START.test(t.trim());
 const norm = (t: string) => t.toLowerCase().replace(/[^\p{L}\p{N} ]/gu, "").replace(/\s+/g, " ").trim();
+const clip = (s: string, n = 110) => (s.length > n ? `${s.slice(0, n - 1).trim()}…` : s);
 const PAUSE_MS = 700;
+
+const MODE_LABEL: Record<Intent, string> = {
+  behavioral: "Behavioral", leadership: "Behavioral · Leadership", experience: "Experience", technical: "Technical Interview Mode", case: "Technical Interview Mode · Case",
+  motivation: "Motivation", salary: "Salary", strengths: "Strengths", weakness: "Weakness", intro: "Tell me about yourself", closing: "Your questions",
+};
+
+function lessonFor(story: StoryLite | undefined) {
+  if (!story) return "What you'd repeat or change next time";
+  if (story.tags.includes("failure")) return "What I changed in my process afterwards";
+  if (story.tags.includes("conflict")) return "Disagree with data, then commit as a team";
+  if (story.tags.includes("leadership")) return "How it changed the way I work with people";
+  return "What I'd repeat next time";
+}
+
+/** Pure + synchronous: question → on-screen card. Stays well under a frame. */
+function buildCard(q: string, ctx: Ctx): { intent: Intent; card: Card } {
+  const sc: Scaffold = scaffold(q, ctx);
+  const method = matchMethod(q);
+  if (method && (sc.intent === "technical" || sc.intent === "case" || sc.intent === "experience")) {
+    return { intent: sc.intent === "experience" ? "technical" : sc.intent, card: { mode: "technical", method, opener: sc.intent === "case" ? "Let me structure this first." : "Let me walk through it step by step.", keyNumber: "" } };
+  }
+  if (sc.intent === "behavioral" || sc.intent === "leadership") {
+    const [s] = retrieveStories(q, ctx.stories, 1);
+    const rows: Row[] = s
+      ? [
+          { k: "Context", v: clip(s.situation) },
+          { k: "Why", v: clip(s.task) },
+          { k: "Action", v: clip(s.action) },
+          { k: "Result", v: clip(s.result) },
+          { k: "Lesson", v: lessonFor(s) },
+        ]
+      : [
+          { k: "Context", v: "Where and when — one sentence" },
+          { k: "Why", v: "What was at stake, your responsibility" },
+          { k: "Action", v: "2–3 things you did personally" },
+          { k: "Result", v: "Outcome with a number" },
+          { k: "Lesson", v: lessonFor(undefined) },
+        ];
+    const opener = s ? `One example that taught me a lot was ${s.title.charAt(0).toLowerCase()}${s.title.slice(1)}.` : "One example that taught me a lot was…";
+    return { intent: sc.intent, card: { mode: "behavioral", rows, opener, keyNumber: s?.metric ?? "", storyTitle: s?.title ?? null } };
+  }
+  return { intent: sc.intent, card: { mode: "general", strategy: sc.strategy, bullets: sc.bullets, opener: sc.opener, keyNumber: sc.keyNumber } };
+}
 
 export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: string; ctx: Ctx; title: string; blocked: "employer" | "assessment" | "consent" | null }) {
   const router = useRouter();
   const exitHref = `/app/interviews/${interviewId}`;
-  const exit = useCallback(() => router.push(exitHref), [router, exitHref]);
   const uid = useId();
+  const [popup, setPopup] = useState(false);
   const [lang, setLang] = useState("en-US");
   const [history, setHistory] = useState<Item[]>([]);
   const [active, setActive] = useState<Item | null>(null);
@@ -35,18 +85,23 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
   const rootRef = useRef<HTMLDivElement>(null);
   const supported = useSpeechSupported();
 
+  const exit = useCallback(() => {
+    if (popup) window.close();
+    else router.push(exitHref);
+  }, [popup, router, exitHref]);
+
   const show = useCallback(
     (q: string, start: number) => {
-      const sc = scaffold(q, ctx);
+      const { intent, card } = buildCard(q, ctx);
       t0.current = start;
-      const item = { q, sc, at: Date.now() };
+      const item = { q, intent, card, at: Date.now() };
       setActive(item);
-      setHistory((h) => [item, ...h.filter((x) => x.q !== q)].slice(0, 8));
+      setHistory((h) => [item, ...h.filter((x) => x.q !== q)].slice(0, 6));
     },
     [ctx],
   );
 
-  // Measured latency: question end → scaffold committed to the DOM.
+  // Measured latency: end of question → card committed to the DOM.
   useLayoutEffect(() => {
     if (t0.current == null) return;
     const ms = performance.now() - t0.current;
@@ -78,7 +133,7 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
     continuous: true,
     onFinal: (t) => {
       const n = norm(t);
-      // Skip a final segment we already handled from its interim version (pause / '?' detection).
+      // Skip a final segment already handled from its interim version (pause / '?' detection).
       if (consumed.current && (n === consumed.current || n.startsWith(consumed.current) || consumed.current.startsWith(n))) {
         consumed.current = "";
         return;
@@ -107,7 +162,7 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
     } else speech.start();
   }, [blocked, speech, flush]);
 
-  // Keyboard: Space = start/stop, Esc = exit. Ignore while typing or on native controls.
+  // Keyboard: Space = listen/stop, Esc = close. Ignored while typing or on native controls.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
@@ -124,8 +179,11 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
     return () => window.removeEventListener("keydown", onKey);
   }, [exit, toggle]);
 
-  // Focus mode: lock page scroll, make the app shell behind the overlay inert, focus the primary control.
+  // Focus mode: lock page scroll, make the app shell behind the panel inert, focus the primary control.
   useEffect(() => {
+    // Popped-out window (see popOut) — the close button closes the window instead of navigating.
+    const isPopup = window.name === "simplify-copilot" && Boolean(window.opener);
+    const raf = requestAnimationFrame(() => setPopup(isPopup));
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const inerted: Element[] = [];
@@ -139,11 +197,20 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
     }
     (startBtn.current ?? rootRef.current?.querySelector<HTMLElement>("a, button"))?.focus();
     return () => {
+      cancelAnimationFrame(raf);
       document.body.style.overflow = prev;
       inerted.forEach((el) => el.removeAttribute("inert"));
       if (timer.current) clearTimeout(timer.current);
     };
   }, []);
+
+  const popOut = () => {
+    const w = window.open(window.location.href, "simplify-copilot", "popup,width=440,height=720");
+    if (w) {
+      speech.stop();
+      router.push(exitHref);
+    }
+  };
 
   const submitManual = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,130 +221,191 @@ export function Copilot({ interviewId, ctx, title, blocked }: { interviewId: str
   };
 
   return (
-    <div ref={rootRef} role="dialog" aria-modal="true" aria-labelledby={`${uid}-title`} className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[#0c1512] text-white">
-      {/* Top bar */}
-      <header className="flex flex-wrap items-center gap-3 border-b border-white/10 px-4 py-3 sm:px-6">
-        <span className={cx("size-2.5 rounded-full", speech.listening ? "bg-[#4fd39a] animate-pulse-dot" : "bg-white/30")} aria-hidden />
-        <h1 id={`${uid}-title`} className="min-w-0 flex-1 truncate font-mono text-[12px] uppercase tracking-[.08em] text-white/70">
-          Interview Copilot · <span className="text-white">{title}</span>
-        </h1>
-        {latency != null && (
-          <span className={cx("flex items-center gap-1.5 rounded-full px-3 py-1 font-mono text-[11px]", latency <= 150 ? "bg-[#4fd39a]/15 text-[#7fe3b6]" : "bg-amber-400/15 text-amber-200")} title="От конца вопроса до карточки на экране">
-            <Gauge className="size-3.5" strokeWidth={1.7} aria-hidden />
-            <span className="num">{latency < 10 ? latency.toFixed(1) : Math.round(latency)}</span> ms
-          </span>
+    <div ref={rootRef} role="dialog" aria-modal="true" aria-labelledby={`${uid}-title`} className="fixed inset-0 z-[70] flex items-end justify-center bg-[#0c1512]/85 p-0 backdrop-blur-md sm:items-end sm:justify-end sm:p-6">
+      {/* Calm backdrop hint (desktop only) */}
+      <div aria-hidden className="pointer-events-none absolute left-8 top-8 hidden max-w-sm flex-col gap-2 text-white/70 lg:flex">
+        <span className="font-mono text-[11px] uppercase tracking-[.1em] text-white/45">Interview Copilot</span>
+        <span className="font-serif text-[28px] leading-tight text-white/85">Смотрите в камеру. Карточка — только опора.</span>
+        <span className="text-[13px]">Space — слушать / стоп · Esc — закрыть</span>
+      </div>
+
+      <section
+        className={cx(
+          "relative flex w-full flex-col overflow-hidden bg-[#0f1a16] text-white shadow-[0_24px_80px_rgb(0_0_0/.45)] ring-1 ring-white/10 animate-rise",
+          popup ? "h-dvh sm:h-[calc(100dvh-48px)] sm:max-w-none sm:rounded-[22px]" : "max-h-[92dvh] rounded-t-[22px] sm:max-h-[calc(100dvh-48px)] sm:w-[420px] sm:rounded-[22px]",
         )}
-        <button onClick={exit} className="flex h-9 items-center gap-2 rounded-full border border-white/15 px-3.5 text-[13px] text-white/80 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fd39a]">
-          <X className="size-4" strokeWidth={1.7} />Выйти <kbd className="hidden rounded border border-white/20 px-1 font-mono text-[10px] sm:inline">Esc</kbd>
-        </button>
-      </header>
+      >
+        {/* Header */}
+        <header className="flex items-center gap-2.5 border-b border-white/10 px-4 py-3">
+          <span className={cx("size-2 shrink-0 rounded-full", speech.listening ? "bg-[#4fd39a] animate-pulse-dot" : "bg-white/30")} aria-hidden />
+          <h1 id={`${uid}-title`} className="min-w-0 flex-1 truncate font-mono text-[11px] uppercase tracking-[.08em] text-white/60">
+            Copilot · <span className="text-white/90">{title}</span>
+          </h1>
+          {latency != null && (
+            <span className={cx("flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10.5px]", latency <= 150 ? "bg-[#4fd39a]/15 text-[#7fe3b6]" : "bg-amber-400/15 text-amber-200")} title="От конца вопроса до карточки на экране">
+              <Gauge className="size-3" strokeWidth={1.8} aria-hidden />
+              <span className="num">{latency < 10 ? latency.toFixed(1) : Math.round(latency)}</span> ms
+            </span>
+          )}
+          {!popup && !blocked && (
+            <button type="button" onClick={popOut} className="hidden size-8 shrink-0 place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a] sm:grid" aria-label="Открыть в отдельном маленьком окне" title="Отдельное окно — поставьте рядом со звонком">
+              <PictureInPicture2 className="size-4" strokeWidth={1.7} />
+            </button>
+          )}
+          <button type="button" onClick={exit} className="grid size-8 shrink-0 place-items-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a]" aria-label="Закрыть Copilot (Esc)">
+            <X className="size-4" strokeWidth={1.8} />
+          </button>
+        </header>
 
-      {blocked ? (
-        <Blocked kind={blocked} exitHref={exitHref} />
-      ) : (
-        <>
-          <main className="grid min-h-0 flex-1 gap-0 overflow-y-auto lg:grid-cols-[1fr_320px] lg:overflow-hidden">
-            <section aria-live="polite" aria-label="Подсказка к ответу" className="flex min-h-0 flex-col px-4 py-6 sm:px-8 lg:overflow-y-auto lg:py-10">
-              {active ? <ScaffoldCard key={active.at} item={active} /> : <Idle listening={speech.listening} supported={supported} />}
-            </section>
+        {blocked ? (
+          <Blocked kind={blocked} exitHref={exitHref} />
+        ) : (
+          <>
+            <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-4 py-4" aria-live="polite" aria-label="Подсказка к ответу">
+              {active ? <CardView key={active.at} item={active} /> : <Idle listening={speech.listening} supported={supported} />}
+            </div>
 
-            <aside className="flex min-h-0 flex-col gap-5 border-t border-white/10 px-4 py-5 sm:px-6 lg:overflow-y-auto lg:border-l lg:border-t-0">
-              <div>
-                <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[.08em] text-white/50">Слышу</div>
-                <p className="min-h-[3em] text-[15px] leading-snug text-white/80">{live || <span className="text-white/35">{speech.listening ? "…" : "Микрофон выключен"}</span>}</p>
-              </div>
-              <div>
-                <div className="mb-2 font-mono text-[10.5px] uppercase tracking-[.08em] text-white/50">Последние вопросы</div>
-                {history.length === 0 ? (
-                  <p className="text-[13px] text-white/40">Пока пусто</p>
-                ) : (
-                  <ul className="flex flex-col gap-1">
-                    {history.map((h) => (
-                      <li key={h.at}>
-                        <button onClick={() => { setActive(h); setLatency(null); }} aria-current={active?.at === h.at} className={cx("w-full rounded-xl px-3 py-2 text-left text-[13.5px] leading-snug transition focus-visible:outline-2 focus-visible:outline-[#4fd39a]", active?.at === h.at ? "bg-white/12 text-white" : "text-white/65 hover:bg-white/6 hover:text-white")}>
-                          <span className="mb-0.5 block font-mono text-[10px] uppercase tracking-[.06em] text-[#7fe3b6]">{h.sc.intent}</span>
-                          <span className="line-clamp-2">{h.q}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </aside>
-          </main>
+            <div className="border-t border-white/10 px-4 py-2.5">
+              <p className="line-clamp-2 min-h-[1.5em] text-[12.5px] leading-snug text-white/55">
+                <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[.08em] text-white/35">Слышу</span>
+                {live || (speech.listening ? "…" : "микрофон выключен")}
+              </p>
+              {history.length > 1 && (
+                <div className="scroll-thin -mx-1 mt-2 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label="Прошлые вопросы">
+                  {history.map((h) => (
+                    <button
+                      key={h.at}
+                      type="button"
+                      onClick={() => { setActive(h); setLatency(null); }}
+                      aria-pressed={active?.at === h.at}
+                      className={cx("max-w-[180px] shrink-0 truncate rounded-full px-2.5 py-1 text-[12px] transition focus-visible:outline-2 focus-visible:outline-[#4fd39a]", active?.at === h.at ? "bg-white/15 text-white" : "bg-white/5 text-white/60 hover:bg-white/10")}
+                    >
+                      {h.q}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {/* Controls */}
-          <footer className="border-t border-white/10 px-4 py-4 sm:px-6">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <footer className="flex flex-col gap-2.5 border-t border-white/10 px-4 py-3">
               <div className="flex items-center gap-2">
                 <button
                   ref={startBtn}
+                  type="button"
                   onClick={toggle}
                   disabled={!supported}
                   aria-pressed={speech.listening}
-                  className={cx("flex h-12 items-center gap-2.5 rounded-full px-6 text-[15px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#4fd39a] disabled:cursor-not-allowed disabled:opacity-40", speech.listening ? "bg-[#e5484d] text-white hover:brightness-110" : "bg-white text-[#0c1512] hover:bg-white/90")}
+                  className={cx("flex h-11 flex-1 items-center justify-center gap-2 rounded-full text-[14.5px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fd39a] disabled:cursor-not-allowed disabled:opacity-40", speech.listening ? "bg-[#e5484d] text-white hover:brightness-110" : "bg-white text-[#0c1512] hover:bg-white/90")}
                 >
-                  {speech.listening ? <MicOff className="size-5" strokeWidth={1.8} /> : <Mic className="size-5" strokeWidth={1.8} />}
+                  {speech.listening ? <MicOff className="size-4.5" strokeWidth={1.8} aria-hidden /> : <Mic className="size-4.5" strokeWidth={1.8} aria-hidden />}
                   {speech.listening ? "Стоп" : "Слушать"}
-                  <kbd className="hidden rounded border border-current/30 px-1.5 font-mono text-[10px] opacity-60 sm:inline">Space</kbd>
+                  <kbd className="hidden rounded border border-current/30 px-1 font-mono text-[10px] opacity-60 sm:inline">Space</kbd>
                 </button>
                 <label htmlFor={`${uid}-lang`} className="sr-only">Язык интервью</label>
-                <select id={`${uid}-lang`} value={lang} onChange={(e) => setLang(e.target.value)} disabled={speech.listening} className="h-12 rounded-full border border-white/15 bg-transparent px-4 text-[14px] text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a] disabled:opacity-50 [&>option]:text-black">
-                  <option value="en-US">English (en-US)</option>
-                  <option value="ru-RU">Русский (ru-RU)</option>
+                <select id={`${uid}-lang`} value={lang} onChange={(e) => setLang(e.target.value)} disabled={speech.listening} className="h-11 rounded-full border border-white/15 bg-transparent px-3 text-[13px] text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a] disabled:opacity-50 [&>option]:text-black">
+                  <option value="en-US">EN</option>
+                  <option value="ru-RU">RU</option>
                 </select>
               </div>
-              <form onSubmit={submitManual} className="flex min-w-0 flex-1 items-center gap-2">
-                <label htmlFor={`${uid}-q`} className="sr-only">Вставьте вопрос интервьюера</label>
+              <form onSubmit={submitManual} className="flex items-center gap-2">
+                <label htmlFor={`${uid}-q`} className="sr-only">Вопрос интервьюера текстом</label>
                 <input
                   id={`${uid}-q`}
                   value={manual}
                   onChange={(e) => setManual(e.target.value)}
-                  placeholder="Вставьте вопрос, если микрофон недоступен…"
+                  placeholder="Или вставьте вопрос текстом…"
                   autoComplete="off"
-                  className="h-12 min-w-0 flex-1 rounded-full border border-white/15 bg-white/5 px-5 text-[15px] text-white placeholder:text-white/35 focus:border-[#4fd39a] focus:outline-none focus:ring-4 focus:ring-[#4fd39a]/15"
+                  className="h-10 min-w-0 flex-1 rounded-full border border-white/15 bg-white/5 px-4 text-[14px] text-white placeholder:text-white/35 focus:border-[#4fd39a] focus:outline-none focus:ring-4 focus:ring-[#4fd39a]/15"
                 />
-                <button type="submit" disabled={!manual.trim()} className="grid size-12 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-[#4fd39a] disabled:opacity-40" aria-label="Показать подсказку">
-                  <CornerDownLeft className="size-5" strokeWidth={1.7} />
+                <button type="submit" disabled={!manual.trim()} className="grid size-10 shrink-0 place-items-center rounded-full bg-white/10 text-white transition hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-[#4fd39a] disabled:opacity-40" aria-label="Показать подсказку">
+                  <CornerDownLeft className="size-4" strokeWidth={1.8} />
                 </button>
               </form>
-            </div>
-            {(speech.error || !supported) && (
-              <p role="alert" className="mt-3 text-[13px] text-amber-200">{speech.error ?? "Распознавание речи недоступно в этом браузере (нужен Chrome, Edge или Safari). Вставляйте вопросы текстом — подсказка появится мгновенно."}</p>
-            )}
-            <p className="mt-3 flex items-start gap-2 text-[12px] text-white/45">
-              <Lock className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.7} aria-hidden />
-              Звук обрабатывает встроенный speech engine браузера. Simplify ничего не записывает и не сохраняет. Подсказки строятся из вашего профиля и STAR-историй.
-            </p>
-          </footer>
-        </>
-      )}
+              {(speech.error || !supported) && (
+                <p role="alert" className="text-[12px] leading-snug text-amber-200">{speech.error ?? "Распознавание речи недоступно в этом браузере — вставляйте вопросы текстом, карточка появится мгновенно."}</p>
+              )}
+              <p className="text-[11px] leading-snug text-white/35">Речь распознаёт браузер, Simplify ничего не записывает.</p>
+            </footer>
+          </>
+        )}
+      </section>
     </div>
   );
 }
 
-function ScaffoldCard({ item }: { item: Item }) {
-  const { sc, q } = item;
+function CardView({ item }: { item: Item }) {
+  const { card, q, intent } = item;
+  const technical = card.mode === "technical";
   return (
-    <article className="mx-auto flex w-full max-w-3xl animate-fade flex-col gap-6">
-      <p className="text-[15px] leading-snug text-white/55">«{q}»</p>
-      <div className="flex flex-wrap items-center gap-3">
-        <span className="rounded-full bg-[#4fd39a] px-3 py-1 font-mono text-[11.5px] uppercase tracking-[.08em] text-[#0c1512]">{sc.intent}</span>
-        <span className="text-[15px] text-white/70">{sc.strategy}</span>
-      </div>
-      {sc.opener && <p className="font-serif text-[clamp(26px,3.4vw,40px)] leading-[1.12] text-white">{sc.opener}</p>}
-      <ul className="flex flex-col gap-3.5">
-        {sc.bullets.map((b, i) => (
-          <li key={i} className="flex gap-4 text-[clamp(18px,2.1vw,24px)] leading-snug text-white/92">
-            <span aria-hidden className="mt-[0.55em] size-2 shrink-0 rounded-full bg-[#4fd39a]" />
-            {b}
-          </li>
-        ))}
-      </ul>
-      {sc.keyNumber && (
-        <div className="flex flex-col gap-1 border-t border-white/10 pt-5">
-          <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/50">Ключевая цифра</span>
-          <span className="num text-[clamp(22px,2.8vw,32px)] leading-tight text-[#7fe3b6]">{sc.keyNumber}</span>
+    <article className="flex animate-fade flex-col gap-4">
+      <p className="line-clamp-3 text-[13.5px] leading-snug text-white/55">«{q}»</p>
+      <span className={cx("w-fit rounded-full px-2.5 py-1 font-mono text-[10.5px] uppercase tracking-[.08em]", technical ? "bg-[#7fe3b6] text-[#0c1512]" : "bg-white/10 text-[#7fe3b6]")}>{MODE_LABEL[intent]}</span>
+
+      {card.opener && (
+        <div className="flex flex-col gap-1">
+          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Первая фраза</span>
+          <p className="font-serif text-[22px] leading-[1.18] text-white">{card.opener}</p>
+        </div>
+      )}
+
+      {card.mode === "technical" && (
+        <div className="flex flex-col gap-3">
+          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Method · {card.method.title}</span>
+          <ol className="flex flex-col gap-2">
+            {card.method.steps.map((s, i) => (
+              <li key={s} className="flex gap-3 text-[15px] leading-snug text-white/92">
+                <span className="num grid size-6 shrink-0 place-items-center rounded-full bg-white/10 text-[12px] text-[#7fe3b6]">{i + 1}</span>
+                <span className="pt-0.5">{s}</span>
+              </li>
+            ))}
+          </ol>
+          {card.method.formula && (
+            <div className="rounded-xl bg-white/6 px-3 py-2.5 ring-1 ring-white/10">
+              <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Formula</span>
+              <p className="num mt-0.5 text-[15px] text-[#7fe3b6]">{card.method.formula}</p>
+            </div>
+          )}
+          {card.method.mention && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Mention</span>
+              {card.method.mention.map((m) => <span key={m} className="rounded-full bg-white/8 px-2 py-0.5 text-[12px] text-white/80">{m}</span>)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {card.mode === "behavioral" && (
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Suggested structure</span>
+          <dl className="flex flex-col gap-2">
+            {card.rows.map((r) => (
+              <div key={r.k} className="grid grid-cols-[64px_1fr] gap-2.5">
+                <dt className="pt-0.5 font-mono text-[10.5px] uppercase tracking-[.06em] text-[#7fe3b6]">{r.k}</dt>
+                <dd className="text-[14.5px] leading-snug text-white/90">{r.v}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      {card.mode === "general" && (
+        <div className="flex flex-col gap-2">
+          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Structure · {card.strategy}</span>
+          <ul className="flex flex-col gap-2">
+            {card.bullets.map((b, i) => (
+              <li key={i} className="flex gap-2.5 text-[15px] leading-snug text-white/90">
+                <span aria-hidden className="mt-[0.5em] size-1.5 shrink-0 rounded-full bg-[#4fd39a]" />
+                {b}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {card.keyNumber && (
+        <div className="flex items-baseline gap-2 border-t border-white/10 pt-3">
+          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Цифра</span>
+          <span className="num text-[18px] text-[#7fe3b6]">{card.keyNumber}</span>
         </div>
       )}
     </article>
@@ -286,38 +414,30 @@ function ScaffoldCard({ item }: { item: Item }) {
 
 function Idle({ listening, supported }: { listening: boolean; supported: boolean }) {
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col items-start justify-center gap-5 py-10">
-      <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/50">{listening ? "Слушаю интервьюера" : "Готов"}</span>
-      <p className="font-serif text-[clamp(28px,3.6vw,44px)] leading-[1.1] text-white">
-        {listening ? "Как только вопрос закончится, здесь появится подсказка." : supported ? "Нажмите «Слушать» или Space, когда начнётся звонок." : "Вставьте вопрос интервьюера в поле внизу."}
+    <div className="flex flex-col gap-3 py-6">
+      <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-white/45">{listening ? "Слушаю интервьюера" : "Готов"}</span>
+      <p className="font-serif text-[24px] leading-[1.15] text-white">
+        {listening ? "Как только вопрос закончится, здесь появится карточка." : supported ? "Нажмите «Слушать», когда начнётся звонок." : "Вставьте вопрос интервьюера в поле ниже."}
       </p>
-      <ul className="flex flex-col gap-2 text-[15px] text-white/60">
-        <li>· Одна фраза-опенер, 3–5 тезисов, ключевая цифра</li>
-        <li>· Предупреждение, если вопрос тянет на то, чего нет в профиле</li>
-        <li>· Смотрите в камеру — подсказка лишь опора, не текст для чтения</li>
-      </ul>
+      <p className="text-[13px] leading-relaxed text-white/50">Первая фраза, структура ответа и ваша цифра. Для технических вопросов — пошаговый метод.</p>
     </div>
   );
 }
 
 function Blocked({ kind, exitHref }: { kind: "employer" | "assessment" | "consent"; exitHref: string }) {
   const text = {
-    employer: "Для этого интервью отмечено, что работодатель запрещает внешнюю помощь. Live-режим Copilot отключён — это честно по отношению к работодателю и защищает вас.",
-    assessment: "Во время онлайн-assessments внешняя помощь обычно запрещена правилами теста. Live-режим недоступен.",
-    consent: "Вы отключили Interview Copilot в настройках приватности. Включите его там, если хотите пользоваться live-режимом.",
+    employer: "Для этого раунда отмечено, что правила интервью не разрешают внешнюю помощь.",
+    assessment: "Во время онлайн-тестов внешняя помощь обычно запрещена правилами платформы.",
+    consent: "Interview Copilot выключен в настройках приватности.",
   }[kind];
   return (
-    <div className="flex flex-1 items-center justify-center overflow-y-auto px-4 py-10">
-      <div className="flex max-w-xl flex-col gap-5">
-        <ShieldAlert className="size-9 text-amber-200" strokeWidth={1.5} aria-hidden />
-        <h2 className="font-serif text-[clamp(28px,3.4vw,40px)] leading-[1.1]">Copilot недоступен для этого раунда</h2>
-        <p className="text-[16px] leading-relaxed text-white/75">{text}</p>
-        <p className="text-[15px] text-white/60">Подготовьтесь заранее: Interview Pack и Mock Interview дают тот же материал до звонка.</p>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`${exitHref}?tab=pack`} className="flex h-11 items-center rounded-full bg-white px-5 text-[14.5px] font-medium text-[#0c1512] hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fd39a]">Interview Pack</Link>
-          <Link href={`${exitHref}?tab=mock`} className="flex h-11 items-center rounded-full border border-white/20 px-5 text-[14.5px] text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#4fd39a]">Mock Interview</Link>
-          {kind === "consent" && <Link href="/app/settings" className="flex h-11 items-center rounded-full border border-white/20 px-5 text-[14.5px] text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#4fd39a]">Настройки приватности</Link>}
-        </div>
+    <div className="flex flex-col gap-4 px-4 py-6">
+      <Info className="size-6 text-[#7fe3b6]" strokeWidth={1.6} aria-hidden />
+      <h2 className="font-serif text-[26px] leading-tight">Copilot не нужен в этом раунде</h2>
+      <p className="text-[14.5px] leading-relaxed text-white/70">{text} Подготовьтесь заранее — Mock Interview даёт тот же материал до звонка.</p>
+      <div className="flex flex-wrap gap-2">
+        <Link href={`${exitHref}?tab=mock`} className="flex h-10 items-center rounded-full bg-white px-4 text-[14px] font-medium text-[#0c1512] hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fd39a]">Mock Interview</Link>
+        {kind === "consent" && <Link href="/app/settings" className="flex h-10 items-center rounded-full border border-white/20 px-4 text-[14px] text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#4fd39a]">Настройки</Link>}
       </div>
     </div>
   );

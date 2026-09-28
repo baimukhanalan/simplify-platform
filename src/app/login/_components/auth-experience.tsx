@@ -1,11 +1,12 @@
 "use client";
 import Link from "next/link";
 import { startTransition, useActionState, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
-import { ArrowRight, Eye, EyeOff, AlertCircle, Sparkles, Check, TicketPercent } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, AlertCircle, Sparkles, Check, TicketPercent, Target } from "lucide-react";
 import { login, signup, type AuthState } from "@/lib/actions/auth";
 import { Logo, Script, cx } from "@/components/ui";
 import { Atmosphere } from "./atmosphere";
 import { AgentPreview } from "./agent-preview";
+import { WHERE_OPTIONS, fmtUsd, storeIntent, type Intent } from "../../_components/campaign-intent";
 
 type Mode = "login" | "signup";
 type FieldKey = "name" | "email" | "password" | "terms";
@@ -25,7 +26,7 @@ function strength(pw: string) {
   return { score, label: ["", "Слабый", "Средний", "Хороший", "Сильный"][score] };
 }
 
-export function AuthExperience({ initialMode, refCode, next }: { initialMode: Mode; refCode: string; next: string }) {
+export function AuthExperience({ initialMode, refCode, next, intent = null }: { initialMode: Mode; refCode: string; next: string; intent?: Intent | null }) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [loginState, loginAction, loginPending] = useActionState<AuthState, FormData>(login, undefined);
   const [signupState, signupAction, signupPending] = useActionState<AuthState, FormData>(signup, undefined);
@@ -61,6 +62,9 @@ export function AuthExperience({ initialMode, refCode, next }: { initialMode: Mo
   const done = required.filter((k) => !errors[k]).length;
   const progress = pending ? 1 : (done / required.length) * 0.9;
   const pw = strength(password);
+
+  // The signup action always redirects to /onboarding — keep the first-screen answers for it.
+  useEffect(() => { if (intent) storeIntent(intent); }, [intent]);
 
   // Keep the URL in sync so refresh/back keeps the mode (and the partner code).
   useEffect(() => {
@@ -133,6 +137,7 @@ export function AuthExperience({ initialMode, refCode, next }: { initialMode: Mo
           <div ref={cardRef} className="glass-strong relative p-5 sm:p-8">
 
             <ModeSwitch mode={mode} onChange={switchMode} />
+            {intent && <IntentSummary intent={intent} />}
 
             <div className="mt-6 flex items-start justify-between gap-4">
               <div key={mode} className="flex flex-col gap-1.5 animate-rise">
@@ -277,6 +282,21 @@ export function AuthExperience({ initialMode, refCode, next }: { initialMode: Mo
 }
 
 /* ——— pieces ——— */
+
+function IntentSummary({ intent }: { intent: Intent }) {
+  const where = intent.where.map((w) => WHERE_OPTIONS.find((o) => o.key === w)?.label ?? w);
+  return (
+    <div className="mt-5 flex items-start gap-3 rounded-2xl border border-green/20 bg-green-soft/50 px-4 py-3 animate-fade">
+      <Target className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />
+      <div className="min-w-0 flex-1">
+        <div className="label !text-[10px] !text-green">Твоя кампания</div>
+        <div className="mt-0.5 text-[14.5px] font-medium text-head">{intent.role}</div>
+        <div className="text-[12.5px] text-ink-3">{[where.join(", "), intent.salary ? `от ${fmtUsd(intent.salary)}` : ""].filter(Boolean).join(" · ")}</div>
+      </div>
+      <Link href="/" className="shrink-0 rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Изменить</Link>
+    </div>
+  );
+}
 
 function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
   return (

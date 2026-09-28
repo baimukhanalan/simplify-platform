@@ -2,7 +2,7 @@
 import { db, s } from "./db";
 import { hashPassword } from "./auth-hash";
 import { parseCVHeuristic } from "./engine/profile";
-import { runTick, simulateResponses, createInterview, logEvent } from "./engine/agent";
+import { runTick, simulateResponses, createInterview, logEvent, notify } from "./engine/agent";
 import { PLANS } from "./engine/taxonomy";
 
 const CV = `Aruzhan Sadykova
@@ -107,6 +107,7 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
   if (pool[0] && !(await db.interview.count({ where: { userId: user.id, round: "recruiter" } }))) {
     await db.opportunity.update({ where: { id: pool[0].id }, data: { status: "recruiter" } });
     await createInterview(user.id, pool[0].id, "recruiter", new Date(now + 2 * 86400000));
+    await notify(user.id, "interview", "Ты получил интервью", `${pool[0].job.company} · ${pool[0].job.title}`, "/app/interviews");
   }
   const offerOpp = pool[1];
   if (offerOpp) {
@@ -114,6 +115,7 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
     const iv = await createInterview(user.id, offerOpp.id, "final", new Date(now - 2 * 86400000));
     await db.interview.update({ where: { id: iv.id }, data: { status: "passed", debrief: s({ questions: ["Walk me through your segmentation project", "SQL window functions"], hard: "Stakeholder conflict question", nextSteps: "Offer expected this week", salaryDiscussed: true, score: 78 }) } });
     await db.offer.create({ data: { userId: user.id, opportunityId: offerOpp.id, company: offerOpp.job.company, role: offerOpp.job.title, base: 52000, currency: "USD", bonus: 3000, equity: "", benefits: s(["Health insurance", "Learning budget $1,000", "Home office stipend"]), vacationDays: 24, probationMonths: 3, remote: "remote", noticePeriod: "2 weeks" } });
+    await notify(user.id, "offer", "YOU GOT THE OFFER", `${offerOpp.job.company} · ${offerOpp.job.title}`, "/app/offers");
     await db.inboxMessage.create({ data: { userId: user.id, opportunityId: offerOpp.id, fromAddr: `talent@${offerOpp.job.company.toLowerCase().replace(/[^a-z]/g, "")}.example`, subject: `Offer — ${offerOpp.job.title}`, body: `We are pleased to extend you an offer for the ${offerOpp.job.title} position with a base salary of $52,000.`, classification: "offer", confidence: 0.96, simulated: true } });
   }
 

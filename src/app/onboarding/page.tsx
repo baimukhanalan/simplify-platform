@@ -3,117 +3,91 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
-import { ONBOARDING_STEPS, LAST_STEP, completedSteps, resumeStep, readinessForUser } from "@/lib/onboarding";
-import { miniInterviewQuestions } from "@/lib/engine/profile";
-import { REGIONS, ROLE_FAMILIES, classifyRole, seniorityFromYears } from "@/lib/engine/taxonomy";
+import { ONBOARDING_STEPS, LAST_STEP, STEP, completedSteps, resumeStep, buildChatTurns } from "@/lib/onboarding";
+import { ROLE_FAMILIES, classifyRole, seniorityFromYears } from "@/lib/engine/taxonomy";
 import { suggestAdjacentRoles } from "@/lib/engine/readiness";
-import { marketRange } from "@/lib/engine/market";
-import { toUSD } from "@/lib/engine/fx";
 import { Label } from "@/components/ui";
 import { SiteHeader } from "../_components/site-header";
+import { intentFromParams, intentToGoal } from "../_components/campaign-intent";
+import { loadReadiness } from "../app/readiness/_components/data";
 import { StepRail } from "./_components/step-rail";
-import { StepCV } from "./_components/step-cv";
-import { StepFacts } from "./_components/step-facts";
-import { StepInterview } from "./_components/step-interview";
-import { StepPrefs } from "./_components/step-prefs";
+import { IntentSync } from "./_components/intent-sync";
+import { StepSources } from "./_components/step-sources";
+import { StepChat } from "./_components/step-chat";
 import { StepGoal } from "./_components/step-goal";
 import { StepReadiness } from "./_components/step-readiness";
 import { StepPlan } from "./_components/step-plan";
 
-export const metadata: Metadata = { title: "Career Profile · онбординг" };
-
-const HIDDEN_Q = /Сколько человек|сами принимали решения|измеримый результат/;
+export const metadata: Metadata = { title: "Запуск кампании" };
 
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUser();
   const sp = await searchParams;
-  const [facts, answers, stories, done, campaign] = await Promise.all([
-    db.fact.findMany({ where: { userId: user.id }, orderBy: [{ kind: "asc" }, { createdAt: "asc" }] }),
-    db.miniInterviewAnswer.findMany({ where: { userId: user.id } }),
-    db.story.findMany({ where: { userId: user.id }, select: { id: true, factId: true, title: true } }),
+  const intent = intentFromParams(sp);
+  const [facts, answers, done, campaign] = await Promise.all([
+    db.fact.findMany({ where: { userId: user.id }, orderBy: [{ createdAt: "asc" }] }),
+    db.miniInterviewAnswer.findMany({ where: { userId: user.id }, select: { factId: true, question: true, answer: true } }),
     completedSteps(user.id),
     db.campaign.findFirst({ where: { userId: user.id, status: { in: ["active", "paused"] } }, orderBy: { createdAt: "desc" } }),
   ]);
   const profile = user.profile;
   const goal = user.goal;
-  const resume = resumeStep(done, { hasCv: Boolean(profile?.cvText) || facts.length > 0, hasGoal: Boolean(goal?.primaryRole) });
+  const goalEmpty = !goal?.primaryRole;
   const raw = Number(Array.isArray(sp.step) ? sp.step[0] : sp.step);
-  const step = Number.isInteger(raw) && raw >= 1 && raw <= LAST_STEP ? raw : resume;
+  // Someone who already has a goal and comes from the first screen with new answers lands on the Goal step to confirm them.
+  const explicit = Number.isInteger(raw) && raw >= 1 ? Math.min(raw, LAST_STEP) : null;
+  const step = explicit ?? (intent && !goalEmpty ? STEP.goal : resumeStep(done, { hasCv: Boolean(profile?.cvText) }));
   const meta = ONBOARDING_STEPS[step - 1];
   const skills = j<string[]>(profile?.skills, []);
   const years = profile?.yearsExperience ?? 0;
 
   let body: ReactNode = null;
-  if (step === 1) {
-    body = <StepCV hasCv={Boolean(profile?.cvText)} cvText={profile?.cvText ?? ""} cvFileName={profile?.cvFileName ?? ""} factCount={facts.length} />;
-  } else if (step === 2) {
-    body = <StepFacts facts={facts.map((f) => ({ id: f.id, kind: f.kind, title: f.title, org: f.org, startDate: f.startDate, endDate: f.endDate, details: f.details, metrics: f.metrics, tech: j<string[]>(f.tech, []), source: f.source, verified: f.verified }))} skills={skills} />;
-  } else if (step === 3) {
-    const picks = facts
-      .filter((f) => f.kind === "employment" || f.kind === "project")
-      .sort((a, b) => Number(Boolean(a.metrics)) - Number(Boolean(b.metrics)) || Number(b.verified) - Number(a.verified))
-      .slice(0, 3);
+  if (step === STEP.sources) {
     body = (
-      <StepInterview
-        items={picks.map((f) => {
-          const qs = miniInterviewQuestions(f).filter((q) => !HIDDEN_Q.test(q)).slice(0, 3);
-          const mine = answers.filter((a) => a.factId === f.id);
-          return {
-            fact: { id: f.id, kind: f.kind, title: f.title, org: f.org, startDate: f.startDate, endDate: f.endDate, details: f.details, metrics: f.metrics, teamSize: f.teamSize, ownership: f.ownership, verified: f.verified },
-            questions: qs.map((q) => ({ q, a: mine.find((a) => a.question === q)?.answer ?? "" })),
-            answered: mine.length > 0 || Boolean(f.metrics && f.ownership),
-            stories: stories.filter((st) => st.factId === f.id).map((st) => st.title),
-          };
-        })}
+      <StepSources
+        hasCv={Boolean(profile?.cvText)} cvFileName={profile?.cvFileName ?? ""} factCount={facts.filter((f) => f.kind === "employment" || f.kind === "project").length} skillCount={skills.length}
+        links={{ linkedin: profile?.linkedin ?? "", github: profile?.github ?? "", portfolio: profile?.portfolio ?? "" }}
+        certificates={facts.filter((f) => f.kind === "certification" && f.source === "user").map((f) => f.title)}
       />
     );
-  } else if (step === 4) {
-    body = (
-      <StepPrefs
-        initial={{
-          citizenship: profile?.citizenship ?? "KZ", workAuth: j<string[]>(profile?.workAuth, ["KZ"]), needsSponsorship: profile?.needsSponsorship ?? true, relocation: profile?.relocation ?? false,
-          languages: j<{ lang: string }[]>(profile?.languages, []).map((l) => l.lang),
-          englishLevel: profile?.englishLevel ?? "B1", remotePref: profile?.remotePref ?? "remote", salaryExpectation: profile?.salaryExpectation ?? 0, city: profile?.city ?? "",
-          noticePeriod: profile?.noticePeriod ?? "2 weeks", linkedin: profile?.linkedin ?? "", github: profile?.github ?? "", portfolio: profile?.portfolio ?? "",
-        }}
-        euCountries={REGIONS.EU.countries}
-      />
-    );
-  } else if (step === 5) {
-    const family = classifyRole(goal?.primaryRole || profile?.headline || "");
+  } else if (step === STEP.chat) {
+    const turns = buildChatTurns({ profile: profile ? { citizenship: profile.citizenship, englishLevel: profile.englishLevel } : null, goal: goal ? { countries: goal.countries } : null, facts, miniAnswers: answers });
+    const positions = facts.filter((f) => f.kind === "employment" || f.kind === "project" || f.kind === "education").map((f) => ({ id: f.id, kind: f.kind, title: f.title, org: f.org, startDate: f.startDate, endDate: f.endDate }));
+    body = <StepChat name={user.name.split(" ")[0] ?? user.name} years={years} skills={skills.slice(0, 12)} skillCount={skills.length} positions={positions} turns={turns} />;
+  } else if (step === STEP.goal) {
+    const override = intent && !goalEmpty ? intentToGoal(intent) : null;
+    const role = override?.primaryRole ?? goal?.primaryRole ?? "";
+    const family = classifyRole(role || profile?.headline || "");
     const suggestions = Array.from(new Set([ROLE_FAMILIES[family]?.label, ...suggestAdjacentRoles(family, skills)].filter((x): x is string => Boolean(x) && x !== "Other"))).slice(0, 4);
     body = (
       <StepGoal
         initial={{
-          primaryRole: goal?.primaryRole || (family !== "other" ? ROLE_FAMILIES[family].label : profile?.headline ?? ""),
-          extraRoles: j<string[]>(goal?.extraRoles, []), seniority: goal?.primaryRole ? goal.seniority : seniorityFromYears(years), minSalary: goal?.minSalary ?? 0,
-          countries: j<string[]>(goal?.countries, []), workModes: j<string[]>(goal?.workModes, ["remote"]), industries: j<string[]>(goal?.industries, []),
-          dreamCompanies: j<string[]>(goal?.dreamCompanies, []), mode: goal?.mode ?? "autonomous",
+          primaryRole: role || (family !== "other" ? ROLE_FAMILIES[family].label : profile?.headline ?? ""),
+          seniority: goal?.primaryRole ? goal.seniority : seniorityFromYears(years),
+          minSalary: override ? override.minSalary : goal?.minSalary ?? 0,
+          countries: override?.countries ?? j<string[]>(goal?.countries, []),
+          workModes: override?.workModes ?? j<string[]>(goal?.workModes, ["remote"]),
+          relocation: override?.relocation ?? goal?.relocation ?? false,
+          industries: j<string[]>(goal?.industries, []),
         }}
+        note={override ? "Обновил цель по твоим новым ответам — проверь и сохрани." : !done.has(STEP.goal) && !goalEmpty ? "Заполнил по твоим ответам на первом экране. Проверь — и дальше." : undefined}
         years={years}
         suggestedSeniority={seniorityFromYears(years)}
         roleSuggestions={suggestions}
-        regions={Object.entries(REGIONS).map(([key, r]) => ({ key, label: r.label }))}
-        roleLabels={Object.entries(ROLE_FAMILIES).filter(([k]) => k !== "other").map(([, f]) => f.label)}
       />
     );
-  } else if (step === 6) {
-    if (!goal?.primaryRole) {
-      body = <NeedGoal />;
-    } else {
-      const r = await readinessForUser(user.id);
-      const countries = j<string[]>(goal.countries, []);
-      const range = marketRange(classifyRole(goal.primaryRole), goal.seniority, countries);
-      body = <StepReadiness r={r} goal={{ role: goal.primaryRole, seniority: goal.seniority, minSalary: toUSD(goal.minSalary, goal.currency), hasRemote: j<string[]>(goal.workModes, []).includes("remote"), intl: countries.some((c) => !["KZ", "CIS"].includes(c)) }} marketMid={range.mid} />;
-    }
+  } else if (step === STEP.readiness) {
+    const data = goalEmpty ? null : await loadReadiness(user.id);
+    body = data ? <StepReadiness data={data} /> : <NeedGoal />;
   } else {
-    body = goal?.primaryRole ? <StepPlan partner={user.referredByCode ?? ""} activeCampaign={Boolean(campaign)} /> : <NeedGoal />;
+    body = goalEmpty ? <NeedGoal /> : <StepPlan partner={user.referredByCode ?? ""} activeCampaign={Boolean(campaign)} />;
   }
 
   return (
     <div className="min-h-dvh overflow-x-clip">
-      <SiteHeader right={<Link href="/app" className="rounded-full px-3 py-2 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Заполнить позже →</Link>} />
-      <div className="mx-auto grid w-full max-w-[1180px] gap-6 px-4 pb-24 sm:px-8 lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-12 lg:pt-6">
+      <IntentSync goalEmpty={goalEmpty} urlIntent={intent} />
+      <SiteHeader right={<Link href="/app" className="rounded-full px-3 py-2 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Продолжить позже</Link>} />
+      <div className="mx-auto grid w-full max-w-[1180px] gap-6 px-4 pb-24 sm:px-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12 lg:pt-6">
         <StepRail current={step} done={Array.from(done)} />
         <main className="flex min-w-0 flex-col gap-6" id="main">
           <div key={step} className="flex flex-col gap-2.5 animate-rise">
@@ -131,28 +105,24 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
 function NeedGoal() {
   return (
     <div className="glass flex flex-col items-start gap-3 p-6">
-      <p className="text-[15px] text-ink-2">Сначала задайте цель кампании — без неё агент не знает, что искать.</p>
-      <Link href="/onboarding?step=5" className="inline-flex h-11 items-center rounded-full bg-cta px-5 text-[14.5px] font-medium text-white shadow-(--shadow-cta)">Задать цель</Link>
+      <p className="text-[15px] text-ink-2">Сначала подтверди цель — без неё агент не знает, что искать.</p>
+      <Link href={`/onboarding?step=${STEP.goal}`} className="inline-flex h-11 items-center rounded-full bg-cta px-5 text-[14.5px] font-medium text-white shadow-(--shadow-cta) focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">К цели</Link>
     </div>
   );
 }
 
 const S = ({ children }: { children: ReactNode }) => <span className="script">{children}</span>;
 const TITLES: Record<number, ReactNode> = {
-  1: <>Начнём с вашего <S>CV</S></>,
-  2: <>Только <S>правда</S> о вашем опыте</>,
-  3: <>Превратим строки CV в <S>результаты</S></>,
-  4: <>Где вы можете <S>работать</S></>,
-  5: <>Какую работу <S>ищем</S></>,
-  6: <>Честная <S>оценка</S> цели</>,
-  7: <>Запустим <S>кампанию</S></>,
+  1: <>Загрузи то, что <S>уже</S> есть</>,
+  2: <>Пара вопросов от <S>агента</S></>,
+  3: <>Твоя <S>цель</S></>,
+  4: <>Где ты <S>сейчас</S></>,
+  5: <>Запускаем <S>кампанию</S></>,
 };
 const SUBS: Record<number, string> = {
-  1: "Загрузите PDF или вставьте текст. Мы извлечём опыт, навыки и контакты — вы проверите всё на следующем шаге.",
-  2: "Проверьте, что агент правильно распознал ваш опыт, и удалите ошибки парсинга.",
-  3: "Короткие ответы про 2–3 позиции дают агенту измеримые результаты и STAR-истории для интервью. Отвечайте своими словами.",
-  4: "Гражданство, право на работу и форматы определяют Eligibility — агент не подаётся туда, где вас заблокируют.",
-  5: "Роль, уровень, регионы и формат. Агент ищет в этих рамках и учится на ответах работодателей.",
-  6: "Мы сверяем цель с вашим профилем и рынком. Если цель нереалистична — скажем прямо и предложим поправку.",
-  7: "60 дней автономной работы агента: поиск, адаптация CV, заявки, трекинг, Interview Copilot.",
+  1: "CV, LinkedIn, GitHub, портфолио, сертификаты. Я сам всё разберу — ничего не нужно перепечатывать.",
+  2: "Короткие ответы помогают показать твой опыт в цифрах и понять, куда можно подаваться. 3–5 минут.",
+  3: "Проверь, что я правильно понял, что ищем. Это можно поменять в любой момент.",
+  4: "Насколько профиль готов к цели — и что я сделаю, чтобы усилить его.",
+  5: "60 дней я ищу вакансии, адаптирую CV, подаю заявки и готовлю тебя к интервью.",
 };

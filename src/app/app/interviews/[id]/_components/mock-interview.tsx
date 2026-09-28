@@ -1,14 +1,16 @@
 "use client";
 import { useId, useRef, useState, useTransition } from "react";
-import { Mic, MicOff, RotateCcw, ArrowRight, Check, SkipForward } from "lucide-react";
+import { Mic, MicOff, RotateCcw, ArrowRight, Check, SkipForward, Play } from "lucide-react";
 import { Button, Card, Chip, Label, Progress, Ring, cx } from "@/components/ui";
-import { MOCK_QUESTIONS, scoreAnswer } from "@/lib/engine/interview";
-import { PERSONAS, ROUND_LABEL } from "@/lib/rounds";
+import { scoreAnswer } from "@/lib/engine/interview";
+import { PERSONAS, PERSONA_LABEL } from "@/lib/rounds";
 import { saveMockSession } from "@/lib/actions/interview";
 import { useSpeech, useSpeechSupported } from "../../_components/use-speech";
+import { MOCK_SETS, missingPoints, suggestion, type MockCtx } from "./mock-questions";
 
 type Score = ReturnType<typeof scoreAnswer>;
 type Turn = { question: string; answer: string; score: Score | null };
+type Current = { score: Score; missing: string[]; better: ReturnType<typeof suggestion> };
 export type MockFeedback = {
   overall: number;
   answered: number;
@@ -51,14 +53,14 @@ function summarize(turns: Turn[]): MockFeedback {
   };
 }
 
-export function MockInterview({ interviewId, defaultPersona, skills, jdTerms }: { interviewId: string; defaultPersona: string; skills: string[]; jdTerms: string[] }) {
+export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { interviewId: string; defaultPersona: string; ctx: MockCtx; jdTerms: string[] }) {
   const [phase, setPhase] = useState<"select" | "run" | "done">("select");
   const [persona, setPersona] = useState(defaultPersona);
   const [idx, setIdx] = useState(0);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [draft, setDraft] = useState("");
   const [interim, setInterim] = useState("");
-  const [current, setCurrent] = useState<Score | null>(null);
+  const [current, setCurrent] = useState<Current | null>(null);
   const [lang, setLang] = useState("en-US");
   const [saved, setSaved] = useState<"idle" | "ok" | "error">("idle");
   const [pending, startTransition] = useTransition();
@@ -71,7 +73,7 @@ export function MockInterview({ interviewId, defaultPersona, skills, jdTerms }: 
     onInterim: setInterim,
   });
 
-  const questions = MOCK_QUESTIONS[persona] ?? [];
+  const questions = MOCK_SETS[persona] ?? [];
   const question = questions[idx];
 
   const start = () => {
@@ -88,12 +90,13 @@ export function MockInterview({ interviewId, defaultPersona, skills, jdTerms }: 
     if (speech.listening) speech.stop();
     const text = draft.trim();
     if (!text) return;
-    setCurrent(scoreAnswer(question, text, { skills, jdTerms: jdTerms.length ? jdTerms : skills }));
+    const score = scoreAnswer(question, text, { skills: ctx.skills, jdTerms: jdTerms.length ? jdTerms : ctx.skills });
+    setCurrent({ score, missing: missingPoints(question, text, score, ctx), better: suggestion(question, ctx) });
   };
 
   const advance = (skip = false) => {
     if (speech.listening) speech.stop();
-    const nextTurns = [...turns, { question, answer: skip ? "" : draft.trim(), score: skip ? null : current }];
+    const nextTurns = [...turns, { question, answer: skip ? "" : draft.trim(), score: skip ? null : current?.score ?? null }];
     setTurns(nextTurns);
     setDraft("");
     setInterim("");
@@ -129,11 +132,11 @@ export function MockInterview({ interviewId, defaultPersona, skills, jdTerms }: 
     return (
       <Card strong>
         <Label className="mb-2">Mock Interview</Label>
-        <h2 className="h-serif mb-2 text-[26px]">Выберите интервьюера</h2>
-        <p className="mb-5 max-w-lg text-[14px] text-ink-3">5 вопросов. Отвечайте голосом или текстом — после каждого ответа мгновенная оценка: содержание, структура, ясность, длина, слова-паразиты, STAR и уверенность.</p>
+        <h2 className="h-serif mb-2 text-[clamp(24px,2.6vw,32px)]">Кто будет вас интервьюировать?</h2>
+        <p className="mb-5 max-w-xl text-[14px] text-ink-3">5 вопросов. Отвечайте голосом или текстом — после каждого ответа: оценка, структура, ясность, чего не хватило и как сказать сильнее на ваших же историях.</p>
         <fieldset>
           <legend className="sr-only">Персона интервьюера</legend>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {PERSONAS.map((p) => (
               <label key={p.key} className={cx("flex cursor-pointer flex-col gap-1 rounded-2xl border p-4 transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green", persona === p.key ? "border-green/40 bg-green-soft/70" : "border-line bg-white/60 hover:bg-white")}>
                 <input type="radio" name={`${ids}-persona`} value={p.key} checked={persona === p.key} onChange={() => setPersona(p.key)} className="sr-only" />
@@ -143,7 +146,7 @@ export function MockInterview({ interviewId, defaultPersona, skills, jdTerms }: 
             ))}
           </div>
         </fieldset>
-        <Button className="mt-6" onClick={start}>Начать Mock Interview<ArrowRight className="size-4" strokeWidth={1.7} /></Button>
+        <Button className="mt-6" size="lg" onClick={start}><Play className="size-4" strokeWidth={1.7} aria-hidden />Start Mock Interview</Button>
       </Card>
     );
 
@@ -154,7 +157,7 @@ export function MockInterview({ interviewId, defaultPersona, skills, jdTerms }: 
         <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
           <Ring value={fb.overall} size={112} label="overall" />
           <div className="flex flex-col gap-1.5">
-            <Label>Итог · {ROUND_LABEL[persona]}</Label>
+            <Label>Итог · {PERSONA_LABEL[persona]}</Label>
             <h2 className="h-serif text-[28px]">{fb.overall >= 75 ? "Готовы к звонку" : fb.overall >= 55 ? "Почти готовы" : "Нужна ещё одна тренировка"}</h2>
             <p className="text-[13px] text-ink-3" role="status">
               {fb.answered === 0 ? "Нет ответов — сессия не сохранена." : pending ? "Сохраняем сессию…" : saved === "ok" ? "Сессия сохранена." : saved === "error" ? "Не удалось сохранить сессию." : ""}
@@ -189,7 +192,7 @@ export function MockInterview({ interviewId, defaultPersona, skills, jdTerms }: 
   return (
     <Card strong className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Chip tone="teal">{ROUND_LABEL[persona]}</Chip>
+        <Chip tone="teal">{PERSONA_LABEL[persona]}</Chip>
         <span className="num text-[13px] text-ink-3" aria-label={`Вопрос ${idx + 1} из ${questions.length}`}>{idx + 1} / {questions.length}</span>
       </div>
       <Progress value={((idx + (current ? 1 : 0)) / questions.length) * 100} tone="teal" />
@@ -237,52 +240,62 @@ export function MockInterview({ interviewId, defaultPersona, skills, jdTerms }: 
       </div>
       {speech.error && <p role="alert" className="rounded-xl bg-rose-soft px-3 py-2 text-[13px] text-rose">{speech.error}</p>}
 
-      {current && <Feedback s={current} />}
+      {current && <Feedback c={current} />}
     </Card>
   );
 }
 
-function Feedback({ s }: { s: Score }) {
-  const bars = [
-    { label: "Содержание", v: s.content },
-    { label: "Структура", v: s.structure },
-    { label: "Ясность", v: s.clarity },
-    { label: "Длина", v: s.length },
-    { label: "Уверенность", v: s.confidence },
-  ];
+function Feedback({ c }: { c: Current }) {
+  const s = c.score;
+  const tone = (v: number) => (v >= 70 ? "green" : v >= 50 ? "teal" : "amber") as "green" | "teal" | "amber";
   return (
-    <section aria-label="Оценка ответа" aria-live="polite" className="animate-rise rounded-2xl border border-line bg-white/70 p-4 sm:p-5">
-      <div className="flex flex-col gap-5 sm:flex-row">
-        <Ring value={s.overall} size={84} label="ответ" />
-        <div className="grid flex-1 grid-cols-2 gap-x-5 gap-y-2.5">
-          {bars.map((b) => (
-            <div key={b.label} className="flex flex-col gap-1">
-              <div className="flex justify-between text-[12px]"><span className="text-ink-3">{b.label}</span><span className="num text-head">{b.v}</span></div>
-              <Progress value={b.v} tone={b.v >= 70 ? "green" : b.v >= 50 ? "teal" : "amber"} />
+    <section aria-label="Оценка ответа" aria-live="polite" className="animate-rise overflow-hidden rounded-2xl border border-line bg-white/75">
+      <div className="flex flex-col gap-5 p-4 sm:flex-row sm:items-center sm:p-5">
+        <Ring value={s.overall} size={88} label="score" />
+        <div className="grid flex-1 grid-cols-2 gap-x-6 gap-y-3">
+          {[
+            { label: "Структура", v: s.structure },
+            { label: "Ясность", v: s.clarity },
+          ].map((b) => (
+            <div key={b.label} className="flex flex-col gap-1.5">
+              <div className="flex items-baseline justify-between text-[12.5px]"><span className="text-ink-3">{b.label}</span><span className="num text-[18px] leading-none text-head">{b.v}</span></div>
+              <Progress value={b.v} tone={tone(b.v)} />
             </div>
           ))}
-          <div className="flex flex-col gap-1 text-[12px]">
-            <span className="text-ink-3">STAR</span>
-            <span className="flex gap-1">
+          <div className="col-span-2 flex flex-wrap items-center gap-2 text-[12px]">
+            <span className="flex gap-1" role="img" aria-label={`STAR: ${(["s", "t", "a", "r"] as const).map((k) => `${k.toUpperCase()} ${s.star[k] ? "есть" : "нет"}`).join(", ")}`}>
               {(["s", "t", "a", "r"] as const).map((k) => (
-                <span key={k} className={cx("num grid size-6 place-items-center rounded-md text-[11px] uppercase", s.star[k] ? "bg-green text-white" : "bg-head/10 text-ink-4")} aria-label={`${k.toUpperCase()}: ${s.star[k] ? "есть" : "нет"}`}>{k}</span>
+                <span key={k} aria-hidden className={cx("num grid size-6 place-items-center rounded-md text-[11px] uppercase", s.star[k] ? "bg-green text-white" : "bg-head/10 text-ink-4")}>{k}</span>
               ))}
             </span>
+            <Chip>{s.words} слов</Chip>
+            <Chip tone={s.fillers > 2 ? "amber" : "neutral"}>Паразиты: {s.fillers}</Chip>
+            <Chip>Уверенность {s.confidence}</Chip>
           </div>
         </div>
       </div>
-      <div className="mt-4 flex flex-wrap gap-2 text-[12px]">
-        <Chip>{s.words} слов</Chip>
-        <Chip tone={s.fillers > 2 ? "amber" : "neutral"}>Паразиты: {s.fillers}</Chip>
-        <Chip tone="teal">{s.intent}</Chip>
+
+      <div className="grid gap-px border-t border-line bg-line md:grid-cols-2">
+        <div className="flex flex-col gap-2.5 bg-white/85 p-4 sm:p-5">
+          <Label>Чего не хватило</Label>
+          {c.missing.length ? (
+            <ul className="flex flex-col gap-1.5">
+              {c.missing.map((m) => <li key={m} className="flex gap-2 text-[14px] text-ink-2"><span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-amber" />{m}</li>)}
+            </ul>
+          ) : (
+            <p className="text-[14px] text-green">Все ключевые элементы на месте.</p>
+          )}
+          {s.tips.filter((t) => !/цифру|STAR/.test(t)).slice(0, 2).map((t) => <p key={t} className="text-[13px] text-ink-3">{t}</p>)}
+        </div>
+        <div className="flex flex-col gap-2.5 bg-white/85 p-4 sm:p-5">
+          <Label>Как сказать сильнее · {c.better.strategy}</Label>
+          {c.better.opener && <p className="border-l-2 border-green/50 pl-3 font-serif text-[16.5px] leading-snug text-head">{c.better.opener}</p>}
+          <ul className="flex flex-col gap-1.5">
+            {c.better.bullets.map((b) => <li key={b} className="flex gap-2 text-[13.5px] text-ink-2"><span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-green" />{b}</li>)}
+          </ul>
+          {c.better.keyNumber && <p className="text-[13px] text-ink-3">Цифра: <span className="num text-green">{c.better.keyNumber}</span></p>}
+        </div>
       </div>
-      {s.tips.length > 0 ? (
-        <ul className="mt-4 flex flex-col gap-1.5">
-          {s.tips.map((t) => <li key={t} className="flex gap-2 text-[14px] text-ink-2"><span aria-hidden className="mt-2 size-1 shrink-0 rounded-full bg-amber" />{t}</li>)}
-        </ul>
-      ) : (
-        <p className="mt-4 text-[14px] text-green">Сильный ответ — так и отвечайте.</p>
-      )}
     </section>
   );
 }

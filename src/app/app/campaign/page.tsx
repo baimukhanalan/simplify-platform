@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { Check, CircleAlert, Pause, Play, Rocket, Zap } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Check, CircleAlert, Pause, Play, Zap } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Card, Chip, Field, Label, PageHeader, Progress, Ring, Script, cx } from "@/components/ui";
+import { PaymentHistory } from "./_components/payment-history";
 import { SubmitButton } from "@/components/client";
-import { checkout, setCampaignStatus, updateCampaignSettings, runAgentNow } from "@/lib/actions/campaign";
+import { checkout, setCampaignStatus, runAgentNow } from "@/lib/actions/campaign";
 import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
 import { Disclosure } from "../profile/_components/bits";
 
@@ -71,32 +73,7 @@ export default async function CampaignPage() {
       )}
 
       <div className="mt-10 grid gap-6 lg:grid-cols-2">
-        <section aria-labelledby="payments-h">
-          <Card className="h-full">
-            <Label className="mb-4"><span id="payments-h">История платежей</span></Label>
-            {payments.length === 0 ? (
-              <p className="text-[14px] text-ink-3">Платежей пока нет.</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-line">
-                {payments.map((p) => (
-                  <li key={p.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3 first:pt-0 last:pb-0">
-                    <div className="min-w-0">
-                      <div className="text-[14px] text-head">{p.campaign ? PLANS[p.campaign.plan as keyof typeof PLANS]?.label ?? p.campaign.plan : "Career Campaign"}</div>
-                      <div className="text-[12.5px] text-ink-3">
-                        {date(p.createdAt)} · {p.provider === "test" ? "тестовый платёж" : p.provider}
-                        {p.partnerCode && <> · партнёр <span className="font-mono">{p.partnerCode}</span></>}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="num text-[16px] text-head">{p.currency === "KZT" ? fmtKzt(p.amount) : `${p.amount} ${p.currency}`}</span>
-                      <Chip tone={p.status === "paid" ? "green" : "amber"}>{p.status}</Chip>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </section>
+        <PaymentHistory payments={payments} />
         <section aria-labelledby="past-h">
           <Card className="h-full">
             <Label className="mb-4"><span id="past-h">Прошлые кампании</span></Label>
@@ -123,33 +100,40 @@ export default async function CampaignPage() {
 }
 
 function Checkout({ hasGoal, partner, intl }: { hasGoal: boolean; partner: string; intl: boolean }) {
+  const recommended = intl ? "international" : "local";
   return (
     <form action={checkout} className="flex flex-col gap-6">
-      <fieldset className="grid gap-4 md:grid-cols-2">
-        <legend className="sr-only">Выберите план</legend>
+      <div className="grid gap-4 md:grid-cols-2">
         {(["local", "international"] as const).map((key, i) => {
           const plan = PLANS[key];
+          const rec = key === recommended;
           return (
-            <label key={key} className="group/p glass relative flex animate-rise cursor-pointer flex-col gap-5 p-6 transition-all hover:bg-white has-[:checked]:bg-white has-[:checked]:outline-2 has-[:checked]:outline-green has-[:focus-visible]:outline-offset-4" style={{ animationDelay: `${i * 80}ms` }}>
-              <input type="radio" name="plan" value={key} defaultChecked={intl ? key === "international" : key === "local"} className="sr-only" />
+            <section key={key} aria-labelledby={`plan-${key}`} className={cx("relative flex animate-rise flex-col gap-5 p-6", rec ? "glass-strong outline-2 outline-green/60" : "glass")} style={{ animationDelay: `${i * 80}ms` }}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-col gap-1.5">
-                  <Label>{plan.label}</Label>
+                  <Label><span id={`plan-${key}`}>{plan.label}</span></Label>
                   <div className="num text-[40px] leading-none text-head">{fmtKzt(plan.priceKzt)}</div>
                   <div className="text-[13px] text-ink-3">за {plan.days} дней кампании · разовый платёж</div>
                 </div>
-                <span className="mt-1 grid size-6 place-items-center rounded-full border border-line bg-white text-transparent transition-colors group-has-[:checked]/p:border-green group-has-[:checked]/p:bg-green group-has-[:checked]/p:text-white" aria-hidden>
-                  <Check className="size-3.5" strokeWidth={2.4} />
-                </span>
+                {rec && <Chip tone="green" dot>Под твою цель</Chip>}
               </div>
               <div className="flex flex-col gap-1 border-t border-line pt-4 text-[14px] text-ink-2">
                 <div><span className="text-ink-3">Рынки: </span>{PLAN_COPY[key].regions}</div>
                 <div><span className="text-ink-3">Темп: </span>до <span className="num text-head">{PLAN_COPY[key].perDay}</span> качественных заявок в день</div>
               </div>
-            </label>
+              <div className="mt-auto pt-1">
+                {hasGoal ? (
+                  <SubmitButton name="plan" value={key} variant={rec ? "primary" : "glass"} size="lg" pendingText="Создаём счёт Kaspi…" className="w-full" aria-describedby={`plan-${key}`}>
+                    Оплатить через Kaspi Pay
+                  </SubmitButton>
+                ) : (
+                  <ButtonLink href="/app/goal?need=goal" variant={rec ? "primary" : "glass"} size="lg" className="w-full">Сначала задай цель</ButtonLink>
+                )}
+              </div>
+            </section>
           );
         })}
-      </fieldset>
+      </div>
 
       <Card className="flex flex-col gap-5">
         <div>
@@ -163,20 +147,13 @@ function Checkout({ hasGoal, partner, intl }: { hasGoal: boolean; partner: strin
           </ul>
         </div>
         <div className="flex flex-col gap-4 border-t border-line pt-5 sm:flex-row sm:items-end">
-          <Field label="Партнёрский код" hint="Если вас пригласил партнёр — бонус учтётся автоматически" className="sm:w-64">
+          <Field label="Партнёрский код" hint="Если тебя пригласил партнёр — бонус учтётся автоматически" className="sm:w-64">
             <input name="partner" defaultValue={partner} autoComplete="off" className="field font-mono uppercase" placeholder="AMASKILLS" />
           </Field>
-          <div className="flex flex-1 flex-col gap-2 sm:items-end">
-            {hasGoal ? (
-              <SubmitButton size="lg" pendingText="Оплачиваем и запускаем…"><Rocket className="size-4" strokeWidth={1.7} aria-hidden />Оплатить и запустить</SubmitButton>
-            ) : (
-              <ButtonLink href="/app/goal?need=goal" size="lg">Сначала задайте цель</ButtonLink>
-            )}
-          </div>
         </div>
         <div className="flex items-start gap-2.5 rounded-2xl bg-amber-soft px-4 py-3 text-[13px] text-ink-2">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber" strokeWidth={1.8} aria-hidden />
-          <p><span className="font-medium text-head">Тестовый режим оплаты.</span> Платёж записывается через provider «test», деньги не списываются. Simplify продаёт исполнение кампании, а не гарантию трудоустройства.</p>
+          <p><span className="font-medium text-head">Оплата через Kaspi Pay.</span> Сейчас подключён тестовый шлюз Kaspi: деньги не списываются, а кампания запускается сразу после подтверждения оплаты. Simplify продаёт исполнение кампании, а не гарантию трудоустройства.</p>
         </div>
       </Card>
     </form>
@@ -210,7 +187,7 @@ function ActiveCampaign({ c, autoSubmitConsent }: { c: { id: string; plan: strin
         <div className="flex flex-col gap-2">
           <Progress value={(elapsed / total) * 100} />
           <div className="flex justify-between font-mono text-[11px] uppercase tracking-[.06em] text-ink-3">
-            <span>{date(c.startedAt)}</span><span>день {elapsed} / {total}</span><span>{date(c.endsAt)}</span>
+            <span>{date(c.startedAt)}</span><span>день {Math.min(total, elapsed + 1)} / {total}</span><span>{date(c.endsAt)}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 border-t border-line pt-5">
@@ -236,22 +213,12 @@ function ActiveCampaign({ c, autoSubmitConsent }: { c: { id: string; plan: strin
 
       <div className="flex flex-col gap-6">
         <Card className="animate-rise" style={{ animationDelay: "80ms" }}>
-          <Label className="mb-4">Настройки агента</Label>
-          <form action={updateCampaignSettings} className="flex flex-col gap-4">
-            <Field label="Заявок в день" hint="1–25. Меньше — выше качество каждой заявки.">
-              <input name="dailyLimit" type="number" min={1} max={25} required inputMode="numeric" defaultValue={c.dailyLimit} className="field" />
-            </Field>
-            <label className={cx("flex items-start gap-3 rounded-2xl border border-line bg-white/60 px-3.5 py-3", autoSubmitConsent ? "cursor-pointer" : "opacity-60")}>
-              <input type="checkbox" name="autoSubmit" defaultChecked={c.autoSubmit && autoSubmitConsent} disabled={!autoSubmitConsent} className="mt-0.5 size-4 accent-[#1a6e48]" />
-              <span className="flex flex-col gap-0.5">
-                <span className="text-[14px] text-head">Автоподача</span>
-                <span className="text-[12px] text-ink-3">
-                  {autoSubmitConsent ? "Агент подаёт сам. Выкл — каждая заявка ждёт вашего подтверждения." : <>Согласие на автоподачу отозвано в <a href="/app/settings" className="underline underline-offset-2">Приватности</a>.</>}
-                </span>
-              </span>
-            </label>
-            <div><SubmitButton variant="glass" pendingText="Сохраняем…">Сохранить</SubmitButton></div>
-          </form>
+          <Label className="mb-3">Настройки агента</Label>
+          <p className="text-[13.5px] text-ink-2">
+            Сейчас: до <span className="num text-head">{c.dailyLimit}</span> заявок в день, автоподача {c.autoSubmit ? "включена" : autoSubmitConsent ? "выключена" : "выключена (согласие отозвано)"}.
+            Что агент делает сам, а что — только с твоего разрешения, настраивается в Agent.
+          </p>
+          <Link href="/app/agent" className="mt-4 inline-flex items-center gap-1.5 text-[13.5px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">Открыть Agent <ArrowRight className="size-3.5" aria-hidden /></Link>
         </Card>
         <Card className="animate-rise" style={{ animationDelay: "140ms" }}>
           <Label className="mb-3">Fair usage</Label>

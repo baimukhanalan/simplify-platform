@@ -1,0 +1,134 @@
+import { ArrowUpRight, Building2, Check, Sparkles, Target } from "lucide-react";
+import { Card, Chip, Label, cx } from "@/components/ui";
+import { SubmitButton } from "@/components/client";
+import { regeneratePack } from "@/lib/actions/interview";
+import { aiEnabled } from "@/lib/ai";
+import type { StoredBrief } from "./brief";
+
+type Props = { id: string; brief: StoredBrief; company: string; role: string; skills: string[]; technologies: string[]; jobUrl: string; location: string; remote: string };
+
+const Bullets = ({ items, tone = "teal" }: { items: string[]; tone?: "teal" | "green" }) => (
+  <ul className="flex flex-col gap-2">
+    {items.map((x) => (
+      <li key={x} className="flex gap-2.5 text-[14.5px] leading-relaxed text-ink-2">
+        <span aria-hidden className={cx("mt-[9px] size-1.5 shrink-0 rounded-full", tone === "green" ? "bg-green" : "bg-teal/70")} />
+        <span>{x}</span>
+      </li>
+    ))}
+  </ul>
+);
+
+function Block({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      <Label>{label}</Label>
+      {children}
+    </div>
+  );
+}
+
+export function BriefTab({ id, brief, company, role, skills, technologies, jobUrl, location, remote }: Props) {
+  const have = new Set(skills.map((s) => s.toLowerCase()));
+  const covered = (req: string) => technologies.some((t) => have.has(t.toLowerCase()) && req.toLowerCase().includes(t.toLowerCase()));
+  const gap = (req: string) => technologies.some((t) => !have.has(t.toLowerCase()) && req.toLowerCase().includes(t.toLowerCase()));
+  const byClaude = brief.by === "claude";
+  const news = `https://news.google.com/search?q=${encodeURIComponent(`"${company}"`)}`;
+
+  return (
+    <div className="flex min-w-0 flex-col gap-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-[13.5px] text-ink-3">
+          Коротко о компании и роли — прочитать за 3 минуты перед звонком.
+          <span className="ml-2 inline-flex align-middle"><Chip tone={byClaude ? "green" : "neutral"}>{byClaude ? "Claude" : "из вакансии"}</Chip></span>
+        </p>
+        <form action={regeneratePack}>
+          <input type="hidden" name="id" value={id} />
+          <SubmitButton size="sm" variant="glass" pendingText={aiEnabled() ? "Claude собирает brief…" : "Обновляем…"}>
+            <Sparkles className="size-3.5" strokeWidth={1.7} aria-hidden />Обновить с AI
+          </SubmitButton>
+        </form>
+      </div>
+
+      <Card strong className="flex flex-col gap-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1.5">
+            <span className="flex items-center gap-2"><Building2 className="size-4 text-teal" strokeWidth={1.7} aria-hidden /><Label>Company Brief</Label></span>
+            <h2 className="h-serif text-[clamp(24px,2.6vw,32px)]">{company}</h2>
+          </div>
+          {jobUrl && !jobUrl.includes("example.com") && (
+            <a href={jobUrl} target="_blank" rel="noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded text-[13px] text-teal underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-green">
+              Вакансия<ArrowUpRight className="size-3.5" strokeWidth={1.7} aria-hidden /><span className="sr-only">(в новой вкладке)</span>
+            </a>
+          )}
+        </div>
+        <p className="max-w-3xl text-[16px] leading-relaxed text-head">{brief.company.what}</p>
+        <div className="grid gap-6 border-t border-line pt-5 md:grid-cols-2">
+          <Block label="Business model">
+            <p className="text-[14.5px] leading-relaxed text-ink-2">{brief.company.model}</p>
+          </Block>
+          <Block label="Products">
+            {brief.company.products.length ? <Bullets items={brief.company.products} /> : <p className="text-[14px] text-ink-3">Продукты в вакансии не названы.</p>}
+          </Block>
+        </div>
+        <div className="rounded-2xl border border-line bg-white/55 p-4">
+          <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+            <Label>{byClaude ? "Recent events" : "Recent events · проверьте перед звонком"}</Label>
+            <a href={news} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded text-[12.5px] text-teal underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-green">
+              Новости {company}<ArrowUpRight className="size-3.5" strokeWidth={1.7} aria-hidden /><span className="sr-only">(Google News, в новой вкладке)</span>
+            </a>
+          </div>
+          <Bullets items={brief.company.recent} />
+        </div>
+      </Card>
+
+      <Card className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1.5">
+          <span className="flex items-center gap-2"><Target className="size-4 text-teal" strokeWidth={1.7} aria-hidden /><Label>Role Brief</Label></span>
+          <h2 className="h-serif text-[clamp(22px,2.4vw,28px)]">{role}</h2>
+          <p className="text-[13px] text-ink-3">{[location, remote].filter(Boolean).join(" · ")}</p>
+        </div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <Block label="Кого ищут">
+            <Bullets items={brief.role.lookFor} tone="green" />
+          </Block>
+          <Block label="Основные задачи">
+            <Bullets items={brief.role.responsibilities} />
+          </Block>
+        </div>
+        <div className="grid gap-6 border-t border-line pt-5 md:grid-cols-2">
+          <Block label="Ключевые требования">
+            <ul className="flex flex-col gap-2">
+              {brief.role.requirements.map((r) => {
+                const ok = covered(r);
+                const miss = !ok && gap(r);
+                return (
+                  <li key={r} className="flex gap-2.5 text-[14px] leading-relaxed text-ink-2">
+                    {ok ? (
+                      <Check className="mt-1 size-3.5 shrink-0 text-green" strokeWidth={2.2} aria-label="есть в профиле" />
+                    ) : (
+                      <span aria-hidden className={cx("mt-[8px] size-1.5 shrink-0 rounded-full", miss ? "bg-amber" : "bg-teal/50")} />
+                    )}
+                    <span>
+                      {r}
+                      {miss && <span className="ml-1.5 text-[12px] text-amber">подготовить</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Block>
+          <Block label="Вероятные темы интервью">
+            <ol className="flex flex-col gap-2">
+              {brief.role.topics.map((t, i) => (
+                <li key={t} className="flex gap-3 text-[14px] leading-relaxed text-ink-2">
+                  <span className="num w-4 shrink-0 text-ink-4">{i + 1}</span>
+                  {t}
+                </li>
+              ))}
+            </ol>
+          </Block>
+        </div>
+      </Card>
+    </div>
+  );
+}

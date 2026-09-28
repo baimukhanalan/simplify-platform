@@ -64,7 +64,7 @@ export function PasteEmail({ sample }: { sample: { company: string; title: strin
             {pending && <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />}
             {pending ? "Классифицируем…" : "Распознать письмо"}
           </button>
-          <span className="text-[12px] text-ink-3">Письмо сохранится в Inbox и, если найдена заявка, изменит её статус.</span>
+          <span className="text-[12px] text-ink-3">Письмо появится в Responses и, если найдена заявка, изменит её статус.</span>
         </div>
       </form>
 

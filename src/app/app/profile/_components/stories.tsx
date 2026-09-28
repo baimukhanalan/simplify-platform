@@ -26,13 +26,13 @@ export function Stories({ stories, facts }: { stories: (Story & { fact: Fact | n
       <div className="flex items-start gap-3 rounded-2xl border border-teal/15 bg-teal/5 px-4 py-3 text-[13.5px] text-ink-2">
         <Mic className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
         <p>
-          <span className="font-medium text-head">Только эти истории использует AI Interview Copilot.</span> Во время интервью подсказки собираются из ваших STAR-историй и опыта.
+          <span className="font-medium text-head">Материал для интервью.</span> Из этих историй агент собирает подсказки и готовит тебя к behavioral-вопросам.
           {missing.length > 0 && <> Не покрыты темы: {missing.map((t) => t.label).join(", ")}.</>}
         </p>
       </div>
 
       {stories.length === 0 && (
-        <Card className="text-center text-[14px] text-ink-3">Историй пока нет. Начните с самого измеримого результата — это самый частый вопрос на интервью.</Card>
+        <Card className="text-center text-[14px] text-ink-3">Историй пока нет. Агент подготовит их из твоего опыта перед первым интервью — или начни с самого измеримого результата.</Card>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">

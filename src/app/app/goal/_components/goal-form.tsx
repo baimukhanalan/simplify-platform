@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Compass, Crosshair, Layers } from "lucide-react";
 import { Card, Chip, Field, Label, cx } from "@/components/ui";
@@ -41,7 +42,7 @@ function readForm(form: HTMLFormElement): GoalValues {
   };
 }
 
-export function GoalForm({ initial }: { initial: GoalValues }) {
+export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelHref?: string }) {
   const [v, setV] = useState(initial);
   const roleLabels = Object.entries(ROLE_FAMILIES).filter(([k]) => k !== "other").map(([, f]) => f.label);
   const extraOptions = [...new Set([...roleLabels, ...initial.extraRoles])];
@@ -50,6 +51,7 @@ export function GoalForm({ initial }: { initial: GoalValues }) {
 
   return (
     <ActionForm action={saveGoal} onChange={(e) => setV(readForm(e.currentTarget))} className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+      <input type="hidden" name="after" value="goal" />
       <div className="flex min-w-0 flex-col gap-5">
         <Card className="flex flex-col gap-5">
           <Label>01 · Роль и уровень</Label>
@@ -145,7 +147,7 @@ export function GoalForm({ initial }: { initial: GoalValues }) {
 
       <aside className="lg:sticky lg:top-8" aria-label="Сводка цели">
         <Card strong className="flex flex-col gap-4">
-          <Label>Goal summary</Label>
+          <Label>Моя цель</Label>
           <p className="h-serif text-[24px] leading-tight">
             {v.primaryRole || <span className="text-ink-4">Роль не выбрана</span>}
             <span className="text-ink-4"> · </span>
@@ -169,7 +171,8 @@ export function GoalForm({ initial }: { initial: GoalValues }) {
             </p>
           )}
           <FormSubmit size="lg" pendingText="Сохраняем…" className="w-full">Сохранить цель</FormSubmit>
-          <p className="text-[12px] text-ink-3">После сохранения Readiness пересчитывается автоматически.</p>
+          {cancelHref && <Link href={cancelHref} className="inline-flex h-10 items-center justify-center rounded-full text-[14px] text-ink-2 hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Отмена</Link>}
+          <p className="text-[12px] text-ink-3">Агент учтёт новую цель в следующем цикле поиска.</p>
         </Card>
       </aside>
     </ActionForm>

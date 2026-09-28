@@ -1,14 +1,15 @@
 import type { MockSession } from "@prisma/client";
 import { j } from "@/lib/db";
 import { Card, Chip, Label, Ring } from "@/components/ui";
-import { ROUND_LABEL } from "@/lib/rounds";
+import { PERSONA_KEYS, PERSONA_LABEL } from "@/lib/rounds";
 import { MockInterview, type MockFeedback } from "./mock-interview";
+import type { MockCtx } from "./mock-questions";
 
-export function MockTab({ interviewId, round, mocks, skills, jdTerms }: { interviewId: string; round: string; mocks: MockSession[]; skills: string[]; jdTerms: string[] }) {
-  const defaultPersona = ["recruiter", "hiring_manager", "technical"].includes(round) ? round : "hiring_manager";
+export function MockTab({ interviewId, round, mocks, ctx, jdTerms }: { interviewId: string; round: string; mocks: MockSession[]; ctx: MockCtx; jdTerms: string[] }) {
+  const defaultPersona = round === "assessment" ? "technical" : PERSONA_KEYS.includes(round) ? round : "hiring_manager";
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
-      <MockInterview interviewId={interviewId} defaultPersona={defaultPersona} skills={skills} jdTerms={[...new Set(jdTerms)]} />
+      <MockInterview interviewId={interviewId} defaultPersona={defaultPersona} ctx={ctx} jdTerms={[...new Set(jdTerms)]} />
       <aside aria-labelledby="mock-history" className="flex flex-col gap-3">
         <h2 id="mock-history" className="label px-1">Прошлые сессии</h2>
         {mocks.length === 0 ? (
@@ -22,7 +23,7 @@ export function MockTab({ interviewId, round, mocks, skills, jdTerms }: { interv
                 <div className="flex items-center gap-4">
                   <Ring value={fb.overall ?? 0} size={56} stroke={5} />
                   <div className="flex min-w-0 flex-col gap-1">
-                    <Chip tone="teal" className="self-start">{ROUND_LABEL[m.persona] ?? m.persona}</Chip>
+                    <Chip tone="teal" className="self-start">{PERSONA_LABEL[m.persona] ?? m.persona}</Chip>
                     <span className="text-[12.5px] text-ink-3">{m.createdAt.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {fb.answered ?? transcript.filter((t) => t.role === "candidate").length} ответов</span>
                   </div>
                 </div>

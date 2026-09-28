@@ -1,35 +1,51 @@
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { logout } from "@/lib/actions/auth";
+import { currentCampaign, unreadMoments } from "@/lib/ops-data";
 import { Nav } from "./nav";
+import { PushMoment } from "./_components/push-moment";
+import { Notifier } from "./_components/notifier";
 import { LogOut } from "lucide-react";
 
+const DAY = 86400000;
+
 async function shellData(userId: string) {
-  const now = Date.now();
-  const [approvals, inbox, interviews, campaign] = await Promise.all([
+  const since = new Date(Date.now() - 3 * DAY);
+  const [approvals, responses, interviews, campaign, moments] = await Promise.all([
     db.approval.count({ where: { userId, status: "pending" } }),
-    db.inboxMessage.count({ where: { userId, receivedAt: { gte: new Date(now - 3 * 86400000) }, classification: { in: ["interview", "assessment", "offer"] } } }),
+    db.inboxMessage.count({ where: { userId, receivedAt: { gte: since }, classification: { in: ["interview", "assessment", "offer"] } } }),
     db.interview.count({ where: { userId, status: "upcoming" } }),
-    db.campaign.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } }),
+    currentCampaign(userId),
+    unreadMoments(userId),
   ]);
-  const daysLeft = campaign?.endsAt ? Math.max(0, Math.ceil((campaign.endsAt.getTime() - now) / 86400000)) : null;
-  return { approvals, inbox, interviews, campaign, daysLeft };
+  let clock: { status: string; day: number | null; total: number } | null = null;
+  if (campaign) {
+    const start = (campaign.startedAt ?? campaign.createdAt).getTime();
+    const total = campaign.endsAt ? Math.max(1, Math.round((campaign.endsAt.getTime() - start) / DAY)) : 60;
+    const day = ["active", "paused"].includes(campaign.status) ? Math.min(total, Math.max(1, Math.floor((Date.now() - start) / DAY) + 1)) : null;
+    clock = { status: campaign.status, day, total };
+  }
+  return { counts: { approvals, responses, interviews }, clock, moments };
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const { approvals, inbox, interviews, campaign, daysLeft } = await shellData(user.id);
+  const { counts, clock, moments } = await shellData(user.id);
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
-      <Nav counts={{ approvals, inbox, interviews }} role={user.role} campaign={campaign && campaign.status !== "draft" ? { status: campaign.status, daysLeft } : null} />
-      <main className="min-w-0 flex-1 px-4 pb-16 pt-6 sm:px-8 lg:pt-8">
-        <div className="mb-6 hidden items-center justify-end gap-3 lg:flex">
-          <span className="text-[13px] text-ink-3">{user.name}</span>
-          <form action={logout}>
-            <button className="grid size-9 place-items-center rounded-full glass text-teal hover:text-head" aria-label="Выйти" title="Выйти"><LogOut className="size-4" /></button>
+      <Nav counts={counts} role={user.role} campaign={clock} userName={user.name} />
+      <main className="min-w-0 flex-1 px-4 pb-16 pt-4 sm:px-8 lg:pt-6">
+        <div className="mx-auto mb-4 flex w-full max-w-[1180px] items-center justify-end gap-2 lg:mb-5">
+          <Notifier />
+          <span className="hidden text-[13px] text-ink-3 lg:inline">{user.name}</span>
+          <form action={logout} className="hidden lg:block">
+            <button className="grid size-9 place-items-center rounded-full glass text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green" aria-label="Выйти" title="Выйти"><LogOut className="size-4" aria-hidden /></button>
           </form>
         </div>
-        <div className="mx-auto w-full max-w-[1180px]">{children}</div>
+        <div className="mx-auto w-full max-w-[1180px]">
+          {moments.top && <PushMoment m={moments.top} more={moments.more} />}
+          {children}
+        </div>
       </main>
     </div>
   );

@@ -34,8 +34,14 @@ export function nextRound(round: string): Round | null {
 const OPP_ORDER = ["found", "qualified", "prepared", "submitted", "pending", "assessment", "recruiter", "hiring_manager", "technical", "final", "offer", "hired"];
 export const isAhead = (next: string, current: string) => OPP_ORDER.indexOf(next) > OPP_ORDER.indexOf(current);
 
+/** Mock Interview personas. The first three mirror real rounds; Behavioral and Final are practice-only sets. */
 export const PERSONAS = [
-  { key: "recruiter", label: "Recruiter", sub: "мотивация, ожидания, логистика" },
-  { key: "hiring_manager", label: "Hiring Manager", sub: "глубина проектов, STAR, приоритеты" },
-  { key: "technical", label: "Technical", sub: "SQL, эксперименты, разбор кейсов" },
+  { key: "recruiter", label: "HR", sub: "мотивация, ожидания, логистика" },
+  { key: "hiring_manager", label: "Hiring Manager", sub: "глубина проектов, приоритеты" },
+  { key: "technical", label: "Technical", sub: "SQL, эксперименты, кейсы" },
+  { key: "behavioral", label: "Behavioral", sub: "STAR: конфликты, ошибки, лидерство" },
+  { key: "final", label: "Final round", sub: "ценности, амбиции, вопросы к лидерам" },
 ] as const;
+export type PersonaKey = (typeof PERSONAS)[number]["key"];
+export const PERSONA_KEYS: string[] = PERSONAS.map((p) => p.key);
+export const PERSONA_LABEL: Record<string, string> = Object.fromEntries(PERSONAS.map((p) => [p.key, p.label]));

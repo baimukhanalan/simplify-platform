@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
 import { db, j, s, noNul } from "../db";
 import { parseCV } from "../engine/profile";
@@ -98,6 +99,55 @@ export async function updateConditions(_: FormState, form: FormData): Promise<Fo
   return done("Условия сохранены");
 }
 
+/** "Основное" on the Career Profile: role, experience, English, location, contacts. */
+export async function updateBasics(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const name = str(form, "name", 80);
+  if (name.length < 2) return fail("Введи имя — минимум 2 символа.");
+  const years = Number(str(form, "yearsExperience", 6).replace(",", "."));
+  const city = str(form, "city", 80);
+  const data = {
+    headline: str(form, "headline", 120),
+    yearsExperience: Number.isFinite(years) ? Math.max(0, Math.min(50, Math.round(years * 10) / 10)) : 0,
+    englishLevel: oneOf(str(form, "englishLevel", 2).toUpperCase(), ENGLISH, "B1"),
+    city, location: city,
+    country: (str(form, "country", 2).toUpperCase().match(/^[A-Z]{2}$/)?.[0]) ?? "KZ",
+    phone: str(form, "phone", 40),
+    linkedin: cleanUrl(str(form, "linkedin", 200)),
+    github: cleanUrl(str(form, "github", 200)),
+    portfolio: cleanUrl(str(form, "portfolio", 200)),
+    summary: str(form, "summary", 1200),
+  };
+  await db.user.update({ where: { id: user.id }, data: { name } });
+  await db.profile.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
+  refresh();
+  return done("Сохранено");
+}
+
+/** "Ограничения": work authorization, sponsorship, relocation, format, minimum salary. Keeps profile and goal in sync. */
+export async function updateConstraints(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  const citizenship = (str(form, "citizenship", 2).toUpperCase().match(/^[A-Z]{2}$/)?.[0]) ?? "KZ";
+  const picked = form.getAll("workAuth").map((v) => String(v).toUpperCase()).filter((c) => c === "EU" || /^[A-Z]{2}$/.test(c));
+  const workAuth = [...new Set([citizenship, ...picked.flatMap((c) => (c === "EU" ? REGIONS.EU.countries : [c]))])];
+  const needsSponsorship = bool(form, "needsSponsorship");
+  const relocation = bool(form, "relocation");
+  const minSalary = intOr(str(form, "minSalary", 12), 0, 0, 2_000_000);
+  await db.profile.upsert({
+    where: { userId: user.id },
+    update: { citizenship, country: citizenship, workAuth: s(workAuth), needsSponsorship, relocation, remotePref: oneOf(str(form, "remotePref", 10), REMOTE, "remote"), noticePeriod: str(form, "noticePeriod", 40) || "2 weeks", ...(minSalary ? { salaryExpectation: minSalary } : {}) },
+    create: { userId: user.id, citizenship, workAuth: s(workAuth), needsSponsorship, relocation },
+  });
+  await db.goal.upsert({
+    where: { userId: user.id },
+    update: { relocation, sponsorshipNeeded: needsSponsorship, minSalary, currency: "USD" },
+    create: { userId: user.id, relocation, sponsorshipNeeded: needsSponsorship, minSalary, currency: "USD" },
+  });
+  await logEvent(user.id, "profile_constraints", "Ограничения профиля обновлены");
+  refresh();
+  return done("Сохранено");
+}
+
 /* ───────────── Skills ───────────── */
 
 export async function addSkill(form: FormData) {
@@ -148,7 +198,7 @@ export async function saveFact(_: FormState, form: FormData): Promise<FormState>
     await db.fact.update({ where: { id }, data });
     await logEvent(user.id, "fact_updated", `Факт обновлён: ${title}`);
   } else {
-    await db.fact.create({ data: { ...data, userId: user.id, source: "user", verified: bool(form, "verified") } });
+    await db.fact.create({ data: { ...data, userId: user.id, source: "user", verified: true } });
     await logEvent(user.id, "fact_added", `Добавлен факт: ${title}`);
   }
   refresh();
@@ -258,14 +308,14 @@ export async function reparseCV(_: FormState, form: FormData): Promise<FormState
   const fresh = parsed.facts.filter((f) => f.title.trim() && !seen.has(key(f)) && seen.add(key(f)));
   if (fresh.length) {
     await db.fact.createMany({
-      data: fresh.slice(0, 40).map((f) => ({ userId: user.id, kind: f.kind, title: f.title.slice(0, 160), org: f.org.slice(0, 120), startDate: f.startDate, endDate: f.endDate, details: f.details.slice(0, 2000), metrics: f.metrics.slice(0, 240), tech: s(f.tech), source: "cv", verified: false })),
+      data: fresh.slice(0, 40).map((f) => ({ userId: user.id, kind: f.kind, title: f.title.slice(0, 160), org: f.org.slice(0, 120), startDate: f.startDate, endDate: f.endDate, details: f.details.slice(0, 2000), metrics: f.metrics.slice(0, 240), tech: s(f.tech), source: "cv", verified: true })),
     });
   }
   const fileName = `Вставленный текст · ${new Date().toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}`;
   await db.profile.upsert({ where: { userId: user.id }, update: { cvText: text, cvFileName: fileName }, create: { userId: user.id, cvText: text, cvFileName: fileName } });
   await logEvent(user.id, "cv_reparsed", `CV разобран заново (${by}): добавлено ${fresh.length} новых фактов`);
   refresh();
-  return done(fresh.length ? `Добавлено ${fresh.length} новых фактов — они помечены как Unverified. Проверьте и подтвердите их.` : "Новых фактов не найдено — всё уже есть в профиле.");
+  return done(fresh.length ? `Добавлено новых позиций: ${fresh.length}. Проверь их в разделе «Опыт».` : "Нового не нашлось — всё уже есть в профиле.");
 }
 
 /* ───────────── Goal ───────────── */
@@ -300,6 +350,8 @@ export async function saveGoal(_: FormState, form: FormData): Promise<FormState>
   await db.goal.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
   await logEvent(user.id, "goal_updated", `Цель обновлена: ${primaryRole} · ${data.seniority}`);
   refresh();
+  // The goal page edits in a separate mode; send it back to the read view.
+  if (str(form, "after", 20) === "goal") redirect("/app/goal?saved=1");
   return done("Цель сохранена. Readiness пересчитан.");
 }
 

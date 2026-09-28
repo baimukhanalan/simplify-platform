@@ -6,8 +6,9 @@ import { requireUser } from "../auth";
 import { db, j, s, noNul } from "../db";
 import { parseCV } from "../engine/profile";
 import { marketRange } from "../engine/market";
-import { REGIONS, SENIORITY, LANGUAGE_OPTIONS, classifyRole, extractSkills, normalizeLanguage } from "../engine/taxonomy";
-import { buildCareerCheck, markStepDone, readinessForUser, LAST_STEP } from "../onboarding";
+import { REGIONS, SENIORITY, classifyRole, extractSkills, seniorityFromYears } from "../engine/taxonomy";
+import { buildCareerCheck, chatTurnsFor, intlAuthRegions, markStepDone, readinessForUser, LAST_STEP, STEP } from "../onboarding";
+import { cleanIntent, intentToGoal } from "../../app/_components/campaign-intent";
 
 export type FormState = { error?: string; ok?: boolean; message?: string; fields?: Record<string, string> } | undefined;
 
@@ -21,7 +22,6 @@ const intOf = (v: string) => {
 const URLISH = /^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/\S*)?$/i;
 const ENGLISH = ["A1", "A2", "B1", "B2", "C1", "C2"];
 const MODES = ["remote", "hybrid", "onsite"];
-const COUNTRY = /^[A-Z]{2}$/;
 
 function go(step: number): never {
   redirect(`/onboarding?step=${Math.min(LAST_STEP, Math.max(1, step))}`);
@@ -47,67 +47,77 @@ export async function runCareerCheck(_: FormState, form: FormData): Promise<Form
   redirect(`/check/${id}`);
 }
 
-/* ——————————————————————————— Step 1 · CV ——————————————————————————— */
+/* ——————————————————————————— Step 1 · Sources: CV, links, certificates ——————————————————————————— */
 
-export async function saveCV(_: FormState, form: FormData): Promise<FormState> {
+export async function saveSources(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const cvText = noNul(String(form.get("cvText") ?? "")).slice(0, 30000);
   const cvFileName = str(form, "cvFileName", 200);
-  if (cvText.trim().length < 120) return { error: "Добавьте CV: загрузите PDF или вставьте текст целиком." };
-
-  const { data: cv } = await parseCV(cvText);
+  const links = { linkedin: str(form, "linkedin", 200), github: str(form, "github", 200), portfolio: str(form, "portfolio", 200) };
+  const certificates = String(form.get("certificates") ?? "").split(/\r?\n/).map((l) => l.replace(/^[-•*·]\s*/, "").trim().slice(0, 200)).filter((l) => l.length >= 2).slice(0, 15);
+  const noCv = form.get("noCv") === "1";
   const prev = user.profile;
-  const english = ENGLISH.includes(cv.englishLevel) ? cv.englishLevel : prev?.englishLevel ?? "B1";
-  const location = cv.location || prev?.location || "";
-  await db.profile.upsert({
-    where: { userId: user.id },
-    create: { userId: user.id },
-    update: {},
-  });
-  await db.profile.update({
-    where: { userId: user.id },
-    data: {
-      cvText, cvFileName: cvFileName || prev?.cvFileName || "",
-      headline: cv.headline || prev?.headline || "",
-      location, city: prev?.city || location.split(",")[0]?.trim() || "",
-      englishLevel: english,
-      yearsExperience: cv.yearsExperience,
-      skills: s(Array.from(new Set([...j<string[]>(prev?.skills, []), ...cv.skills]))),
-      summary: cv.summary || prev?.summary || "",
-      phone: prev?.phone || cv.phone,
-      linkedin: prev?.linkedin || cv.linkedin,
-      github: prev?.github || cv.github,
-    },
-  });
-  // Re-upload replaces only unverified CV facts — anything the user confirmed stays.
-  await db.fact.deleteMany({ where: { userId: user.id, source: "cv", verified: false } });
-  const kept = await db.fact.findMany({ where: { userId: user.id }, select: { title: true, org: true } });
-  const seen = new Set(kept.map((f) => `${f.title}|${f.org}`.toLowerCase()));
-  const fresh = cv.facts.filter((f) => f.title && !seen.has(`${f.title}|${f.org}`.toLowerCase()));
-  if (fresh.length) {
-    await db.fact.createMany({
-      data: fresh.map((f) => ({ userId: user.id, kind: f.kind, title: f.title.slice(0, 200), org: f.org.slice(0, 200), startDate: f.startDate, endDate: f.endDate, details: f.details.slice(0, 4000), metrics: f.metrics.slice(0, 300), tech: s(f.tech), source: "cv", verified: false })),
+  const fields: Record<string, string> = {};
+  for (const [k, v] of Object.entries(links)) if (v && !URLISH.test(v)) fields[k] = "Похоже на некорректную ссылку";
+  const hasText = cvText.trim().length >= 120;
+  if (!hasText && !prev?.cvText && !noCv) fields.cvText = "Загрузи PDF или вставь текст CV — я разберу его сам.";
+  if (Object.keys(fields).length) return { error: fields.cvText ?? "Проверь отмеченные поля", fields };
+
+  await db.profile.upsert({ where: { userId: user.id }, create: { userId: user.id }, update: {} });
+  const fresh = hasText && cvText !== prev?.cvText;
+  let factCount = 0;
+  let skillCount = 0;
+  if (fresh) {
+    const { data: cv } = await parseCV(cvText);
+    const location = cv.location || prev?.location || "";
+    await db.profile.update({
+      where: { userId: user.id },
+      data: {
+        cvText, cvFileName: cvFileName || "CV",
+        headline: cv.headline || prev?.headline || "",
+        location, city: prev?.city || location.split(",")[0]?.trim() || "",
+        englishLevel: ENGLISH.includes(cv.englishLevel) ? cv.englishLevel : prev?.englishLevel ?? "B1",
+        yearsExperience: cv.yearsExperience || prev?.yearsExperience || 0,
+        skills: s(Array.from(new Set([...j<string[]>(prev?.skills, []), ...cv.skills]))),
+        summary: cv.summary || prev?.summary || "",
+        phone: prev?.phone || cv.phone,
+        linkedin: links.linkedin || prev?.linkedin || cv.linkedin,
+        github: links.github || prev?.github || cv.github,
+        portfolio: links.portfolio || prev?.portfolio || "",
+      },
+    });
+    // A new CV replaces earlier CV-parsed facts, except ones the user has already worked on (answers, stories).
+    await db.fact.deleteMany({ where: { userId: user.id, source: "cv", stories: { none: {} }, miniAnswers: { none: {} } } });
+    const kept = await db.fact.findMany({ where: { userId: user.id }, select: { title: true, org: true } });
+    const seen = new Set(kept.map((f) => `${f.title}|${f.org}`.toLowerCase()));
+    const add = cv.facts.filter((f) => f.title && !seen.has(`${f.title}|${f.org}`.toLowerCase()));
+    if (add.length) {
+      await db.fact.createMany({
+        data: add.map((f) => ({ userId: user.id, kind: f.kind, title: f.title.slice(0, 200), org: f.org.slice(0, 200), startDate: f.startDate, endDate: f.endDate, details: f.details.slice(0, 4000), metrics: f.metrics.slice(0, 300), tech: s(f.tech), source: "cv", verified: true })),
+      });
+    }
+    factCount = add.length;
+    skillCount = cv.skills.length;
+  } else {
+    await db.profile.update({
+      where: { userId: user.id },
+      data: { linkedin: links.linkedin || prev?.linkedin || "", github: links.github || prev?.github || "", portfolio: links.portfolio || prev?.portfolio || "" },
     });
   }
-  await db.event.create({ data: { userId: user.id, type: "cv_parsed", message: `CV разобран: ${fresh.length} фактов, ${cv.skills.length} навыков`, data: s({ facts: fresh.length, skills: cv.skills.length }) } });
-  await markStepDone(user.id, 1);
+  if (certificates.length) {
+    const have = new Set((await db.fact.findMany({ where: { userId: user.id, kind: "certification" }, select: { title: true } })).map((f) => f.title.toLowerCase()));
+    const add = certificates.filter((c) => !have.has(c.toLowerCase()));
+    if (add.length) await db.fact.createMany({ data: add.map((title) => ({ userId: user.id, kind: "certification", title, source: "user", verified: true })) });
+  }
+  await db.event.create({
+    data: { userId: user.id, type: fresh ? "cv_parsed" : "profile_sources", message: fresh ? `CV разобран: ${factCount} позиций, ${skillCount} навыков` : "Ссылки профиля обновлены", data: s({ facts: factCount, skills: skillCount }) },
+  });
+  await markStepDone(user.id, STEP.sources);
   revalidatePath("/onboarding");
-  go(2);
+  go(STEP.chat);
 }
 
-/* ——————————————————————————— Step 2 · Facts ——————————————————————————— */
-
-export async function setFactVerified(factId: string, verified: boolean) {
-  const user = await requireUser();
-  await db.fact.updateMany({ where: { id: String(factId), userId: user.id }, data: { verified: Boolean(verified) } });
-  revalidatePath("/onboarding");
-}
-
-export async function verifyAllFacts() {
-  const user = await requireUser();
-  await db.fact.updateMany({ where: { userId: user.id, verified: false }, data: { verified: true } });
-  revalidatePath("/onboarding");
-}
+/* ——————————————————————————— Step 2 · Conversation ——————————————————————————— */
 
 export async function deleteFact(factId: string) {
   const user = await requireUser();
@@ -115,121 +125,104 @@ export async function deleteFact(factId: string) {
   revalidatePath("/onboarding");
 }
 
-export async function updateSkills(skills: string[]) {
+/** Quick fix of a parsed position (title / company / dates) from the chat review. */
+export async function updateFactBasics(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  const clean = Array.from(new Set((Array.isArray(skills) ? skills : []).map((x) => String(x).trim().slice(0, 60)).filter(Boolean))).slice(0, 60);
-  await db.profile.update({ where: { userId: user.id }, data: { skills: s(clean) } });
-  revalidatePath("/onboarding");
-}
-
-export async function addFact(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser();
-  const kind = str(form, "kind", 30);
+  const id = str(form, "id", 60);
   const title = str(form, "title", 200);
-  if (!["employment", "project", "education", "certification", "achievement"].includes(kind)) return { error: "Выберите тип факта" };
-  if (title.length < 2) return { error: "Укажите название" };
-  const details = str(form, "details", 4000);
-  await db.fact.create({
-    data: { userId: user.id, kind, title, org: str(form, "org", 200), startDate: str(form, "startDate", 40), endDate: str(form, "endDate", 40), details, tech: s(extractSkills(details)), source: "user", verified: true },
-  });
+  if (title.length < 2) return { error: "Укажи должность или название" };
+  const res = await db.fact.updateMany({ where: { id, userId: user.id }, data: { title, org: str(form, "org", 200), startDate: str(form, "startDate", 40), endDate: str(form, "endDate", 40) } });
+  if (!res.count) return { error: "Позиция не найдена" };
   revalidatePath("/onboarding");
-  return { ok: true, message: "Факт добавлен" };
+  return { ok: true, message: "Исправлено" };
 }
 
-/* ——————————————————————————— Step 3 · Mini-interview ——————————————————————————— */
+export type TurnResult = { ok: true } | { ok: false; error: string };
 
-export async function saveMiniInterview(_: FormState, form: FormData): Promise<FormState> {
+/** Save one answer from the chat. `value` is an option value, free text, or "" to skip. */
+export async function answerTurn(turnId: string, rawValue: string): Promise<TurnResult> {
   const user = await requireUser();
-  const factId = str(form, "factId", 60);
-  const fact = await db.fact.findFirst({ where: { id: factId, userId: user.id } });
-  if (!fact) return { error: "Факт не найден" };
-  const qs = form.getAll("q").map((v) => String(v).slice(0, 400));
-  const as = form.getAll("a").map((v) => String(v).trim().slice(0, 3000));
-  const pairs = qs.map((q, i) => ({ q, a: as[i] ?? "" })).filter((p) => p.a);
-  const metrics = str(form, "metrics", 300);
-  const teamRaw = str(form, "teamSize", 6);
-  const ownership = str(form, "ownership", 20);
-  if (!pairs.length && !metrics && !teamRaw && !ownership) return { error: "Ответьте хотя бы на один вопрос" };
+  const turns = await chatTurnsFor(user.id);
+  const turn = turns.find((t) => t.id === String(turnId));
+  if (!turn) return { ok: false, error: "Вопрос устарел — обнови страницу" };
+  const value = noNul(String(rawValue ?? "")).trim().slice(0, 1000);
+  if (turn.kind === "choice" && value && !turn.options?.some((o) => o.value === value)) return { ok: false, error: "Выбери один из вариантов" };
+  const factId = turn.factId ?? null;
 
-  await db.miniInterviewAnswer.deleteMany({ where: { userId: user.id, factId } });
-  if (pairs.length) await db.miniInterviewAnswer.createMany({ data: pairs.map((p) => ({ userId: user.id, factId, question: p.q, answer: p.a })) });
-  const answerTech = extractSkills(pairs.map((p) => p.a).join("\n"));
-  const tech = Array.from(new Set([...j<string[]>(fact.tech, []), ...answerTech]));
-  await db.fact.update({
-    where: { id: factId },
-    data: {
-      metrics: metrics || fact.metrics,
-      teamSize: teamRaw ? Math.min(10000, intOf(teamRaw)) || null : fact.teamSize,
-      ownership: ["led", "contributed", "executed"].includes(ownership) ? ownership : fact.ownership,
-      tech: s(tech),
-    },
-  });
-  if (answerTech.length) {
-    const p = await db.profile.findUnique({ where: { userId: user.id }, select: { skills: true } });
-    await db.profile.update({ where: { userId: user.id }, data: { skills: s(Array.from(new Set([...j<string[]>(p?.skills, []), ...answerTech]))) } });
+  const [kind, arg] = turn.id.split(":");
+  if (value) {
+    if (kind === "metric" && factId) {
+      await db.fact.update({ where: { id: factId }, data: { metrics: value.slice(0, 300) } });
+      const tech = extractSkills(value);
+      if (tech.length) {
+        const p = await db.profile.findUnique({ where: { userId: user.id }, select: { skills: true } });
+        await db.profile.update({ where: { userId: user.id }, data: { skills: s(Array.from(new Set([...j<string[]>(p?.skills, []), ...tech]))) } });
+      }
+    } else if (kind === "own" && factId) {
+      await db.fact.update({ where: { id: factId }, data: { ownership: value } });
+    } else if (kind === "citizenship") {
+      const p = await db.profile.findUnique({ where: { userId: user.id }, select: { workAuth: true } });
+      const auth = Array.from(new Set([value, ...j<string[]>(p?.workAuth, []).filter((c) => c !== user.profile?.citizenship)]));
+      await db.profile.update({ where: { userId: user.id }, data: { citizenship: value, country: value, workAuth: s(auth) } });
+      await syncSponsorship(user.id);
+    } else if (kind === "auth" && arg) {
+      const codes = intlAuthRegions()[arg]?.codes ?? [];
+      const p = await db.profile.findUnique({ where: { userId: user.id }, select: { workAuth: true, citizenship: true } });
+      const cur = new Set(j<string[]>(p?.workAuth, []));
+      for (const c of codes) if (value === "yes") cur.add(c); else if (c !== p?.citizenship) cur.delete(c);
+      await db.profile.update({ where: { userId: user.id }, data: { workAuth: s([...cur]) } });
+      await syncSponsorship(user.id);
+    } else if (kind === "relocation") {
+      const relocation = value === "yes";
+      await db.profile.update({ where: { userId: user.id }, data: { relocation, remotePref: value === "remote" ? "remote" : value === "yes" ? "any" : "hybrid" } });
+      await db.goal.upsert({ where: { userId: user.id }, create: { userId: user.id, relocation }, update: { relocation } });
+    } else if (kind === "english") {
+      await db.profile.update({ where: { userId: user.id }, data: { englishLevel: value } });
+    } else if (kind === "notice") {
+      await db.profile.update({ where: { userId: user.id }, data: { noticePeriod: value } });
+    }
   }
+  await db.miniInterviewAnswer.deleteMany({ where: { userId: user.id, factId, question: turn.prompt } });
+  await db.miniInterviewAnswer.create({ data: { userId: user.id, factId, question: turn.prompt, answer: value } });
   revalidatePath("/onboarding");
-  return { ok: true, message: "Ответы сохранены" };
+  return { ok: true };
 }
 
-export async function saveStory(_: FormState, form: FormData): Promise<FormState> {
+/** Sponsorship is needed when some international target region isn't covered by the user's work authorization. */
+async function syncSponsorship(userId: string) {
+  const [p, g] = await Promise.all([db.profile.findUnique({ where: { userId } }), db.goal.findUnique({ where: { userId } })]);
+  if (!p) return;
+  const auth = new Set(j<string[]>(p.workAuth, []));
+  const regions = intlAuthRegions();
+  const targets = j<string[]>(g?.countries, []).filter((c) => c in regions);
+  const needs = targets.length ? targets.some((r) => !regions[r].codes.some((c) => auth.has(c))) : !["US", "GB", ...REGIONS.EU.countries].some((c) => auth.has(c));
+  await db.profile.update({ where: { userId }, data: { needsSponsorship: needs } });
+  if (g) await db.goal.update({ where: { userId }, data: { sponsorshipNeeded: needs } });
+}
+
+/* ——————————————————————————— First-screen answers → Goal ——————————————————————————— */
+
+/** Called once after signup with the answers from "/" (role, where, salary). Only fills an empty goal. */
+export async function applyIntent(raw: { role?: string; where?: string[] | string; salary?: number | string }) {
   const user = await requireUser();
-  const factId = str(form, "factId", 60);
-  const fact = factId ? await db.fact.findFirst({ where: { id: factId, userId: user.id } }) : null;
-  const title = str(form, "title", 160);
-  const situation = str(form, "situation", 1500);
-  const task = str(form, "task", 1500);
-  const action = str(form, "action", 2000);
-  const result = str(form, "result", 1500);
-  if (!title || !situation || !task || !action || !result) return { error: "Заполните все четыре части STAR и название" };
-  await db.story.create({ data: { userId: user.id, factId: fact?.id ?? null, title, situation, task, action, result, metric: str(form, "metric", 200) || fact?.metrics || "", tags: s(list(form, "tags", 6)), verified: true } });
+  const intent = cleanIntent(raw ?? {});
+  if (!intent) return { ok: false as const };
+  const existing = await db.goal.findUnique({ where: { userId: user.id } });
+  if (existing?.primaryRole) return { ok: false as const };
+  const g = intentToGoal(intent);
+  const years = user.profile?.yearsExperience ?? 0;
+  const data = {
+    primaryRole: g.primaryRole, countries: s(g.countries), workModes: s(g.workModes), relocation: g.relocation, minSalary: g.minSalary, currency: g.currency,
+    ...(years > 0 ? { seniority: seniorityFromYears(years) } : {}),
+  };
+  await db.goal.upsert({ where: { userId: user.id }, create: { userId: user.id, ...data }, update: data });
+  if (g.relocation) await db.profile.updateMany({ where: { userId: user.id }, data: { relocation: true } });
+  await db.event.create({ data: { userId: user.id, type: "goal_intent", message: `Цель со стартового экрана: ${g.primaryRole}` } });
   revalidatePath("/onboarding");
-  return { ok: true, message: "STAR-история сохранена — её сможет использовать Interview Copilot" };
+  return { ok: true as const };
 }
 
-/* ——————————————————————————— Step 4 · Preferences & authorization ——————————————————————————— */
-
-export async function savePreferences(_: FormState, form: FormData): Promise<FormState> {
-  const user = await requireUser();
-  const citizenship = str(form, "citizenship", 2).toUpperCase();
-  const workAuth = list(form, "workAuth", 30).map((c) => c.toUpperCase()).filter((c) => COUNTRY.test(c));
-  const englishLevel = str(form, "englishLevel", 2).toUpperCase();
-  const remotePref = str(form, "remotePref", 10);
-  const salary = intOf(str(form, "salaryExpectation", 12));
-  const links = { linkedin: str(form, "linkedin", 200), github: str(form, "github", 200), portfolio: str(form, "portfolio", 200) };
-  const fields: Record<string, string> = {};
-  if (!COUNTRY.test(citizenship)) fields.citizenship = "Выберите гражданство";
-  if (!ENGLISH.includes(englishLevel)) fields.englishLevel = "Выберите уровень";
-  for (const [k, v] of Object.entries(links)) if (v && !URLISH.test(v)) fields[k] = "Похоже на некорректную ссылку";
-  if (salary > 2_000_000) fields.salaryExpectation = "Укажите годовую сумму в USD";
-  if (Object.keys(fields).length) return { error: "Проверьте отмеченные поля", fields };
-
-  const auth = Array.from(new Set([citizenship, ...workAuth.flatMap((c) => (c === "EU" ? REGIONS.EU.countries : [c]))]));
-  const needsSponsorship = form.get("needsSponsorship") === "on";
-  const relocation = form.get("relocation") === "on";
-  // Chips replace the offered languages; anything else already in the profile (English level lines, rarer languages) is kept.
-  const offered = new Set(LANGUAGE_OPTIONS.map(([k]) => k));
-  const prevLangs = j<{ lang: string; level: string }[]>(user.profile?.languages, []);
-  const picked = list(form, "languages", 12).map(normalizeLanguage).filter((l) => offered.has(l));
-  const languages = [
-    ...prevLangs.filter((l) => !offered.has(normalizeLanguage(l.lang))),
-    ...picked.map((lang) => prevLangs.find((l) => normalizeLanguage(l.lang) === lang) ?? { lang, level: "—" }),
-  ];
-  await db.profile.update({
-    where: { userId: user.id },
-    data: {
-      citizenship, country: citizenship, workAuth: s(auth), needsSponsorship, relocation, englishLevel, languages: s(languages),
-      remotePref: ["remote", "hybrid", "onsite", "any"].includes(remotePref) ? remotePref : "remote",
-      salaryExpectation: salary, city: str(form, "city", 80), noticePeriod: str(form, "noticePeriod", 40) || "2 weeks", ...links,
-    },
-  });
-  await db.goal.upsert({ where: { userId: user.id }, create: { userId: user.id, relocation, sponsorshipNeeded: needsSponsorship }, update: { relocation, sponsorshipNeeded: needsSponsorship } });
-  await markStepDone(user.id, 4);
-  revalidatePath("/onboarding");
-  go(5);
-}
-
-/* ——————————————————————————— Step 5 · Career Goal ——————————————————————————— */
+/* ——————————————————————————— Step 3 · Goal ——————————————————————————— */
 
 export async function saveGoal(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
@@ -237,25 +230,27 @@ export async function saveGoal(_: FormState, form: FormData): Promise<FormState>
   const seniority = str(form, "seniority", 10);
   const countries = list(form, "countries").filter((c) => c in REGIONS);
   const workModes = list(form, "workModes").filter((m) => MODES.includes(m));
-  const mode = str(form, "mode", 12);
   const fields: Record<string, string> = {};
   if (primaryRole.length < 2) fields.primaryRole = "Какую роль ищем? Например, Data Analyst";
-  if (!SENIORITY.includes(seniority as (typeof SENIORITY)[number])) fields.seniority = "Выберите уровень";
-  if (!countries.length) fields.countries = "Выберите хотя бы один регион";
-  if (!workModes.length) fields.workModes = "Выберите хотя бы один формат";
-  if (Object.keys(fields).length) return { error: "Проверьте отмеченные поля", fields };
+  if (!SENIORITY.includes(seniority as (typeof SENIORITY)[number])) fields.seniority = "Выбери уровень";
+  if (!countries.length) fields.countries = "Выбери хотя бы один регион";
+  if (!workModes.length) fields.workModes = "Выбери хотя бы один формат";
+  if (Object.keys(fields).length) return { error: "Проверь отмеченные поля", fields };
 
-  const data = {
-    primaryRole, seniority, countries: s(countries), workModes: s(workModes),
-    extraRoles: s(list(form, "extraRoles", 4).filter((r) => r.toLowerCase() !== primaryRole.toLowerCase())),
+  const relocation = form.get("relocation") === "on";
+  const data: Record<string, string | number | boolean> = {
+    primaryRole, seniority, countries: s(countries), workModes: s(workModes), relocation,
     minSalary: Math.min(2_000_000, intOf(str(form, "minSalary", 12))), currency: "USD",
-    industries: s(list(form, "industries", 8)), dreamCompanies: s(list(form, "dreamCompanies", 15)),
-    mode: ["autonomous", "target", "mass"].includes(mode) ? mode : "autonomous",
   };
+  // Optional fields only change when the form actually sends them.
+  if (form.has("industries")) data.industries = s(list(form, "industries", 8));
+  if (form.has("extraRoles")) data.extraRoles = s(list(form, "extraRoles", 4).filter((r) => r.toLowerCase() !== primaryRole.toLowerCase()));
   await db.goal.upsert({ where: { userId: user.id }, create: { userId: user.id, ...data }, update: data });
-  await markStepDone(user.id, 5);
+  await db.profile.updateMany({ where: { userId: user.id }, data: { relocation } });
+  await syncSponsorship(user.id);
+  await markStepDone(user.id, STEP.goal);
   revalidatePath("/onboarding");
-  go(6);
+  go(STEP.readiness);
 }
 
 /** One-click fixes offered on the readiness step. */
@@ -263,7 +258,7 @@ export async function applyAdjustment(form: FormData) {
   const user = await requireUser();
   const kind = String(form.get("kind") ?? "");
   const g = await db.goal.findUnique({ where: { userId: user.id } });
-  if (!g) go(5);
+  if (!g) go(STEP.goal);
   const r = await readinessForUser(user.id);
   const countries = j<string[]>(g.countries, []);
   if (kind === "seniority") {
@@ -274,21 +269,22 @@ export async function applyAdjustment(form: FormData) {
   } else if (kind === "remote") {
     const modes = Array.from(new Set([...j<string[]>(g.workModes, []), "remote"]));
     await db.goal.update({ where: { userId: user.id }, data: { workModes: s(modes) } });
-  } else if (kind === "cis") {
-    await db.goal.update({ where: { userId: user.id }, data: { countries: s(["KZ", "CIS"]) } });
   } else if (kind === "role") {
     const role = String(form.get("role") ?? "").trim().slice(0, 100);
-    if (role) await db.goal.update({ where: { userId: user.id }, data: { primaryRole: role } });
+    const extra = j<string[]>(g.extraRoles, []);
+    if (role && !extra.includes(role) && role !== g.primaryRole) await db.goal.update({ where: { userId: user.id }, data: { extraRoles: s([...extra, role].slice(0, 6)) } });
   }
   revalidatePath("/onboarding");
-  go(6);
+  go(STEP.readiness);
 }
 
-/** Generic "continue" for steps whose content saves inline (facts, mini-interview, readiness). */
+/** Generic "continue" for steps whose content saves inline (chat, readiness). */
 export async function completeStep(form: FormData) {
   const user = await requireUser();
   const step = Math.round(Number(form.get("step")));
   if (!Number.isFinite(step) || step < 1 || step > LAST_STEP) go(1);
+  // Reviewing the parsed experience in the chat is the user's sign-off on it.
+  if (step === STEP.chat) await db.fact.updateMany({ where: { userId: user.id, verified: false }, data: { verified: true } });
   await markStepDone(user.id, step);
   revalidatePath("/onboarding");
   go(step + 1);

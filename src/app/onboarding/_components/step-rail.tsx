@@ -17,7 +17,7 @@ export function StepRail({ current, done }: { current: number; done: number[] })
           <span className="text-head">{ONBOARDING_STEPS[current - 1].label}</span>
           <span className="num text-ink-3">{current} / {LAST_STEP}</span>
         </div>
-        <ol className="grid grid-cols-7 gap-1.5">
+        <ol className="grid grid-cols-5 gap-1.5">
           {ONBOARDING_STEPS.map((st) => {
             const isDone = doneSet.has(st.n);
             const cls = cx("block h-1.5 rounded-full transition-colors", st.n === current ? "bg-cta" : isDone ? "bg-green" : "bg-head/10");
@@ -37,7 +37,7 @@ export function StepRail({ current, done }: { current: number; done: number[] })
       {/* Desktop */}
       <div className="hidden flex-col gap-5 lg:flex">
         <div className="flex flex-col gap-2">
-          <span className="label">Career Profile</span>
+          <span className="label">Запуск кампании</span>
           <div className="flex items-center gap-2.5">
             <div className="h-1 flex-1 overflow-hidden rounded-full bg-head/10"><div className="h-full rounded-full bg-green transition-[width] duration-700" style={{ width: `${pct}%` }} /></div>
             <span className="num text-[12px] text-ink-3">{pct}%</span>

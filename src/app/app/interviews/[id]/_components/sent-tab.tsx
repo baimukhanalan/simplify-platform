@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
 import type { ApplicationPackage } from "@prisma/client";
 import { j } from "@/lib/db";
 import { Card, Chip, Empty, Label } from "@/components/ui";
@@ -5,7 +7,7 @@ import { CopyButton } from "../../_components/copy-button";
 
 type Answer = { q: string; a: string; category?: string; status?: string; kind?: string };
 
-export function SentTab({ pkg, company, submittedAt }: { pkg: ApplicationPackage | null; company: string; submittedAt: Date | null }) {
+export function SentTab({ pkg, company, submittedAt, opportunityId }: { pkg: ApplicationPackage | null; company: string; submittedAt: Date | null; opportunityId: string }) {
   if (!pkg) return <Empty title="Пакет заявки не найден" sub="Похоже, заявка была отправлена вне Simplify — здесь нечего показать." />;
   const answers = j<Answer[]>(pkg.answers, []);
   const method = pkg.submitMethod.startsWith("ats:") ? `ATS (${pkg.submitMethod.slice(4)})` : pkg.submitMethod === "user-handoff" ? "Вы отправили сами (handoff)" : "Не отправлено";
@@ -15,6 +17,9 @@ export function SentTab({ pkg, company, submittedAt }: { pkg: ApplicationPackage
         <div>
           <Label className="mb-1.5">Что именно мы отправили в {company}</Label>
           <p className="text-[14px] text-ink-2">Перечитайте перед звонком: интервьюер видит ровно эту версию.</p>
+          <Link href={`/app/applications/${opportunityId}`} className="mt-2 inline-flex items-center gap-1 rounded text-[13px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">
+            Открыть карточку заявки<ArrowUpRight className="size-3.5" strokeWidth={1.7} aria-hidden />
+          </Link>
         </div>
         <div className="flex flex-wrap gap-2">
           <Chip tone="dark">CV {pkg.cvVersion}</Chip>
