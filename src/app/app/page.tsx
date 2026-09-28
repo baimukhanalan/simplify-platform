@@ -97,7 +97,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             )}
             <form action={simulateEmployers}>
               <SubmitButton variant="glass" size="md" pendingText="Симулируем…">
-                <Sparkles className="size-4 text-amber" strokeWidth={1.7} aria-hidden /> Симулировать ответы работодателей <span className="font-mono text-[10px] uppercase tracking-[.06em] text-amber">демо</span>
+                <Sparkles className="size-4 text-amber" strokeWidth={1.7} aria-hidden /> <span className="sm:hidden">Ответы работодателей</span><span className="hidden sm:inline">Симулировать ответы работодателей</span> <span className="font-mono text-[10px] uppercase tracking-[.06em] text-amber">демо</span>
               </SubmitButton>
             </form>
           </>
