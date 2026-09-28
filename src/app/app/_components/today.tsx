@@ -85,7 +85,7 @@ export function TodayStrip({ d }: { d: { found: number; qualified: number; submi
   ];
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl bg-head/[.04] px-4 py-3">
-      <span className="label !text-[10px] !text-head">Today · 24 ч</span>
+      <span className="label !text-[10px] !text-head">Сегодня</span>
       {items.map((it) => (
         <span key={it.label} className="text-[13px] text-ink-3"><span className={cx("num text-[15px]", it.v ? "text-head" : "text-ink-4")}>{it.v ? `+${it.v}` : "0"}</span> {it.label}</span>
       ))}

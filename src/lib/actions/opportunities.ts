@@ -73,17 +73,25 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
   if (decision === "auto") {
     await db.opportunity.update({ where: { id }, data: { decision: "auto", status: revived } });
     await logEvent(user.id, "decision", `Auto: агент подаст сам — ${who}`, id, { decision: "auto" });
-    // Already prepared with nothing pending: the next cycle only picks "qualified", so hand it to the agent now.
-    if (revived === "prepared" && opp.campaign.status === "active" && opp.campaign.autoSubmit) {
-      const pending = await db.approval.count({ where: { opportunityId: id, status: "pending", kind: { not: "handoff" } } });
-      if (!pending) {
-        const r = await submit(id);
-        refresh(id);
-        if (r.ok) return { ok: true, message: "Агент отправил заявку.", href: `/app/applications/${id}`, hrefLabel: "Открыть заявку" };
-        if (r.reason === "handoff") return { ok: true, message: "Пакет готов. Живая вакансия — отправка через официальную форму.", href: `/app/opportunities/${id}`, hrefLabel: "Открыть" };
-      }
+    // Campaign.autoSubmit is the auto-submit consent: without it the agent never sends anything on its own.
+    if (!opp.campaign.autoSubmit) {
+      refresh(id);
+      return { ok: true, message: "Отмечено Auto, но автоподача выключена в «Настройках» (согласие). Агент подготовит пакет — отправить можно кнопкой Apply.", href: "/app/settings", hrefLabel: "Настройки" };
+    }
+    if (opp.campaign.status !== "active" && opp.campaign.status !== "paused") {
+      refresh(id);
+      return { ok: true, message: "Отмечено, но кампания завершена — агент больше не подаёт сам. Отправить можно кнопкой Apply." };
+    }
+    const pending = await db.approval.count({ where: { opportunityId: id, status: "pending", kind: { not: "handoff" } } });
+    // Already prepared with nothing pending on an active campaign: hand it to the agent now.
+    if (revived === "prepared" && opp.campaign.status === "active" && !pending) {
+      const r = await submit(id);
+      refresh(id);
+      if (r.ok) return { ok: true, message: "Агент отправил заявку.", href: `/app/applications/${id}`, hrefLabel: "Открыть заявку" };
+      if (r.reason === "handoff") return { ok: true, message: "Пакет готов. Живая вакансия — отправка через официальную форму.", href: `/app/opportunities/${id}`, hrefLabel: "Открыть" };
     }
     refresh(id);
+    if (pending) return { ok: true, message: `Агент подаст сам, как только вы ответите на ${pending === 1 ? "1 вопрос" : `${pending} вопроса`}.`, href: "/app/approvals", hrefLabel: "Ответить" };
     return { ok: true, message: opp.campaign.status === "active" ? "Агент подаст сам в ближайшем цикле." : "Отмечено. Агент подаст, когда кампания снова будет активна." };
   }
 
@@ -112,9 +120,11 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
 
 /**
  * Global switch "Auto-apply all jobs above N% match".
- * On  → submitApplications=true and autoApplyMinMatch = the stored threshold (default 85).
- * Off → submitApplications=false: the agent still finds and prepares, but submits only roles you marked Apply/Auto.
- * Other autonomy keys are preserved (the Agent screen writes the same JSON).
+ * Writes only submitApplications — the same field as the Agent screen's auto-apply switch; the threshold
+ * (autoApplyMinMatch, always a number) is set on the Agent screen and left untouched here.
+ * On  → the agent submits roles with Match ≥ threshold on its own.
+ * Off → the agent still finds and prepares, but submits only roles you marked Apply/Auto.
+ * Other autonomy keys are preserved.
  */
 export async function setAutoApply(enabled: boolean): Promise<{ ok: boolean; enabled: boolean; min: number }> {
   const user = await requireUser();
@@ -126,7 +136,7 @@ export async function setAutoApply(enabled: boolean): Promise<{ ok: boolean; ena
     raw = {};
   }
   const current = readAutonomy(fresh?.autonomy);
-  const min = current.autoApplyMinMatch ?? 85;
+  const min = current.autoApplyMinMatch;
   await db.user.update({ where: { id: user.id }, data: { autonomy: s({ ...raw, submitApplications: enabled, autoApplyMinMatch: min }) } });
   await logEvent(user.id, "autonomy", enabled ? `Auto-apply включён: Match ≥ ${min}%` : "Auto-apply выключен: агент подаёт только на отмеченные вами вакансии");
   revalidatePath("/app", "layout");

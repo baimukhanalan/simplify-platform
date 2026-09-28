@@ -12,20 +12,28 @@ export async function journeyStats(campaign: Campaign) {
   const [applications, interviews, linkedOffer] = await Promise.all([
     db.opportunity.count({ where: { campaignId: campaign.id, submittedAt: { not: null } } }),
     db.interview.count({ where: { userId: campaign.userId, opportunity: { campaignId: campaign.id } } }),
-    db.offer.findFirst({ where: { userId: campaign.userId, status: "accepted", opportunity: { campaignId: campaign.id } }, orderBy: { createdAt: "desc" } }),
+    // Linked = the offer came from an application this campaign actually submitted.
+    db.offer.findFirst({ where: { userId: campaign.userId, status: "accepted", opportunity: { campaignId: campaign.id, submittedAt: { not: null } } }, orderBy: { createdAt: "desc" } }),
   ]);
-  // A manually added offer is not linked to an opportunity; fall back to the latest accepted one.
+  // A manually added offer is not linked to an opportunity; the owner still sees it, the public page never does.
   const offer = linkedOffer ?? (await db.offer.findFirst({ where: { userId: campaign.userId, status: "accepted" }, orderBy: { createdAt: "desc" } }));
   const end = offer?.createdAt ?? campaign.hiredAt;
   const daysToOffer = campaign.startedAt && end ? Math.max(1, Math.ceil((end.getTime() - campaign.startedAt.getTime()) / DAY)) : null;
-  return { applications, interviews, daysToOffer, offer };
+  return { applications, interviews, daysToOffer, offer, publicOffer: linkedOffer };
 }
+
+/** Public text is user-controlled (name, offer role/company): collapse whitespace and cap the length. */
+export const clampText = (v: string | null | undefined, max: number) => {
+  const t = (v ?? "").replace(/[\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  return t.length > max ? `${Array.from(t).slice(0, max - 1).join("").trimEnd()}…` : t;
+};
 
 export async function latestHiredCampaign(userId: string) {
   return db.campaign.findFirst({ where: { userId, status: "hired" }, orderBy: { hiredAt: "desc" } });
 }
 
-export const firstName = (name: string) => name.trim().split(/\s+/)[0] || "Кандидат";
+export const firstName = (name: string) => clampText(name.trim().split(/\s+/)[0], 32) || "Кандидат";
 
 /** Russian plural: plural(5, ["заявка", "заявки", "заявок"]). */
 export function plural(n: number, [one, few, many]: [string, string, string]) {

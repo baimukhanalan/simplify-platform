@@ -22,8 +22,8 @@ export async function updateConsents(_: FormState, form: FormData): Promise<Form
     next[k] = v;
   }
   await db.user.update({ where: { id: user.id }, data: { consents: s(next) } });
-  // Auto-submit consent is authoritative: revoking it switches the running campaign to manual approval.
-  if (!next.autoSubmit) await db.campaign.updateMany({ where: { userId: user.id, status: { in: ["active", "paused"] } }, data: { autoSubmit: false } });
+  // Auto-submit consent is authoritative: the running campaign mirrors it both ways.
+  await db.campaign.updateMany({ where: { userId: user.id, status: { in: ["active", "paused"] } }, data: { autoSubmit: Boolean(next.autoSubmit) } });
   if (changed.length) await logEvent(user.id, "consents_updated", `Согласия изменены — ${changed.join(", ")}`);
   revalidatePath("/app", "layout");
   return { ok: true, message: changed.length ? "Согласия обновлены" : "Без изменений", at: Date.now() };

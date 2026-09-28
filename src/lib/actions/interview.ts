@@ -6,6 +6,9 @@ import { db, j, s } from "../db";
 import { aiJSON, aiText } from "../ai";
 import { buildPack } from "../engine/interview-ai";
 import { createInterview, loadCandidate, logEvent } from "../engine/agent";
+import { rateLimitUser, retryText } from "../rate-limit";
+
+const HOUR = 60 * 60 * 1000;
 import { PERSONA_KEYS, PERSONA_LABEL, ROUND_LABEL, isAhead, nextRound } from "../rounds";
 import { BriefSchema, buildBriefHeuristic } from "@/app/app/interviews/[id]/_components/brief";
 import { DebriefAISchema, structureDebrief } from "@/app/app/interviews/[id]/_components/debrief-engine";
@@ -32,6 +35,8 @@ export async function setCopilotAllowed(form: FormData) {
 export async function regeneratePack(form: FormData) {
   const user = await requireUser();
   const iv = await ownInterview(user.id, String(form.get("id")));
+  // Two Claude calls per run: cap per user (durable via the interview_pack events each run logs).
+  if (!(await rateLimitUser("interview-pack", user.id, 10, HOUR, { eventTypes: ["interview_pack"] })).ok) return;
   const { profile, facts, stories, user: u } = await loadCandidate(user.id);
   const teamSize = new Map(u.facts.map((f) => [f.id, f.teamSize]));
   const job = iv.opportunity.job;
@@ -128,6 +133,8 @@ export async function saveDebrief(_: DebriefState, form: FormData): Promise<Debr
   const outcome = (["done", "passed", "failed"] as const).find((o) => o === form.get("outcome"));
   if (transcript.split(" ").length < 8) return { error: "Расскажите чуть подробнее — хотя бы 2–3 предложения: какие были вопросы и что было сложно." };
   if (!outcome) return { error: "Выберите статус раунда." };
+  const rl = await rateLimitUser("debrief", user.id, 10, HOUR, { eventTypes: ["debrief"] });
+  if (!rl.ok) return { error: retryText(rl.retryAfter) };
   const job = iv.opportunity.job;
   const round = ROUND_LABEL[iv.round] ?? iv.round;
   const next = nextRound(iv.round);

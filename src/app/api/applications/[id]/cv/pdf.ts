@@ -3,6 +3,10 @@
 // Standard fonts use WinAnsiEncoding, which has no Cyrillic: Cyrillic is transliterated, other unsupported
 // characters are mapped to close ASCII equivalents, so the text stays readable instead of turning into boxes.
 
+/** Hard limits: a stored CV is user/AI-controlled text, so the renderer must stay cheap whatever it contains. */
+export const MAX_INPUT_CHARS = 40_000;
+export const MAX_PAGES = 30;
+
 const PAGE_W = 595.28, PAGE_H = 841.89, MARGIN_X = 56, MARGIN_TOP = 60, MARGIN_BOTTOM = 60;
 const BODY = 10.2, LEADING = 14.6;
 
@@ -53,10 +57,12 @@ export function toWinAnsi(text: string): number[] {
   return out;
 }
 
+const charW = (c: number, table: number[]) => (c >= 32 && c <= 126 ? table[c - 32] : HIGH[c] ?? (c >= 0xc0 ? 611 : 556));
+
 const width = (codes: number[], size: number, bold = false) => {
   const table = bold ? W_BOLD : W_REG;
   let w = 0;
-  for (const c of codes) w += c >= 32 && c <= 126 ? table[c - 32] : HIGH[c] ?? (c >= 0xc0 ? 611 : 556);
+  for (const c of codes) w += charW(c, table);
   return (w * size) / 1000;
 };
 
@@ -66,32 +72,45 @@ type Placed = Line & { y: number };
 const BULLET = /^(\s*)([•\-*–]|\d+\.)\s+/;
 const isHeading = (s: string) => /^[A-Z][A-Z &/+-]{2,}$/.test(s.trim()) && s.trim().length <= 40;
 
-/** Greedy word wrap on WinAnsi codes. Words longer than the line are hard-broken. */
-function wrap(codes: number[], maxW: number, size: number, bold: boolean): number[][] {
-  const words: number[][] = [];
-  let cur: number[] = [];
-  for (const c of codes) {
-    if (c === 32) { words.push(cur); cur = []; } else cur.push(c);
-  }
-  words.push(cur);
+/**
+ * Greedy word wrap on WinAnsi codes, linear in the input length. Words longer than the line are hard-broken
+ * in a single pass over their characters (no re-measuring of prefixes, no repeated slicing).
+ */
+export function wrap(codes: number[], maxW: number, size: number, bold: boolean): number[][] {
+  const table = bold ? W_BOLD : W_REG;
+  const limit = (maxW * 1000) / size; // in font units, so each char costs one table lookup
+  const space = charW(32, table);
   const lines: number[][] = [];
   let line: number[] = [];
-  const space = width([32], size, bold);
   let lw = 0;
-  for (let word of words) {
-    let ww = width(word, size, bold);
-    if (line.length && lw + space + ww > maxW) { lines.push(line); line = []; lw = 0; }
-    while (ww > maxW) {
-      let cut = word.length;
-      while (cut > 1 && width(word.slice(0, cut), size, bold) > maxW) cut--;
-      if (line.length) { lines.push(line); line = []; lw = 0; }
-      lines.push(word.slice(0, cut));
-      word = word.slice(cut);
-      ww = width(word, size, bold);
+  const flush = () => { lines.push(line); line = []; lw = 0; };
+  let i = 0;
+  const n = codes.length;
+  while (i <= n) {
+    // next word: [i, j)
+    let j = i;
+    let ww = 0;
+    while (j < n && codes[j] !== 32) ww += charW(codes[j++], table);
+    if (ww > limit) {
+      // Hard-break the long word into full-width chunks; the last chunk stays open for the following words.
+      if (line.length) flush();
+      let k = i;
+      let cw = 0;
+      let start = i;
+      for (; k < j; k++) {
+        const w = charW(codes[k], table);
+        if (cw + w > limit && k > start) { lines.push(codes.slice(start, k)); start = k; cw = 0; }
+        cw += w;
+      }
+      line = codes.slice(start, j);
+      lw = cw;
+    } else {
+      if (line.length && lw + space + ww > limit) flush();
+      if (line.length) { line.push(32); lw += space; }
+      for (let k = i; k < j; k++) line.push(codes[k]);
+      lw += ww;
     }
-    if (line.length) { line.push(32); lw += space; }
-    line.push(...word);
-    lw += ww;
+    i = j + 1;
   }
   lines.push(line);
   return lines;
@@ -101,10 +120,13 @@ function wrap(codes: number[], maxW: number, size: number, bold: boolean): numbe
 function layout(text: string): Placed[][] {
   const maxW = PAGE_W - MARGIN_X * 2;
   const src = text.replace(/\r\n?/g, "\n").split("\n");
+  // Stop producing lines once we have far more than MAX_PAGES can hold (keeps layout bounded too).
+  const maxLines = MAX_PAGES * Math.ceil((PAGE_H - MARGIN_TOP - MARGIN_BOTTOM) / LEADING) + 1;
   const out: Line[] = [];
   let first = true;
   let blank = false;
   for (const raw of src) {
+    if (out.length > maxLines) break;
     if (!raw.trim()) { blank = true; continue; }
     const gap = blank ? 7 : 0;
     blank = false;
@@ -137,13 +159,20 @@ function layout(text: string): Placed[][] {
     const x = MARGIN_X + Math.min(24, lead * 3);
     wrap(codes, maxW - (x - MARGIN_X), BODY, entry).forEach((l, i) => out.push({ codes: l, x, size: BODY, bold: entry, gapBefore: i === 0 ? gap : 0 }));
   }
-  // Paginate
+  // Paginate (capped at MAX_PAGES; the rest is dropped with a visible note)
   const pages: Placed[][] = [[]];
   let y = PAGE_H - MARGIN_TOP;
   for (const l of out) {
     const lh = l.size > 12 ? l.size * 1.3 : LEADING;
     let gap = l.gapBefore;
-    if (y - gap - lh < MARGIN_BOTTOM && pages[pages.length - 1].length) { pages.push([]); y = PAGE_H - MARGIN_TOP; gap = 0; }
+    if (y - gap - lh < MARGIN_BOTTOM && pages[pages.length - 1].length) {
+      if (pages.length >= MAX_PAGES) {
+        const last = pages[pages.length - 1];
+        last[last.length - 1] = { codes: toWinAnsi("[...] truncated"), x: MARGIN_X, size: BODY, bold: false, gray: true, gapBefore: 0, y: last[last.length - 1].y };
+        break;
+      }
+      pages.push([]); y = PAGE_H - MARGIN_TOP; gap = 0;
+    }
     y -= gap + lh;
     pages[pages.length - 1].push({ ...l, y });
   }
@@ -162,7 +191,8 @@ const pdfString = (codes: number[]) => {
 
 /** Renders plain text to a PDF document (bytes). Pure ASCII output, so byte offsets equal string offsets. */
 export function textToPdf(text: string, meta: { title: string; footer?: string }): Uint8Array {
-  const pages = layout(text || " ");
+  const clipped = text.length > MAX_INPUT_CHARS ? `${text.slice(0, MAX_INPUT_CHARS)}\n\n[...] truncated` : text;
+  const pages = layout(clipped || " ");
   const objs: string[] = [];
   const add = (body: string) => { objs.push(body); return objs.length; };
 
@@ -177,14 +207,14 @@ export function textToPdf(text: string, meta: { title: string; footer?: string }
       const color = l.gray ? "0.27 0.38 0.40 rg" : "0.08 0.08 0.08 rg";
       stream += `BT ${color} /${l.bold ? "F2" : "F1"} ${l.size} Tf ${l.x.toFixed(2)} ${l.y.toFixed(2)} Td ${pdfString(l.codes)} Tj ET\n`;
     }
-    const foot = toWinAnsi(`${meta.footer ? `${meta.footer}  ·  ` : ""}${pi + 1} / ${pages.length}`);
+    const foot = toWinAnsi(`${meta.footer ? `${meta.footer.slice(0, 120)}  ·  ` : ""}${pi + 1} / ${pages.length}`);
     stream += `BT 0.55 0.55 0.55 rg /F1 7.5 Tf ${(PAGE_W - MARGIN_X - width(foot, 7.5)).toFixed(2)} 32 Td ${pdfString(foot)} Tj ET\n`;
     const content = add(`<< /Length ${stream.length} >>\nstream\n${stream}endstream`);
     kids.push(add(`<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 ${fReg} 0 R /F2 ${fBold} 0 R >> >> /Contents ${content} 0 R >>`));
   });
   objs[catalog - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
   objs[pagesId - 1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(" ")}] /Count ${kids.length} >>`;
-  const info = add(`<< /Title ${pdfString(toWinAnsi(meta.title))} /Producer (Simplify) /CreationDate (D:${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}Z) >>`);
+  const info = add(`<< /Title ${pdfString(toWinAnsi(meta.title.slice(0, 200)))} /Producer (Simplify) /CreationDate (D:${new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14)}Z) >>`);
 
   let out = "%PDF-1.4\n"; // the whole file is ASCII (high bytes are octal-escaped), so string length = byte offset
   const offsets: number[] = [];

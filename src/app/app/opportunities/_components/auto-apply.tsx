@@ -1,11 +1,16 @@
 "use client";
 import { useOptimistic, useState, useTransition } from "react";
+import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { cx } from "@/components/ui";
 import { setAutoApply } from "@/lib/actions/opportunities";
 
-/** Global "Auto-apply all jobs above N% match" switch, bound to User.autonomy. Optimistic; reverts on failure. */
-export function AutoApplyToggle({ enabled, min }: { enabled: boolean; min: number }) {
+/**
+ * Global "Auto-apply all jobs above N% match" switch = User.autonomy.submitApplications (the Agent screen writes the
+ * same field; the threshold is set there). `consent` is the campaign's auto-submit consent: without it nothing is
+ * sent by the agent, so the status line says so instead of claiming the agent applies. Optimistic; reverts on failure.
+ */
+export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; min: number; consent: boolean }) {
   const [on, setOn] = useOptimistic(enabled);
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
@@ -45,7 +50,15 @@ export function AutoApplyToggle({ enabled, min }: { enabled: boolean; min: numbe
           <span id="auto-apply-label" className="text-[14px] font-medium leading-snug text-head">
             Auto-apply all jobs above <span className="num">{min}%</span> match
           </span>
-          <span className="text-[12.5px] text-ink-3" aria-live="polite">{on ? "Включено — агент подаёт сам" : "Выключено — агент подаёт только на отмеченные Apply / Auto"}</span>
+          <span className="text-[12.5px] text-ink-3" aria-live="polite">
+            {!consent
+              ? "Автоподача выключена в настройках — агент готовит пакеты, но сам ничего не отправляет. Подать можно кнопкой Apply."
+              : on
+                ? `Включено — агент сам подаёт на вакансии с Match ≥ ${min}% и на отмеченные Auto`
+                : "Выключено — агент подаёт только на отмеченные Apply / Auto"}
+          </span>
+          {!consent && <Link href="/app/settings" className="text-[12.5px] text-teal underline-offset-2 hover:underline">Включить автоподачу</Link>}
+          <Link href="/app/agent" className="text-[12px] text-ink-4 underline-offset-2 hover:text-head hover:underline">Порог Match — в настройках агента</Link>
         </div>
       </div>
       <p id="auto-apply-hint" className="flex items-start gap-1.5 text-[12px] leading-snug text-ink-3">

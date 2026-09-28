@@ -14,6 +14,8 @@ import { marketRange, percentileIn } from "../src/lib/engine/market";
 import { parseCVHeuristic } from "../src/lib/engine/profile";
 import { buildPackageHeuristic, type ProfileLite, type FactLite, type JobLite } from "../src/lib/engine/personalize";
 import { segmentStats, type OppLite } from "../src/lib/engine/insights";
+import { AUTONOMY_DEFAULTS, AUTONOMY_LABELS, agentMaySubmit, readAutonomy } from "../src/lib/engine/autonomy";
+import { startOfToday } from "../src/lib/time";
 
 const NOW = new Date("2026-09-28T12:00:00Z");
 const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86400000);
@@ -390,5 +392,71 @@ describe("insights.segmentStats", () => {
 
   test("empty input → []", () => {
     assert.deepEqual(segmentStats([], (o) => o.segment), []);
+  });
+});
+
+describe("autonomy.readAutonomy", () => {
+  test("autoApplyMinMatch is always a number: null / missing / garbage → 85, out of range clamped", () => {
+    assert.equal(readAutonomy(null).autoApplyMinMatch, 85);
+    assert.equal(readAutonomy("{not json").autoApplyMinMatch, 85);
+    assert.equal(readAutonomy(JSON.stringify({ autoApplyMinMatch: null })).autoApplyMinMatch, 85);
+    assert.equal(readAutonomy(JSON.stringify({ autoApplyMinMatch: "" })).autoApplyMinMatch, 85);
+    assert.equal(readAutonomy(JSON.stringify({ autoApplyMinMatch: "abc" })).autoApplyMinMatch, 85);
+    assert.equal(readAutonomy(JSON.stringify({ autoApplyMinMatch: true })).autoApplyMinMatch, 85);
+    assert.equal(readAutonomy(JSON.stringify({ autoApplyMinMatch: 12 })).autoApplyMinMatch, 50);
+    assert.equal(readAutonomy(JSON.stringify({ autoApplyMinMatch: 140 })).autoApplyMinMatch, 100);
+    assert.equal(readAutonomy(JSON.stringify({ autoApplyMinMatch: "72.4" })).autoApplyMinMatch, 72);
+    assert.equal(readAutonomy(JSON.stringify({ autoApplyMinMatch: 90 })).autoApplyMinMatch, 90);
+  });
+
+  test("legacy 'no threshold' (null) keeps submitApplications as stored", () => {
+    const a = readAutonomy(JSON.stringify({ submitApplications: false, autoApplyMinMatch: null }));
+    assert.equal(a.submitApplications, false);
+    assert.equal(typeof a.autoApplyMinMatch, "number");
+  });
+
+  test("submitApplications is the auto-apply control, not a separate switch row", () => {
+    assert.ok(!AUTONOMY_LABELS.some((l) => (l.key as string) === "submitApplications"));
+  });
+});
+
+describe("autonomy.agentMaySubmit", () => {
+  const on = { ...AUTONOMY_DEFAULTS, submitApplications: true, autoApplyMinMatch: 80 };
+  const off = { ...on, submitApplications: false };
+
+  test("Apply / Auto always allowed, even with auto-apply off or below the threshold", () => {
+    for (const a of [on, off]) {
+      assert.equal(agentMaySubmit({ decision: "apply", match: 10 }, a), true);
+      assert.equal(agentMaySubmit({ decision: "auto", match: 10 }, a), true);
+    }
+  });
+
+  test("no decision: only with auto-apply on and Match ≥ threshold", () => {
+    assert.equal(agentMaySubmit({ decision: "", match: 80 }, on), true);
+    assert.equal(agentMaySubmit({ decision: "", match: 79 }, on), false);
+    assert.equal(agentMaySubmit({ decision: "", match: 99 }, off), false);
+  });
+
+  test("skip is never allowed", () => {
+    assert.equal(agentMaySubmit({ decision: "skip", match: 100 }, on), false);
+  });
+});
+
+describe("time.startOfToday (Asia/Almaty, UTC+5)", () => {
+  test("mid-day Almaty → 00:00 Almaty = 19:00 UTC the previous day", () => {
+    assert.equal(startOfToday(new Date("2026-09-28T12:00:00Z")).toISOString(), "2026-09-27T19:00:00.000Z");
+  });
+
+  test("just after Almaty midnight belongs to the new day; just before belongs to the old one", () => {
+    assert.equal(startOfToday(new Date("2026-09-28T19:00:00Z")).toISOString(), "2026-09-28T19:00:00.000Z");
+    assert.equal(startOfToday(new Date("2026-09-28T18:59:59.999Z")).toISOString(), "2026-09-27T19:00:00.000Z");
+  });
+
+  test("always ≤ now and within the last 24 h", () => {
+    for (let h = 0; h < 48; h++) {
+      const now = new Date(Date.UTC(2026, 0, 1, h, 17, 3, 250));
+      const s = startOfToday(now);
+      assert.ok(s <= now && now.getTime() - s.getTime() < 86400000);
+    }
   });
 });

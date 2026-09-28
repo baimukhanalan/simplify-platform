@@ -18,11 +18,14 @@ export function IntentSync({ goalEmpty, urlIntent }: { goalEmpty: boolean; urlIn
     if (ran.current) return;
     ran.current = true;
     const intent = urlIntent ?? readStoredIntent();
-    clearStoredIntent();
-    if (!intent || !goalEmpty) return;
+    if (!intent) return;
+    // A goal already exists: nothing to apply, the stored answers are stale.
+    if (!goalEmpty) { clearStoredIntent(); return; }
     start(async () => {
       try {
         await applyIntent(intent);
+        // Only now is the intent safely in the Goal; on failure it stays in sessionStorage for the next attempt.
+        clearStoredIntent();
         if (urlIntent) router.replace("/onboarding"); else router.refresh();
       } catch { /* the Goal step still lets the user enter it by hand */ }
     });

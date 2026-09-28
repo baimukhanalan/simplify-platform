@@ -4,6 +4,7 @@ import { Chip, Field } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { j } from "@/lib/db";
 import { REGIONS } from "@/lib/engine/taxonomy";
+import { toUSD } from "@/lib/engine/fx";
 import { updateBasics, updateConstraints, addSkill, removeSkill, reparseCV } from "@/lib/actions/profile";
 import { ActionForm, FormSubmit } from "./action-form";
 import { Check, Disclosure } from "./bits";
@@ -192,7 +193,10 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
                 {Object.entries(REMOTE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
             </Field>
-            <Field label="Minimum salary, USD / год"><input name="minSalary" type="number" min={0} step={1000} inputMode="numeric" defaultValue={goal?.minSalary || p.salaryExpectation || ""} className="field" placeholder="70000" /></Field>
+            <Field label="Minimum salary, USD / год" hint={goal?.minSalary && goal.currency !== "USD" ? `≈ ${goal.minSalary.toLocaleString("ru-RU")} ${goal.currency}; пусто — не менять` : "Пусто — не менять"}>
+              {/* The goal may be stored in KZT/EUR: prefill converted to USD, since the action saves this field as USD. */}
+              <input name="minSalary" type="number" min={0} step={1000} inputMode="numeric" defaultValue={goal?.minSalary ? toUSD(goal.minSalary, goal.currency) : p.salaryExpectation || ""} className="field" placeholder="70000" />
+            </Field>
             <Field label="Выход на работу">
               <select name="noticePeriod" defaultValue={p.noticePeriod} className="field">
                 {Object.entries(NOTICE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}

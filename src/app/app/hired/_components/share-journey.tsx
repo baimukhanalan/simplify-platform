@@ -1,7 +1,7 @@
 "use client";
 import { useState, useSyncExternalStore, useTransition } from "react";
-import { Check, Copy, Link2, Share2 } from "lucide-react";
-import { createShareLink } from "@/lib/actions/share";
+import { Check, Copy, Link2, RefreshCw, Share2, Unlink } from "lucide-react";
+import { createShareLink, revokeShareLink, rotateShareLink } from "@/lib/actions/share";
 import { cx } from "@/components/ui";
 
 const noop = () => () => {};
@@ -27,6 +27,29 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
         else setError(res.error);
       } catch {
         setError("Не удалось создать ссылку. Проверьте соединение и попробуйте ещё раз.");
+      }
+    });
+
+  const rotate = () =>
+    start(async () => {
+      setError(null);
+      try {
+        const res = await rotateShareLink();
+        if (res.ok) setPath(res.path);
+        else setError(res.error);
+      } catch {
+        setError("Не удалось обновить ссылку. Попробуйте ещё раз.");
+      }
+    });
+
+  const revoke = () =>
+    start(async () => {
+      setError(null);
+      try {
+        await revokeShareLink();
+        setPath(null);
+      } catch {
+        setError("Не удалось отключить ссылку. Попробуйте ещё раз.");
       }
     });
 
@@ -82,6 +105,12 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
         <a href={path} target="_blank" rel="noopener" className={cx("rounded text-[13px] text-white/60 underline-offset-4 hover:text-white hover:underline", ring)}>
           Открыть публичную страницу<span className="sr-only"> (в новой вкладке)</span>
         </a>
+        <button type="button" onClick={rotate} disabled={pending} title="Старая ссылка перестанет работать" className={cx("inline-flex items-center gap-1.5 rounded text-[13px] text-white/60 hover:text-white disabled:opacity-60", ring)}>
+          <RefreshCw className="size-3.5" strokeWidth={1.7} aria-hidden />Новая ссылка
+        </button>
+        <button type="button" onClick={revoke} disabled={pending} className={cx("inline-flex items-center gap-1.5 rounded text-[13px] text-white/60 hover:text-[#f2a7a8] disabled:opacity-60", ring)}>
+          <Unlink className="size-3.5" strokeWidth={1.7} aria-hidden />Отключить ссылку
+        </button>
       </div>
       {copied === "fail" && <p role="alert" className="text-[13px] text-[#f2a7a8]">Не удалось скопировать — выделите ссылку и скопируйте вручную.</p>}
       {error && <p role="alert" className="text-[13px] text-[#f2a7a8]">{error}</p>}

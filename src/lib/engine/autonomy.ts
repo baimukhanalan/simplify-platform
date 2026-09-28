@@ -3,13 +3,13 @@
 export type Autonomy = {
   findJobs: boolean; // discover new vacancies
   personalizeCv: boolean; // build application packages
-  submitApplications: boolean; // submit without asking
+  submitApplications: boolean; // auto-apply: submit roles with Match ≥ autoApplyMinMatch without asking (Apply/Auto roles go regardless)
   answerStandard: boolean; // answer standard screening questions (years, notice, relocation…)
   changeSalary: boolean; // may deviate from the salary expectation in answers
   outsideCountries: boolean; // may apply outside selected countries
   belowSalaryFloor: boolean; // may apply to roles paying below the minimum
   sensitive: "ask" | "decline"; // sensitive questions: always ask, or answer "prefer not to say"
-  autoApplyMinMatch: number | null; // auto-submit only above this Match (null = any qualified role)
+  autoApplyMinMatch: number; // auto-apply threshold, 50..100 (always set; off/on is submitApplications)
 };
 
 export const AUTONOMY_DEFAULTS: Autonomy = {
@@ -33,14 +33,32 @@ export function readAutonomy(raw: string | null | undefined): Autonomy {
   }
   const a = { ...AUTONOMY_DEFAULTS, ...parsed };
   if (a.sensitive !== "ask" && a.sensitive !== "decline") a.sensitive = "ask";
-  if (a.autoApplyMinMatch != null) a.autoApplyMinMatch = Math.max(50, Math.min(100, Math.round(Number(a.autoApplyMinMatch) || 85)));
+  a.autoApplyMinMatch = normalizeThreshold(a.autoApplyMinMatch);
   return a;
 }
 
-export const AUTONOMY_LABELS: { key: Exclude<keyof Autonomy, "sensitive" | "autoApplyMinMatch">; label: string; hint: string }[] = [
+/** Stored threshold → 50..100. Legacy null / garbage falls back to the default (85). */
+export function normalizeThreshold(v: unknown): number {
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  if (!Number.isFinite(n)) return AUTONOMY_DEFAULTS.autoApplyMinMatch;
+  return Math.max(50, Math.min(100, Math.round(n)));
+}
+
+/**
+ * The one rule for "may the agent submit this role on its own?" (runTick, approvals, decisions all use it).
+ * Apply/Auto are the user's explicit per-role go-ahead; otherwise auto-apply must be on and the role above the threshold.
+ * Campaign.autoSubmit (the Privacy consent) is checked separately by the caller and gates every agent submission.
+ */
+export function agentMaySubmit(opp: { decision: string; match: number }, a: Pick<Autonomy, "submitApplications" | "autoApplyMinMatch">) {
+  if (opp.decision === "skip") return false;
+  if (opp.decision === "apply" || opp.decision === "auto") return true;
+  return a.submitApplications && opp.match >= a.autoApplyMinMatch;
+}
+
+// submitApplications + autoApplyMinMatch are one control ("Auto-apply above N%"), rendered separately from these switches.
+export const AUTONOMY_LABELS: { key: Exclude<keyof Autonomy, "sensitive" | "autoApplyMinMatch" | "submitApplications">; label: string; hint: string }[] = [
   { key: "findJobs", label: "Find jobs", hint: "Искать новые вакансии каждый день" },
   { key: "personalizeCv", label: "Personalize CV", hint: "Адаптировать CV и cover letter под каждую вакансию" },
-  { key: "submitApplications", label: "Submit applications", hint: "Отправлять заявки без отдельного подтверждения" },
   { key: "answerStandard", label: "Answer standard questions", hint: "Опыт, notice period, relocation, мотивация" },
   { key: "changeSalary", label: "Change salary expectation", hint: "Отклоняться от вашей зарплатной вилки в ответах" },
   { key: "outsideCountries", label: "Apply outside selected countries", hint: "Подаваться за пределами выбранных стран" },

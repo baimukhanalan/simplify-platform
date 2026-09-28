@@ -3,7 +3,8 @@ import type { Prisma } from "@prisma/client";
 import { ArrowLeft, ArrowRight, Check, MapPin, Search } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j, insensitive } from "@/lib/db";
-import { currentCampaign } from "@/lib/ops-data";
+import { STRONG_MATCH, currentCampaign, windowNumbers } from "@/lib/ops-data";
+import { startOfToday } from "@/lib/time";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { REMOTE_LABEL, ago, salaryLabel } from "@/lib/ops";
@@ -17,7 +18,6 @@ import { interviewChance, plural, risks, whyFits, type FitCandidate, type Reason
 export const metadata = { title: "Opportunities" };
 
 const PER_PAGE = 24;
-const STRONG_MATCH = 70;
 const OPEN = ["found", "qualified", "prepared"];
 const TABS = [
   { key: "strong", label: "Подходят" },
@@ -35,14 +35,6 @@ function href(tab: Tab, q: string, page = 1) {
   if (page > 1) p.set("page", String(page));
   const s = p.toString();
   return `/app/opportunities${s ? `?${s}` : ""}`;
-}
-
-/** Start of the current day in Almaty (UTC+5, no DST). */
-function startOfToday() {
-  const off = 5 * 3600000;
-  const d = new Date(Date.now() + off);
-  d.setUTCHours(0, 0, 0, 0);
-  return new Date(d.getTime() - off);
 }
 
 const TONE_TEXT = { green: "text-green", teal: "text-teal", amber: "text-amber", rose: "text-rose" } as const;
@@ -69,7 +61,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const q = one(sp.q).trim().slice(0, 80);
   const page = Math.max(1, Number.parseInt(one(sp.page), 10) || 1);
   const autonomy = readAutonomy(user.autonomy);
-  const threshold = autonomy.autoApplyMinMatch ?? 85;
+  const threshold = autonomy.autoApplyMinMatch;
 
   const base: Prisma.OpportunityWhereInput = { campaignId: campaign.id };
   const search: Prisma.OpportunityWhereInput = q ? { job: { OR: [{ title: { contains: q, ...insensitive } }, { company: { contains: q, ...insensitive } }, { location: { contains: q, ...insensitive } }] } } : {};
@@ -88,13 +80,9 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     db.opportunity.count({ where: { ...base, createdAt: { gte: week } } }),
   ]);
   const since = foundToday ? today : foundWeek ? week : null;
-  const scope: Prisma.OpportunityWhereInput = since ? { ...base, createdAt: { gte: since } } : base;
 
-  const [found, fit, strong, submitted, waiting, counts, total, rows, candidate] = await Promise.all([
-    db.opportunity.count({ where: scope }),
-    db.opportunity.count({ where: { ...scope, eligibility: { not: "blocked" }, match: { gte: STRONG_MATCH } } }),
-    db.opportunity.count({ where: { ...scope, eligibility: { not: "blocked" }, match: { gte: threshold } } }),
-    db.opportunity.count({ where: { ...base, status: { in: APPLIED_OR_LATER }, ...(since ? { submittedAt: { gte: since } } : {}) } }),
+  const [{ found, fit, strong, submitted }, waiting, counts, total, rows, candidate] = await Promise.all([
+    windowNumbers(campaign.id, since, threshold),
     db.approval.count({ where: { userId: user.id, status: "pending", kind: { not: "handoff" } } }),
     Promise.all(TABS.map((t) => db.opportunity.count({ where: { ...base, ...tabWhere[t.key], ...search } }))),
     db.opportunity.count({ where }),
@@ -138,7 +126,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
           </div>
         </div>
         <div className="border-t border-line pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
-          <AutoApplyToggle enabled={autonomy.submitApplications} min={threshold} />
+          <AutoApplyToggle enabled={autonomy.submitApplications} min={threshold} consent={campaign.autoSubmit} />
         </div>
       </section>
 

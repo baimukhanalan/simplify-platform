@@ -2,14 +2,45 @@
 import "server-only";
 import { db } from "./db";
 
+/** Active/paused but past endsAt: over, even if no agent cycle has written status="expired" yet (e.g. while paused). */
+export const isOverdue = (c: { status: string; endsAt: Date | null }, now = new Date()) =>
+  (c.status === "active" || c.status === "paused") && c.endsAt != null && c.endsAt <= now;
+
 /** The campaign the operating screens show: the latest non-draft one (active, paused, hired or expired). */
-export function currentCampaign(userId: string) {
-  return db.campaign.findFirst({ where: { userId, status: { not: "draft" } }, orderBy: { createdAt: "desc" } });
+export async function currentCampaign(userId: string) {
+  const c = await db.campaign.findFirst({ where: { userId, status: { not: "draft" } }, orderBy: { createdAt: "desc" } });
+  // Show a campaign that ran out by date as expired right away; the next agent cycle persists it.
+  return c && isOverdue(c) ? { ...c, status: "expired" } : c;
 }
 
-/** The campaign the agent can still work on (active or paused). */
+/** The campaign the agent can still work on (active or paused, and not past its end date). */
 export function runningCampaign(userId: string) {
-  return db.campaign.findFirst({ where: { userId, status: { in: ["active", "paused"] } }, orderBy: { createdAt: "desc" } });
+  return db.campaign.findFirst({
+    where: { userId, status: { in: ["active", "paused"] }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+// ——— "Today" numbers (Today screen and Opportunities use the same window and the same definitions) ———
+
+/** Match from which a found role counts as "подошла" (fits). */
+export const STRONG_MATCH = 70;
+
+/**
+ * Counts for one window of a campaign. `since` is startOfToday() (src/lib/time.ts) for "Сегодня";
+ * null = the whole campaign. found = everything discovered; fit = eligible and Match ≥ 70; strong = eligible and
+ * Match ≥ the auto-apply threshold; submitted = applications sent in the window.
+ */
+export async function windowNumbers(campaignId: string, since: Date | null, threshold: number) {
+  const created = since ? { createdAt: { gte: since } } : {};
+  const eligible = { campaignId, ...created, status: { not: "skipped" }, eligibility: { not: "blocked" } };
+  const [found, fit, strong, submitted] = await Promise.all([
+    db.opportunity.count({ where: { campaignId, ...created } }),
+    db.opportunity.count({ where: { ...eligible, match: { gte: STRONG_MATCH } } }),
+    db.opportunity.count({ where: { ...eligible, match: { gte: threshold } } }),
+    db.opportunity.count({ where: { campaignId, submittedAt: since ? { gte: since } : { not: null } } }),
+  ]);
+  return { found, fit, strong, submitted };
 }
 
 // ——— Push moments (Notification rows created by the engine's `notify`) ———

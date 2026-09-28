@@ -38,11 +38,18 @@ export const SPEECH_ERROR: Record<string, string> = {
   network: "Сервис распознавания речи недоступен (сеть). Используйте ввод текста.",
 };
 
+function flushEnd(waiters: { current: (() => void)[] }) {
+  const w = waiters.current;
+  waiters.current = [];
+  w.forEach((f) => f());
+}
+
 /**
  * Browser speech recognition. Audio is handled by the browser's speech engine; Simplify never records it.
  * - `onFinal(text)` fires for each final segment.
  * - `onInterim(text)` fires with the current in-progress segment.
  * `continuous` keeps listening (auto-restarts when the engine stops on silence).
+ * `stop()` returns a promise that resolves after the last final segment has been delivered.
  */
 export function useSpeech(opts: { lang: string; continuous?: boolean; onFinal: (text: string) => void; onInterim?: (text: string) => void }) {
   const [listening, setListening] = useState(false);
@@ -54,10 +61,25 @@ export function useSpeech(opts: { lang: string; continuous?: boolean; onFinal: (
     cb.current = opts;
   });
 
-  const stop = useCallback(() => {
+  // Resolvers waiting for the current recognizer's onend (stop() → final segment delivered).
+  const endWaiters = useRef<(() => void)[]>([]);
+
+  /** Stop listening. The promise resolves once the engine has delivered its last final segment (onend), or after 2 s. */
+  const stop = useCallback((): Promise<void> => {
     wantRef.current = false;
-    recRef.current?.stop();
     setListening(false);
+    const rec = recRef.current;
+    if (!rec) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      const timer = setTimeout(() => resolve(), 2000);
+      endWaiters.current.push(() => { clearTimeout(timer); resolve(); });
+      try {
+        rec.stop();
+      } catch {
+        recRef.current = null;
+        flushEnd(endWaiters);
+      }
+    });
   }, []);
 
   const start = useCallback(() => {
@@ -66,12 +88,17 @@ export function useSpeech(opts: { lang: string; continuous?: boolean; onFinal: (
       setError("Распознавание речи не поддерживается этим браузером (нужен Chrome, Edge или Safari). Используйте ввод текста.");
       return;
     }
-    recRef.current?.abort();
+    // Replace any previous recognizer; its late events are ignored by the identity guards below.
+    const prev = recRef.current;
+    recRef.current = null;
+    flushEnd(endWaiters);
+    prev?.abort();
     const rec = new Ctor();
     rec.lang = cb.current.lang;
     rec.continuous = cb.current.continuous ?? true;
     rec.interimResults = true;
     rec.onresult = (e) => {
+      if (recRef.current !== rec) return;
       let interim = "";
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
@@ -81,12 +108,15 @@ export function useSpeech(opts: { lang: string; continuous?: boolean; onFinal: (
       cb.current.onInterim?.(interim.trim());
     };
     rec.onerror = (e) => {
+      if (recRef.current !== rec) return;
       if (e.error === "no-speech" || e.error === "aborted") return;
       setError(SPEECH_ERROR[e.error] ?? `Ошибка распознавания: ${e.error}`);
       wantRef.current = false;
       setListening(false);
     };
     rec.onend = () => {
+      // A stale recognizer (replaced by start() or unmounted) must never restart itself or touch state.
+      if (recRef.current !== rec) return;
       // Engines stop after silence; keep going while the user wants to listen.
       if (wantRef.current && (cb.current.continuous ?? true)) {
         try {
@@ -97,7 +127,9 @@ export function useSpeech(opts: { lang: string; continuous?: boolean; onFinal: (
         }
       }
       wantRef.current = false;
+      recRef.current = null;
       setListening(false);
+      flushEnd(endWaiters);
     };
     recRef.current = rec;
     wantRef.current = true;
@@ -108,12 +140,16 @@ export function useSpeech(opts: { lang: string; continuous?: boolean; onFinal: (
     } catch {
       setError("Не удалось запустить микрофон.");
       wantRef.current = false;
+      recRef.current = null;
     }
   }, []);
 
   useEffect(() => () => {
     wantRef.current = false;
-    recRef.current?.abort();
+    const rec = recRef.current;
+    recRef.current = null;
+    flushEnd(endWaiters);
+    rec?.abort();
   }, []);
 
   return { listening, error, start, stop, clearError: () => setError(null) };

@@ -40,10 +40,11 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
   const { state, pending, formAction, onSubmit } = useActionForm<AutonomyState>(saveAutonomy, {});
   const [v, setV] = useState<Record<string, boolean>>(() => Object.fromEntries(rows.map((r) => [r.key, Boolean(initial[r.key as keyof Autonomy])])));
   const [sensitive, setSensitive] = useState(initial.sensitive);
-  const [autoOn, setAutoOn] = useState(initial.autoApplyMinMatch != null);
-  const [threshold, setThreshold] = useState(initial.autoApplyMinMatch ?? 85);
+  // One control for two fields (shared with the Opportunities switch): on/off = submitApplications, slider = threshold.
+  const [autoOn, setAutoOn] = useState(initial.submitApplications);
+  const [threshold, setThreshold] = useState(initial.autoApplyMinMatch);
 
-  const selfRows = rows.filter((r) => ["findJobs", "personalizeCv", "submitApplications", "answerStandard"].includes(r.key));
+  const selfRows = rows.filter((r) => ["findJobs", "personalizeCv", "answerStandard"].includes(r.key));
   const askRows = rows.filter((r) => !selfRows.includes(r));
 
   return (
@@ -55,7 +56,6 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
           {selfRows.map((r) => (
             <Switch
               key={r.key} name={r.key} label={r.label} hint={r.hint} checked={v[r.key]} onChange={(x) => setV((p) => ({ ...p, [r.key]: x }))}
-              note={r.key === "submitApplications" && v[r.key] && !autoSubmitConsent ? "Согласие на автоподачу отозвано в «Приватности» — заявки будут ждать тебя." : undefined}
             />
           ))}
         </div>
@@ -65,17 +65,23 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
         <legend className="sr-only">Auto-apply</legend>
         <div className="label mb-1" aria-hidden>Auto-apply</div>
         <Switch
-          name="autoApplyOn"
+          name="submitApplications"
           label={`Auto-apply all jobs above ${threshold}% match`}
-          hint={autoOn ? "Ниже порога агент готовит пакет, но заявка ждёт твоего решения в Opportunities." : "Порог выключен: агент подаёт на любые подходящие вакансии (Match от 55%)."}
+          hint={
+            autoOn
+              ? `Агент сам подаёт на вакансии с Match ≥ ${threshold}%. Ниже порога пакет готов, а заявка ждёт твоего Apply или Auto в Opportunities.`
+              : "Выключено: агент находит и готовит пакеты, но подаёт только на вакансии, которые ты отметил Apply или Auto."
+          }
           checked={autoOn}
           onChange={setAutoOn}
+          note={!autoSubmitConsent ? "Автоподача выключена в «Настройках» (согласие): агент сам ничего не отправляет, даже роли с Auto. Подать можно кнопкой Apply." : undefined}
         />
-        <div className={cx("flex flex-col gap-2 pb-1 pt-4 transition-opacity", !autoOn && "opacity-45")}>
+        <div className={cx("flex flex-col gap-2 pb-1 pt-4 transition-opacity", !autoOn && "opacity-60")}>
           <div className="flex items-center justify-between">
             <label htmlFor="threshold" className="label !text-[10px]">Порог Match</label>
             <output htmlFor="threshold" className="num text-[22px] leading-none text-head">{threshold}%</output>
           </div>
+          {/* Always submitted: the threshold is kept while auto-apply is off, so switching it back on restores it. */}
           <input
             id="threshold"
             name="autoApplyMinMatch"
@@ -84,14 +90,12 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
             max={100}
             step={1}
             value={threshold}
-            disabled={!autoOn}
             onChange={(e) => setThreshold(Number(e.target.value))}
             aria-valuetext={`${threshold}%`}
-            className="w-full accent-[#1a6e48] disabled:cursor-not-allowed"
+            className="w-full accent-[#1a6e48]"
           />
           <div className="flex justify-between font-mono text-[10px] uppercase tracking-[.06em] text-ink-4"><span>50% · больше заявок</span><span>100% · только идеальные</span></div>
         </div>
-        {!autoOn && <input type="hidden" name="autoApplyMinMatch" value={threshold} />}
       </fieldset>
 
       <fieldset className="glass p-5 sm:p-6">

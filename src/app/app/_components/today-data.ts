@@ -3,9 +3,10 @@ import { db, j } from "@/lib/db";
 import { reachedInterview } from "@/lib/engine/insights";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { regionsFor } from "@/lib/regions";
+import { windowNumbers } from "@/lib/ops-data";
+import { APP_TZ as TZ, startOfToday } from "@/lib/time";
 
 const DAY = 86400000;
-const TZ = "Asia/Almaty";
 
 // ——— Clock & greeting (Asia/Almaty) ———
 
@@ -217,13 +218,15 @@ export type TimelineDay = Awaited<ReturnType<typeof loadTimeline>>[number];
 
 export async function loadToday(user: { id: string; autonomy: string; goal: { primaryRole: string; countries: string; minSalary: number; currency: string } | null }, campaign: { id: string; status: string; startedAt: Date | null; createdAt: Date; endsAt: Date | null; lastRunAt: Date | null; dailyLimit: number }) {
   const now = Date.now();
-  const since24 = new Date(now - DAY);
+  // "Сегодня" = the Almaty calendar day, the same window and definitions as the Opportunities header.
+  const dayStart = startOfToday(new Date(now));
   const autonomy = readAutonomy(user.autonomy);
-  const [opps, approvals, upcoming, offers, responses24, timeline] = await Promise.all([
+  const [opps, day, approvals, upcoming, offers, responsesToday, timeline] = await Promise.all([
     db.opportunity.findMany({
       where: { campaignId: campaign.id },
       select: { status: true, match: true, createdAt: true, submittedAt: true, interviews: { select: { round: true } }, _count: { select: { offers: true } } },
     }),
+    windowNumbers(campaign.id, dayStart, autonomy.autoApplyMinMatch),
     db.approval.count({ where: { userId: user.id, status: "pending" } }),
     db.interview.findMany({
       where: { userId: user.id, status: "upcoming" },
@@ -232,26 +235,19 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
       select: { id: true, round: true, scheduledAt: true, opportunity: { select: { job: { select: { company: true, title: true } } } } },
     }),
     db.offer.findMany({ where: { userId: user.id, status: { in: ["received", "negotiating"] } }, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, company: true, role: true } }),
-    db.inboxMessage.count({ where: { userId: user.id, receivedAt: { gte: since24 }, classification: { in: ["interview", "assessment", "offer", "rejection"] } } }),
+    db.inboxMessage.count({ where: { userId: user.id, receivedAt: { gte: dayStart }, classification: { in: ["interview", "assessment", "offer", "rejection"] } } }),
     loadTimeline(user.id, campaign.id, new Date(now - 3 * DAY)),
   ]);
 
   const t = totals(opps);
-  const fresh = opps.filter((o) => o.createdAt >= since24);
-  const today = {
-    found: fresh.length,
-    qualified: fresh.filter((o) => !["found", "skipped"].includes(o.status)).length,
-    strong: fresh.filter((o) => o.status !== "skipped" && o.match >= (autonomy.autoApplyMinMatch ?? 75)).length,
-    submitted: opps.filter((o) => o.submittedAt && o.submittedAt >= since24).length,
-    responses: responses24,
-  };
+  const today = { found: day.found, qualified: day.fit, strong: day.strong, submitted: day.submitted, responses: responsesToday };
   const { line, regions } = goalLine(user.goal);
   return {
     clock: campaignDay(campaign, now),
     totals: t,
     stage: currentStage(t, campaign.status),
     today,
-    strongThreshold: autonomy.autoApplyMinMatch ?? 75,
+    strongThreshold: autonomy.autoApplyMinMatch,
     goalLine: line,
     doing: doingNow(campaign.status, regions, autonomy.findJobs, autonomy.personalizeCv),
     approvals,

@@ -9,6 +9,9 @@ export default async function Image({ params }: { params: Promise<{ token: strin
   const { token } = await params;
   const d = await loadShare(token);
   const title = d ? headline(d) : "Hired with Simplify";
+  // Role/company are clamped in loadShare; long (e.g. Kazakh) titles still get a smaller size to stay inside the card.
+  // Default next/og font (Geist) covers Cyrillic incl. Kazakh letters, so names/roles render without transliteration.
+  const titleSize = title.length > 110 ? 30 : title.length > 70 ? 34 : 40;
   const stats = d
     ? [
         [String(d.applications), "applications"],
@@ -30,7 +33,7 @@ export default async function Image({ params }: { params: Promise<{ token: strin
           <div style={{ fontSize: 150, lineHeight: 0.9, letterSpacing: -4, display: "flex" }}>
             HIRED<span style={{ color: "#7fe3b6" }}>.</span>
           </div>
-          <div style={{ marginTop: 28, fontSize: 40, lineHeight: 1.2, color: "rgba(255,255,255,.88)", maxWidth: 1000, display: "flex" }}>{title}</div>
+          <div style={{ marginTop: 28, fontSize: titleSize, lineHeight: 1.2, color: "rgba(255,255,255,.88)", maxWidth: 1000, display: "flex" }}>{title}</div>
         </div>
         <div style={{ display: "flex", gap: 64 }}>
           {stats.map(([v, l]) => (

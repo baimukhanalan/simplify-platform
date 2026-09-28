@@ -2,7 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { db, j, s, noNul } from "../db";
 import { isAhead } from "../rounds";
-import { readAutonomy } from "./autonomy";
+import { agentMaySubmit, readAutonomy } from "./autonomy";
 import { scoreJob, type CandidateCtx, type MatchResult } from "./matching";
 import { buildPackage, type FactLite, type ProfileLite } from "./personalize";
 import { ensureSeedJobs } from "./ingest";
@@ -67,6 +67,12 @@ export async function discover(campaignId: string) {
   const c = ctx(j<Record<string, number>>(campaign.allocation, {}));
   const wanted = new Set([c.goal.primaryRole, ...c.goal.extraRoles].map(classifyRole));
   const known = new Set((await db.opportunity.findMany({ where: { campaignId }, select: { jobId: true } })).map((o) => o.jobId));
+  // A new campaign (e.g. after HIRED) must not re-find roles the user already applied to or was rejected from before.
+  const earlier = await db.opportunity.findMany({
+    where: { campaign: { userId: campaign.userId, id: { not: campaignId } }, OR: [{ status: { in: APPLIED_OR_LATER } }, { submittedAt: { not: null } }] },
+    select: { jobId: true },
+  });
+  for (const o of earlier) known.add(o.jobId);
   const jobs = await db.job.findMany({ where: { active: true } });
   let found = 0, qualified = 0, blocked = 0;
   for (const job of jobs) {
@@ -194,37 +200,59 @@ export async function submit(opportunityId: string, via: "agent" | "user" = "age
 /** One agent cycle: discover → re-rank → prepare → submit, within the daily limit. */
 export async function runTick(campaignId: string) {
   const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
-  if (campaign.status !== "active") return { skipped: campaign.status };
-  if (campaign.endsAt && campaign.endsAt < new Date()) {
+  // Expiry first: a campaign paused past its end date is over too, not "paused forever".
+  if ((campaign.status === "active" || campaign.status === "paused") && campaign.endsAt && campaign.endsAt < new Date()) {
     await db.campaign.update({ where: { id: campaignId }, data: { status: "expired" } });
     return { skipped: "expired" };
   }
+  if (campaign.status !== "active") return { skipped: campaign.status };
   const { autonomy } = await loadCandidate(campaign.userId);
   const d = autonomy.findJobs ? await discover(campaignId) : { found: 0, qualified: 0, blocked: 0 };
   await rerank(campaignId);
   const since = new Date(Date.now() - 86400000);
   const today = await db.opportunity.count({ where: { campaignId, OR: [{ submittedAt: { gte: since } }, { status: "prepared", updatedAt: { gte: since } }] } });
-  const budget = Math.max(0, campaign.dailyLimit - today);
+  let budget = Math.max(0, campaign.dailyLimit - today);
+  const startBudget = budget;
+  let prepared = 0, submitted = 0, waiting = 0;
+
+  // Campaign.autoSubmit = the user's auto-submit consent; it gates every submission the agent makes on its own.
+  // Roles prepared earlier that have since become allowed (Apply/Auto, or auto-apply turned on / threshold lowered,
+  // or the last question answered while paused) go out first. Anything with an open question or handoff keeps waiting.
+  if (campaign.autoSubmit) {
+    const ready = await db.opportunity.findMany({
+      where: { campaignId, status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } },
+      orderBy: [{ decision: "desc" }, { priority: "desc" }],
+      select: { id: true, decision: true, match: true, updatedAt: true },
+    });
+    for (const o of ready) {
+      if (!agentMaySubmit(o, autonomy)) continue;
+      // A role prepared within the last 24h is already counted in `today`; an older one takes a slot from the limit.
+      const counted = o.updatedAt >= since;
+      if (!counted && budget <= 0) continue;
+      const res = await submit(o.id);
+      if (!counted) budget--;
+      if (res.ok) submitted++; else waiting++;
+    }
+  }
+
   if (!autonomy.personalizeCv) {
     await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: new Date() } });
-    await logEvent(campaign.userId, "tick", `Цикл агента: +${d.found} найдено. Персонализация CV выключена в настройках агента`);
-    return { ...d, prepared: 0, submitted: 0, waiting: 0, budget };
+    await logEvent(campaign.userId, "tick", `Цикл агента: +${d.found} найдено${submitted ? `, ${submitted} отправлено` : ""}. Персонализация CV выключена в настройках агента`);
+    return { ...d, prepared: 0, submitted, waiting, budget: startBudget };
   }
   // User-confirmed ("apply") and user-delegated ("auto") roles go first; skipped roles never.
-  const queue = await db.opportunity.findMany({ where: { campaignId, status: "qualified", decision: { not: "skip" } }, orderBy: [{ decision: "desc" }, { priority: "desc" }], take: budget });
-  let prepared = 0, submitted = 0, waiting = 0;
+  const queue = budget > 0 ? await db.opportunity.findMany({ where: { campaignId, status: "qualified", decision: { not: "skip" } }, orderBy: [{ decision: "desc" }, { priority: "desc" }], take: budget }) : [];
   for (const o of queue) {
     const r = await prepare(o.id);
     prepared++;
-    const allowed = o.decision === "apply" || o.decision === "auto" || (autonomy.submitApplications && (autonomy.autoApplyMinMatch == null || o.match >= autonomy.autoApplyMinMatch));
-    if (campaign.autoSubmit && allowed && !r.pending) {
+    if (campaign.autoSubmit && agentMaySubmit(o, autonomy) && !r.pending) {
       const res = await submit(o.id);
       if (res.ok) submitted++; else waiting++;
     } else waiting++;
   }
   await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: new Date() } });
   await logEvent(campaign.userId, "tick", `Цикл агента: +${d.found} найдено, ${prepared} подготовлено, ${submitted} отправлено, ${waiting} ждут вас`);
-  return { ...d, prepared, submitted, waiting, budget };
+  return { ...d, prepared, submitted, waiting, budget: startBudget };
 }
 
 // ——— Inbox Intelligence → pipeline ———

@@ -26,10 +26,25 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
   const [secs, setSecs] = useState(0);
   const supported = useSpeechSupported();
   const elapsed = useRef(0);
+  // Latest transcript/interim outside React state, so a submit that waits for the last speech segment reads it synchronously.
+  const textRef = useRef(initialTranscript);
+  const interimRef = useRef("");
+  const setTranscript = (next: string) => {
+    textRef.current = next;
+    setText(next);
+  };
+  const append = (t: string) => {
+    if (!t) return;
+    const d = textRef.current;
+    setTranscript(d ? `${d.trimEnd()} ${t}` : t);
+  };
   const speech = useSpeech({
     lang,
-    onFinal: (t) => setText((d) => (d ? `${d.trimEnd()} ${t}` : t)),
-    onInterim: setInterim,
+    onFinal: append,
+    onInterim: (t) => {
+      interimRef.current = t;
+      setInterim(t);
+    },
   });
   const { listening, stop } = speech;
 
@@ -48,8 +63,11 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
 
   const toggle = () => {
     if (listening) {
-      stop();
-      setInterim("");
+      void stop().then(() => {
+        append(interimRef.current.trim());
+        interimRef.current = "";
+        setInterim("");
+      });
     } else speech.start();
   };
 
@@ -60,9 +78,18 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
 
   return (
     <form
-      onSubmit={(e) => {
-        if (listening) stop();
-        submitVia(action, startTransition)(e);
+      onSubmit={async (e) => {
+        if (!listening) return submitVia(action, startTransition)(e);
+        // Recording: stop, wait for the engine's final segment (onend), then post the complete transcript.
+        e.preventDefault();
+        const fd = new FormData(e.currentTarget);
+        await stop();
+        // An engine that ended without finalizing the in-progress phrase: keep what the user saw on screen.
+        append(interimRef.current.trim());
+        interimRef.current = "";
+        setInterim("");
+        fd.set("transcript", textRef.current);
+        startTransition(() => action(fd));
       }}
       className="flex flex-col gap-6"
       aria-describedby={state?.error ? `${uid}-err` : undefined}
@@ -118,7 +145,7 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
           id={`${uid}-t`}
           name="transcript"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => setTranscript(e.target.value)}
           rows={6}
           required
           placeholder="Спросили про сегментацию клиентов и SQL window functions. Сложно было с вопросом про конфликт. Сказали, что следующий этап — техническое интервью, ответ обещали через неделю. О зарплате не говорили."

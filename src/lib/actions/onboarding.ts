@@ -1,5 +1,5 @@
 "use server";
-import { rateLimit } from "../rate-limit";
+import { rateLimit, rateLimitUser, retryText } from "../rate-limit";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
@@ -65,6 +65,11 @@ export async function saveSources(_: FormState, form: FormData): Promise<FormSta
 
   await db.profile.upsert({ where: { userId: user.id }, create: { userId: user.id }, update: {} });
   const fresh = hasText && cvText !== prev?.cvText;
+  if (fresh) {
+    // A fresh CV means an AI parse: cap per user (durable via the cv_parsed / cv_reparsed events).
+    const rl = await rateLimitUser("cv-parse-user", user.id, 10, 60 * 60 * 1000, { eventTypes: ["cv_parsed", "cv_reparsed"] });
+    if (!rl.ok) return { error: retryText(rl.retryAfter), fields: { cvText: retryText(rl.retryAfter) } };
+  }
   let factCount = 0;
   let skillCount = 0;
   if (fresh) {

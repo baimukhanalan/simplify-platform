@@ -7,6 +7,7 @@ import { parseCV } from "../engine/profile";
 import { logEvent } from "../engine/agent";
 import { ROLE_FAMILIES, REGIONS, SENIORITY, classifyRole, seniorityFromYears } from "../engine/taxonomy";
 import { marketRange } from "../engine/market";
+import { rateLimitUser, retryText } from "../rate-limit";
 
 /** Result shape for forms driven by useActionState. */
 export type FormState = { ok?: boolean; error?: string; message?: string; at?: number } | undefined;
@@ -132,16 +133,19 @@ export async function updateConstraints(_: FormState, form: FormData): Promise<F
   const workAuth = [...new Set([citizenship, ...picked.flatMap((c) => (c === "EU" ? REGIONS.EU.countries : [c]))])];
   const needsSponsorship = bool(form, "needsSponsorship");
   const relocation = bool(form, "relocation");
-  const minSalary = intOr(str(form, "minSalary", 12), 0, 0, 2_000_000);
+  // Empty field = "leave the goal's minimum alone" (it may be in KZT/EUR; the form shows it converted to USD).
+  const rawSalary = str(form, "minSalary", 12);
+  const minSalary = rawSalary ? intOr(rawSalary, 0, 0, 2_000_000) : null;
   await db.profile.upsert({
     where: { userId: user.id },
     update: { citizenship, country: citizenship, workAuth: s(workAuth), needsSponsorship, relocation, remotePref: oneOf(str(form, "remotePref", 10), REMOTE, "remote"), noticePeriod: str(form, "noticePeriod", 40) || "2 weeks", ...(minSalary ? { salaryExpectation: minSalary } : {}) },
     create: { userId: user.id, citizenship, workAuth: s(workAuth), needsSponsorship, relocation },
   });
+  const salary = minSalary === null ? {} : { minSalary, currency: "USD" };
   await db.goal.upsert({
     where: { userId: user.id },
-    update: { relocation, sponsorshipNeeded: needsSponsorship, minSalary, currency: "USD" },
-    create: { userId: user.id, relocation, sponsorshipNeeded: needsSponsorship, minSalary, currency: "USD" },
+    update: { relocation, sponsorshipNeeded: needsSponsorship, ...salary },
+    create: { userId: user.id, relocation, sponsorshipNeeded: needsSponsorship, ...salary },
   });
   await logEvent(user.id, "profile_constraints", "Ограничения профиля обновлены");
   refresh();
@@ -301,6 +305,8 @@ export async function reparseCV(_: FormState, form: FormData): Promise<FormState
   const user = await requireUser();
   const text = noNul(String(form.get("cvText") ?? "")).trim().slice(0, 30000);
   if (text.length < 200) return fail("Вставьте полный текст CV — минимум 200 символов.");
+  const rl = await rateLimitUser("cv-parse-user", user.id, 10, 60 * 60 * 1000, { eventTypes: ["cv_parsed", "cv_reparsed"] });
+  if (!rl.ok) return fail(retryText(rl.retryAfter));
   const { data: parsed, by } = await parseCV(text);
   const existing = await db.fact.findMany({ where: { userId: user.id }, select: { kind: true, title: true, org: true } });
   const key = (f: { kind: string; title: string; org: string }) => `${f.kind}|${f.title.trim().toLowerCase()}|${f.org.trim().toLowerCase()}`;

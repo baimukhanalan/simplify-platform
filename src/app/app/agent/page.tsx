@@ -18,7 +18,8 @@ export default async function AgentPage() {
   const user = await requireUser();
   const autonomy = readAutonomy(user.autonomy);
   const campaign = await runningCampaign(user.id);
-  const autoSubmitConsent = j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false;
+  // The agent submits on its own only with the auto-submit consent; a running campaign carries it as campaign.autoSubmit.
+  const autoSubmitConsent = campaign ? campaign.autoSubmit : j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false;
   const paused = campaign?.status === "paused";
   const plan = campaign ? PLANS[campaign.plan as keyof typeof PLANS] ?? PLANS.local : null;
 
@@ -64,7 +65,7 @@ export default async function AgentPage() {
                   )}
                 </div>
                 <form action={updateCampaignSettings} className="flex flex-col gap-3 border-t border-line pt-5">
-                  {/* updateCampaignSettings also writes autoSubmit: keep it as the Submit applications switch set it. */}
+                  {/* updateCampaignSettings also writes autoSubmit (the consent mirror): pass the current value through unchanged. */}
                   {campaign.autoSubmit && <input type="hidden" name="autoSubmit" value="on" />}
                   <Field label="Заявок в день" hint={`1–25. План ${plan?.label} рассчитан на ~${plan?.dailyLimit} в день: меньше — каждая заявка сильнее.`}>
                     <input name="dailyLimit" type="number" min={1} max={25} required inputMode="numeric" defaultValue={campaign.dailyLimit} className="field" />

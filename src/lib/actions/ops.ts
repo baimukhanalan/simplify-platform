@@ -5,6 +5,7 @@ import { requireUser } from "../auth";
 import { db, j, s, noNul } from "../db";
 import { PIPELINE, APPLIED_OR_LATER } from "../engine/taxonomy";
 import { ingestEmail, logEvent, submit } from "../engine/agent";
+import { agentMaySubmit, readAutonomy } from "../engine/autonomy";
 import type { Answer } from "../engine/personalize";
 
 const MOVABLE = new Set([...PIPELINE.map((p) => p.key), "skipped"]);
@@ -51,8 +52,8 @@ async function patchAnswer(opportunityId: string, question: string, answer: stri
 /**
  * Resolve one exception-queue item.
  * decision=approve → use the proposed answer; decision=edit → use the typed answer; decision=reject → skip the vacancy.
- * When the last blocking question of a prepared opportunity is resolved, the agent continues: a demo vacancy is
- * submitted through the simulated ATS; a live vacancy gets a handoff item (the user submits via the official form).
+ * When the last blocking question of a prepared opportunity is resolved and the agent may submit it (agentMaySubmit),
+ * the agent continues: a demo vacancy is submitted through the simulated ATS; a live vacancy gets a handoff item.
  */
 export async function resolveApproval(form: FormData) {
   const user = await requireUser();
@@ -82,7 +83,10 @@ export async function resolveApproval(form: FormData) {
     await patchAnswer(opp.id, approval.question, answer.slice(0, 2000), "approved");
     await logEvent(user.id, "approval", `Подтверждено: «${approval.question}» — ${opp.job.company}`, opp.id, { kind: approval.kind, decision, answer });
     const left = await db.approval.count({ where: { opportunityId: opp.id, status: "pending", kind: { not: "handoff" } } });
-    if (!left && opp.status === "prepared" && opp.campaign.autoSubmit && opp.campaign.status === "active") await submit(opp.id);
+    // Same rule as the agent cycle: consent (campaign.autoSubmit) + an active, unexpired campaign + the role is allowed
+    // (Apply/Auto, or auto-apply on and Match ≥ threshold). Otherwise the package stays prepared for the user to decide.
+    const live = opp.campaign.status === "active" && (!opp.campaign.endsAt || opp.campaign.endsAt > new Date());
+    if (!left && opp.status === "prepared" && opp.campaign.autoSubmit && live && agentMaySubmit(opp, readAutonomy(user.autonomy))) await submit(opp.id);
   }
   refresh(opp?.id);
 }

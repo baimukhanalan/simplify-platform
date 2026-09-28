@@ -58,7 +58,10 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { i
   const [persona, setPersona] = useState(defaultPersona);
   const [idx, setIdx] = useState(0);
   const [turns, setTurns] = useState<Turn[]>([]);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraftState] = useState("");
+  // Mirror of the draft so async handlers read the text that arrived after speech.stop() resolved.
+  const draftRef = useRef("");
+  const setDraft = (v: string | ((d: string) => string)) => setDraftState((d) => (draftRef.current = typeof v === "function" ? v(d) : v));
   const [interim, setInterim] = useState("");
   const [current, setCurrent] = useState<Current | null>(null);
   const [lang, setLang] = useState("en-US");
@@ -86,17 +89,17 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms }: { i
     requestAnimationFrame(() => answerRef.current?.focus());
   };
 
-  const evaluate = () => {
-    if (speech.listening) speech.stop();
-    const text = draft.trim();
+  const evaluate = async () => {
+    if (speech.listening) await speech.stop();
+    const text = draftRef.current.trim();
     if (!text) return;
     const score = scoreAnswer(question, text, { skills: ctx.skills, jdTerms: jdTerms.length ? jdTerms : ctx.skills });
     setCurrent({ score, missing: missingPoints(question, text, score, ctx), better: suggestion(question, ctx) });
   };
 
-  const advance = (skip = false) => {
-    if (speech.listening) speech.stop();
-    const nextTurns = [...turns, { question, answer: skip ? "" : draft.trim(), score: skip ? null : current?.score ?? null }];
+  const advance = async (skip = false) => {
+    if (speech.listening) await speech.stop();
+    const nextTurns = [...turns, { question, answer: skip ? "" : draftRef.current.trim(), score: skip ? null : current?.score ?? null }];
     setTurns(nextTurns);
     setDraft("");
     setInterim("");
