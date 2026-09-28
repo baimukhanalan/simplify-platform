@@ -6,7 +6,26 @@ import bcrypt from "bcryptjs";
 import { db } from "./db";
 
 const COOKIE = "sfy_session";
-const secret = () => new TextEncoder().encode(process.env.SESSION_SECRET ?? "dev-only-secret-change-me-please-32bytes");
+const secret = () => {
+  const s = process.env.SESSION_SECRET;
+  if (!s || s.length < 32) {
+    if (process.env.NODE_ENV === "production") throw new Error("SESSION_SECRET must be set (≥32 chars) in production");
+    return new TextEncoder().encode("dev-only-secret-change-me-please-32bytes");
+  }
+  return new TextEncoder().encode(s);
+};
+
+/** Only same-origin relative paths; rejects //host, /\host and control characters browsers strip. */
+export function safeNext(next: unknown, fallback = "/app") {
+  const n = typeof next === "string" ? next : "";
+  if (!n.startsWith("/") || /[\x00-\x1f\\]/.test(n)) return fallback;
+  try {
+    const u = new URL(n, "http://x");
+    return u.origin === "http://x" ? u.pathname + u.search + u.hash : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export async function hashPassword(pw: string) {
   return bcrypt.hash(pw, 10);

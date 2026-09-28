@@ -16,8 +16,9 @@ npm run seed            # demo scenario: Data Analyst from Almaty
 npm run dev
 ```
 
-Demo accounts (password `simplify2026`): `demo@simplify.kz` (active International campaign),
-`admin@simplify.kz` (/admin), `partner@amaskills.kz` (/partners).
+Demo account: `demo@simplify.kz` / `simplify2026` (active International campaign). Locally the seed also
+creates `admin@simplify.kz` (/admin) and `partner@amaskills.kz` (/partners) with the same password; against
+Postgres the seed requires `ALLOW_DEMO_SEED=1` and `ADMIN_PASSWORD` for those staff accounts.
 
 ## Environment
 

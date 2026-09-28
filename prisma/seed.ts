@@ -36,13 +36,19 @@ LANGUAGES
 English C1, Russian native, Kazakh native`;
 
 async function main() {
+  const isProdDb = /postgres/i.test(process.env.DATABASE_URL ?? "");
+  if (isProdDb && process.env.ALLOW_DEMO_SEED !== "1") throw new Error("Refusing to seed a production database without ALLOW_DEMO_SEED=1");
+  // Staff accounts never use the public demo password outside local dev.
+  const staffPassword = isProdDb ? (process.env.ADMIN_PASSWORD ?? "") : "simplify2026";
+  if (staffPassword.length < 12 && isProdDb) throw new Error("Set ADMIN_PASSWORD (≥12 chars) to seed staff accounts in production");
   console.log("Resetting demo data…");
   await db.user.deleteMany({ where: { email: { in: ["demo@simplify.kz", "admin@simplify.kz", "partner@amaskills.kz"] } } });
   await db.partner.deleteMany({});
 
   const pw = await hashPassword("simplify2026");
-  const admin = await db.user.create({ data: { email: "admin@simplify.kz", name: "Simplify Ops", role: "admin", passwordHash: pw, profile: { create: {} }, goal: { create: {} } } });
-  const partnerUser = await db.user.create({ data: { email: "partner@amaskills.kz", name: "AmaSkills", role: "partner", passwordHash: pw, profile: { create: {} }, goal: { create: {} } } });
+  const staffPw = await hashPassword(staffPassword);
+  const admin = await db.user.create({ data: { email: "admin@simplify.kz", name: "Simplify Ops", role: "admin", passwordHash: staffPw, profile: { create: {} }, goal: { create: {} } } });
+  const partnerUser = await db.user.create({ data: { email: "partner@amaskills.kz", name: "AmaSkills", role: "partner", passwordHash: staffPw, profile: { create: {} }, goal: { create: {} } } });
   await db.partner.create({ data: { name: "AmaSkills", code: "AMASKILLS", revShare: 0.15, audience: 100000, userId: partnerUser.id } });
   await db.partner.create({ data: { name: "Canadian workforce partner (pilot)", code: "MAPLE", revShare: 0.15, audience: 40000 } });
 

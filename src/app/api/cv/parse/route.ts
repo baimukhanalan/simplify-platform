@@ -1,6 +1,8 @@
 import { extractText, getDocumentProxy } from "unpdf";
 import { rateLimit } from "@/lib/rate-limit";
 
+export const maxDuration = 20;
+
 const MAX_BYTES = 5 * 1024 * 1024;
 const MAX_CHARS = 30000;
 
@@ -32,6 +34,7 @@ export async function POST(req: Request) {
     if (isPdf) {
       if (!(buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46)) return fail("Файл не похож на PDF", 415);
       const pdf = await getDocumentProxy(buf);
+      if (pdf.numPages > 20) return fail("CV длиннее 20 страниц — сократите файл", 413);
       const out = await extractText(pdf, { mergePages: false });
       pages = out.totalPages;
       text = out.text.join("\n\n");

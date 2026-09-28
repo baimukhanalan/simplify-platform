@@ -1,18 +1,25 @@
 "use server";
 import { redirect } from "next/navigation";
 import { db } from "../db";
-import { createSession, destroySession, hashPassword, verifyPassword } from "../auth";
+import { createSession, destroySession, hashPassword, verifyPassword, safeNext } from "../auth";
+import { rateLimit } from "../rate-limit";
+
+// Compared against when the email is unknown, so response time doesn't reveal registered emails.
+const DUMMY_HASH = "$2b$10$amW.fFYYQfcqtq3LP07xoOVkitHOgBKqneTNY/32vhppfmc8w9MRi";
 
 export type AuthState = { error?: string } | undefined;
 
 export async function login(_: AuthState, form: FormData): Promise<AuthState> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const password = String(form.get("password") ?? "");
+  const rl = await rateLimit("login", 10, 15 * 60 * 1000);
+  const rlEmail = await rateLimit(`login:${email}`, 8, 15 * 60 * 1000);
+  if (!rl.ok || !rlEmail.ok) return { error: "Слишком много попыток. Попробуйте через 15 минут." };
   const user = await db.user.findUnique({ where: { email } });
-  if (!user || !(await verifyPassword(password, user.passwordHash))) return { error: "Неверный email или пароль" };
+  const ok = await verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
+  if (!user || !ok) return { error: "Неверный email или пароль" };
   await createSession(user.id);
-  const next = String(form.get("next") || "");
-  redirect(next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/app");
+  redirect(safeNext(form.get("next")));
 }
 
 export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
@@ -20,6 +27,8 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const password = String(form.get("password") ?? "");
   const ref = String(form.get("ref") ?? "").trim().toUpperCase() || null;
+  const rl = await rateLimit("signup", 5, 60 * 60 * 1000);
+  if (!rl.ok) return { error: "Слишком много регистраций с этого адреса. Попробуйте позже." };
   if (name.length < 2) return { error: "Введите имя" };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Некорректный email" };
   if (password.length < 8) return { error: "Пароль — минимум 8 символов" };

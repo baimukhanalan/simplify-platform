@@ -49,7 +49,7 @@ export function normalize(r: RawJob) {
     company: r.company, title: r.title.trim(), roleFamily, seniority, location: loc, countries: s(countries), remote,
     salaryMin, salaryMax, currency: "USD", description: plain.slice(0, 12000), requirements: s(bulletLines(plain).slice(0, 10)),
     technologies: s(extractSkills(text).slice(0, 10)), minYears, education: /(master'?s|phd)[^.]{0,30}required/i.test(plain) ? "Master's required" : "",
-    workAuth: s(workAuth), sponsorship, languages: s(languages), industry: r.industry ?? "", companySize: "", massHiring, postedAt: r.postedAt, url: r.url,
+    workAuth: s(workAuth), sponsorship, languages: s(languages), industry: r.industry ?? "", companySize: "", massHiring, postedAt: r.postedAt, url: /^https?:\/\//i.test(r.url) ? r.url : "",
   };
 }
 
