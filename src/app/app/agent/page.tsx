@@ -9,7 +9,7 @@ import { runAgentNow, setCampaignStatus, updateCampaignSettings } from "@/lib/ac
 import { pendingApprovalsCount, pendingHandoffsCount, runningCampaign } from "@/lib/ops-data";
 import { demoToolsEnabled } from "@/lib/demo";
 import { ago } from "@/lib/ops";
-import { ButtonLink, Card, Field, Label, PageHeader, Script, cx } from "@/components/ui";
+import { ButtonLink, Card, Field, PageHeader, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { AutonomyForm } from "./_components/autonomy-form";
 import { AgentStatus } from "../../_components/agent-status";
@@ -53,9 +53,9 @@ export default async function AgentPage() {
         <div className="flex flex-col gap-6 lg:sticky lg:top-6">
           <Card strong className="flex flex-col gap-5">
             <div className="flex items-center justify-between gap-3">
-              <Label>Кампания</Label>
+              <h2 className="label">Кампания</h2>
               {campaign && (
-                <span className={cx("inline-flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[.08em]", paused ? "text-amber" : "text-green")}>
+                <span className={cx("inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[.08em]", paused ? "text-amber" : "text-green")}>
                   <span className={cx("size-2 rounded-full", paused ? "bg-amber" : "bg-green animate-pulse-dot")} aria-hidden />
                   {paused ? "На паузе" : "Активна"}
                 </span>
@@ -96,7 +96,7 @@ export default async function AgentPage() {
           </Card>
 
           <Card className="flex flex-col gap-3">
-            <Label>Когда агент спрашивает тебя</Label>
+            <h2 className="label">Когда агент спрашивает тебя</h2>
             <p className="text-[13.5px] leading-relaxed text-ink-2">
               Деликатные вопросы — пол, инвалидность, статус ветерана и похожие — агент по умолчанию оставляет тебе. Сам он отвечает на них, только если выбран вариант «Предпочитаю не указывать».
             </p>

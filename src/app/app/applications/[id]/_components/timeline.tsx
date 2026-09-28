@@ -32,13 +32,13 @@ export function Timeline({ steps }: { steps: Step[] }) {
             </span>
             <div className="flex min-w-0 flex-col gap-0.5 pt-0.5">
               {s.at ? (
-                <time dateTime={s.at.toISOString()} className="font-mono text-[10px] uppercase tracking-[.06em] text-ink-3">{fmtDateTime(s.at)}</time>
+                <time dateTime={s.at.toISOString()} className="font-mono text-[11px] uppercase tracking-[.06em] text-ink-3">{fmtDateTime(s.at)}</time>
               ) : (
-                <span className="font-mono text-[10px] uppercase tracking-[.06em] text-ink-3">{s.upcoming ? "дальше" : "—"}</span>
+                <span className="font-mono text-[11px] uppercase tracking-[.06em] text-ink-3">{s.upcoming ? "дальше" : "—"}</span>
               )}
               {s.href ? <Link href={s.href} className="inline-flex min-h-10 w-fit items-center rounded hover:underline focus-visible:outline-2 focus-visible:outline-green">{title}</Link> : title}
               {s.detail && <span className="break-words text-[12.5px] leading-snug text-ink-3">{s.detail}</span>}
-              {s.tag && <span className="mt-0.5 w-fit rounded-full bg-amber-soft px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[.06em] text-amber">{s.tag}</span>}
+              {s.tag && <span className="mt-0.5 w-fit rounded-full bg-amber-soft px-2 py-0.5 font-mono text-[11px] uppercase tracking-[.06em] text-amber">{s.tag}</span>}
             </div>
           </li>
         );

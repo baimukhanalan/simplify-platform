@@ -39,7 +39,7 @@ export function MockTab({ interviewId, round, mocks, ctx, jdTerms, assessment = 
                     <ol className="scroll-thin mt-2 flex max-h-72 flex-col gap-2 overflow-auto text-[12.5px]">
                       {transcript.map((t, i) => (
                         <li key={i} className={t.role === "interviewer" ? "font-medium text-head" : "text-ink-2"}>
-                          <Label className="!text-[9.5px]">{t.role === "interviewer" ? "Интервьюер" : "Ты"}</Label>
+                          <Label className="!text-[11px]">{t.role === "interviewer" ? "Интервьюер" : "Ты"}</Label>
                           {t.text}
                         </li>
                       ))}

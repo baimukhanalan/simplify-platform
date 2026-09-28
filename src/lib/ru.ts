@@ -31,3 +31,34 @@ export function fmtYearsRu(y: number, suffix = "") {
 }
 
 export const NBSP = " ";
+
+/* ——— Localized values for the Russian UI (stored values stay as written; these only format them) ——— */
+
+const PLACE_RU: [RegExp, string][] = ([
+  ["Almaty", "Алматы"], ["Astana|Nur-Sultan", "Астана"], ["Shymkent", "Шымкент"], ["Karaganda|Karagandy", "Караганда"], ["Aktobe", "Актобе"], ["Atyrau", "Атырау"],
+  ["Kazakhstan", "Казахстан"], ["Tashkent", "Ташкент"], ["Uzbekistan", "Узбекистан"], ["Bishkek", "Бишкек"], ["Kyrgyzstan", "Кыргызстан"],
+  ["Tbilisi", "Тбилиси"], ["Georgia", "Грузия"], ["Yerevan", "Ереван"], ["Armenia", "Армения"], ["Baku", "Баку"], ["Azerbaijan", "Азербайджан"],
+  ["Berlin", "Берлин"], ["Munich", "Мюнхен"], ["Germany", "Германия"], ["Warsaw", "Варшава"], ["Poland", "Польша"], ["Amsterdam", "Амстердам"], ["Netherlands", "Нидерланды"],
+  ["London", "Лондон"], ["United Kingdom", "Великобритания"], ["New York", "Нью-Йорк"], ["United States|USA", "США"], ["Dubai", "Дубай"], ["UAE|United Arab Emirates", "ОАЭ"],
+  ["Europe", "Европа"], ["Worldwide", "весь мир"], ["Remote", "Удалённо"], ["Hybrid", "гибрид"], ["Onsite|On-site", "офис"],
+] as const).map(([en, ru]) => [new RegExp(`(?<![\\p{L}])(?:${en})(?![\\p{L}])`, "giu"), ru]);
+
+/** "Almaty, Kazakhstan" → «Алматы, Казахстан»; "Remote — Europe" → «Удалённо — Европа». Unknown names stay as written. */
+export function placeRu(place: string) {
+  let out = place;
+  for (const [re, ru] of PLACE_RU) out = out.replace(re, ru);
+  return out;
+}
+
+/** Notice period for the Russian UI: "2 weeks" → «2 недели», "1 month" → «1 месяц», "Immediately" → «Сразу». Stored as written. */
+export function noticeRu(v: string | null | undefined) {
+  const t = (v ?? "").trim();
+  if (!t) return "";
+  if (/^(immediately|asap|now|right away)$/i.test(t)) return "Сразу";
+  const m = t.match(/^(\d+(?:[.,]\d+)?)\s*(day|week|month)s?$/i);
+  if (!m) return t;
+  const n = Number(m[1].replace(",", "."));
+  const forms: Record<string, Forms> = { day: ["день", "дня", "дней"], week: ["неделя", "недели", "недель"], month: ["месяц", "месяца", "месяцев"] };
+  return `${fmtNum(n)} ${plural(n, forms[m[2].toLowerCase()])}`;
+}
+export { fmtFactPeriod, fmtFactDate } from "./engine/dates";

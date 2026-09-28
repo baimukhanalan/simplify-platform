@@ -7,7 +7,7 @@ import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
 import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { CAMPAIGN_MODE_RU, WORK_MODE_RU } from "../../_components/ru";
-import { goalTitle } from "../readiness/_components/model";
+import { goalMarket, goalTitle } from "../readiness/_components/model";
 import { Facts } from "../profile/_components/editable";
 import { GoalForm, type GoalValues } from "./_components/goal-form";
 import { goalRegion } from "./_components/region";
@@ -74,7 +74,8 @@ export default async function GoalPage({ searchParams }: { searchParams: Promise
       <div className="mb-6 flex flex-col gap-4 animate-rise sm:flex-row sm:items-end sm:justify-between">
         <div className="flex min-w-0 flex-col gap-3">
           <span className="label">Моя цель</span>
-          <h1 className="h-serif text-[clamp(36px,5.6vw,68px)]">{goalTitle(initial.primaryRole, initial.countries)}</h1>
+          <h1 className="h-serif text-[clamp(36px,5.6vw,68px)]">{goalTitle(initial.primaryRole)}</h1>
+          {initial.countries.length > 0 && <p className="text-[15px] text-ink-2">{goalMarket(initial.countries).line}</p>}
           <div className="flex flex-wrap items-center gap-1.5">
             <Chip tone="dark">{SENIORITY_LABEL[initial.seniority] ?? initial.seniority}</Chip>
             {initial.extraRoles.length > 0 && <span className="text-[13.5px] text-ink-3">Также: {initial.extraRoles.join(", ")}</span>}

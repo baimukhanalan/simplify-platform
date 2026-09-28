@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { aiJSON } from "../ai";
 import { ROLE_FAMILIES, extractSkills } from "./taxonomy";
+import { parseCvDate, rangeMonths } from "./dates";
 import { yearsForEmployer } from "../ops";
 
 export type FactLite = { id: string; kind: string; title: string; org: string; startDate: string; endDate: string; details: string; metrics: string; tech: string[]; verified: boolean };
@@ -45,13 +46,17 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
   const roleLabel = ROLE_FAMILIES[job.roleFamily]?.label ?? job.title;
   const framing = FRAMING[job.roleFamily] ?? FRAMING.other;
 
-  const work = facts.filter((f) => f.kind === "employment").sort((a, b) => relevance(b, jobKeys) - relevance(a, jobKeys));
+  // A CV lists roles newest first (the current role on top); relevance only picks the cover letter's example.
+  const work = facts.filter((f) => f.kind === "employment").sort(newestFirst);
+  const byRelevance = [...work].sort((a, b) => relevance(b, jobKeys) - relevance(a, jobKeys));
   const projects = facts.filter((f) => f.kind === "project").sort((a, b) => relevance(b, jobKeys) - relevance(a, jobKeys)).slice(0, 3);
   const edu = facts.filter((f) => f.kind === "education");
   const certs = facts.filter((f) => f.kind === "certification");
 
   const yrs = yearsForEmployer(p.yearsExperience) ?? "hands-on project"; // "3+ years", never "3.4 years"
-  const topMetric = work.concat(projects).find((f) => f.metrics)?.metrics;
+  // "Recently …" is only about the current role (open-ended dates); a result from an earlier job is not recent.
+  const current = work.find((f) => isCurrent(f));
+  const topMetric = current?.metrics || undefined;
   const topClause = topMetric ? achievementClause(topMetric) : null;
   const recent = topMetric ? (topClause ? ` Recently ${topClause}.` : ` Recent result: ${lcFirstWord(tidyAchievement(topMetric))}.`) : "";
   const summary = `${roleLabel}-focused professional with ${yrs} of experience ${framing}. Core tools: ${(matched.length ? matched : skillsOrder).slice(0, 5).join(", ")}.${recent}`;
@@ -82,7 +87,10 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
     ...work.map((f) => `${f.title}${f.org ? ` — ${f.org}` : ""} (${f.startDate} – ${f.endDate})${f.details.trim() ? `\n${bullets(f)}` : ""}${extraMetric(f)}`),
     ...(projects.length ? [``, `SELECTED PROJECTS`, ...projects.map((f) => {
       const line = projectLine(f);
-      return `${f.title}${f.tech.length ? ` (${f.tech.join(", ")})` : ""}${line ? `\n  • ${line}` : ""}${f.metrics && !line.includes(f.metrics) && !f.title.includes(f.metrics) ? `\n  • ${stripTitle(f.metrics, f.title)}` : ""}`;
+      // The metric is usually the same sentence as the first line ("Title: …5k views"): compare without the title.
+      const metric = f.metrics ? stripTitle(f.metrics, f.title) : "";
+      const dup = !metric || f.title.includes(f.metrics) || sameLine(metric, line) || line.includes(metric) || (line.length > 20 && metric.includes(line));
+      return `${f.title}${f.tech.length ? ` (${f.tech.join(", ")})` : ""}${line ? `\n  • ${line}` : ""}${dup ? "" : `\n  • ${metric}`}`;
     })] : []),
     ...(edu.length ? [``, `EDUCATION`, ...edu.map((f) => `${f.title}${f.org ? ` — ${f.org}` : ""} (${f.startDate} – ${f.endDate})`)] : []),
     ...(certs.length ? [``, `CERTIFICATIONS`, ...certs.map((f) => f.title)] : []),
@@ -91,7 +99,7 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
     `English — ${p.englishLevel}`,
   ].join("\n");
 
-  const best = work[0] ?? projects[0];
+  const best = byRelevance[0] ?? projects[0];
   const coverLetter = [
     `Dear ${job.company} hiring team,`,
     ``,
@@ -107,6 +115,26 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
 }
 
 const MAX_BULLETS = 6;
+
+const norm = (x: string) => x.toLowerCase().replace(/[^\p{L}\p{N}%]+/gu, " ").trim();
+const sameLine = (a: string, b: string) => norm(a) === norm(b);
+
+/** A role that is still going: its end is "present / now / н.в. …" (or empty with a start). */
+export function isCurrent(f: Pick<FactLite, "startDate" | "endDate">) {
+  if (!f.endDate.trim()) return Boolean(f.startDate.trim());
+  return parseCvDate(f.endDate)?.precision === "present";
+}
+
+/** Newest first: current roles on top, then by end date, then by start date. Undated roles last, in their original order. */
+export function newestFirst(a: Pick<FactLite, "startDate" | "endDate">, b: Pick<FactLite, "startDate" | "endDate">) {
+  const key = (f: Pick<FactLite, "startDate" | "endDate">) => {
+    const s = parseCvDate(f.startDate);
+    const e = isCurrent(f) ? Number.MAX_SAFE_INTEGER : (() => { const d = parseCvDate(f.endDate); return d ? d.y * 12 + d.m : -1; })();
+    return { e, s: s && s.precision !== "present" ? s.y * 12 + s.m : -1 };
+  };
+  const x = key(a), y = key(b);
+  return y.e - x.e || y.s - x.s;
+}
 
 /** "Most relevant: …" sentence for the cover letter, built from the single strongest achievement of a fact. */
 function relevantSentence(f: FactLite): string {
@@ -277,9 +305,8 @@ function yearsWith(tech: string, facts: FactLite[], total: number) {
   if (!withTech.length) return Math.min(1, total);
   let months = 0;
   for (const f of withTech) {
-    const a = f.startDate.match(/\d{4}/)?.[0];
-    const b = /present|now|current|настоящ|сейчас/i.test(f.endDate) ? String(new Date().getFullYear()) : f.endDate.match(/\d{4}/)?.[0];
-    if (a && b) months += Math.max(6, (Number(b) - Number(a)) * 12);
+    const r = rangeMonths(f.startDate, isCurrent(f) && !f.endDate.trim() ? "now" : f.endDate);
+    if (r) months += Math.max(6, r.to - r.from);
   }
   return Math.min(total, Math.round((months / 12) * 2) / 2) || Math.min(1, total);
 }

@@ -2,18 +2,22 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { db, j, s, noNul } from "../db";
 import { isAhead, ROUND_LABEL } from "../rounds";
-import { agentMaySubmit, readAutonomy } from "./autonomy";
-import { scoreJob, STRONG_MATCH, type CandidateCtx, type JobCtx, type MatchResult } from "./matching";
+import { agentMaySubmit, readAutonomy, SENSITIVE_DECLINE } from "./autonomy";
+import { blockerKind, scoreJob, STRONG_MATCH, type CandidateCtx, type JobCtx, type MatchResult } from "./matching";
 import { buildPackage, type FactLite, type ProfileLite } from "./personalize";
 import { ensureSeedJobs } from "./ingest";
 import { allocationFrom, reachedInterview } from "./insights";
 import { classifyEmail, CLASS_TO_STATUS, matchCompany } from "./inbox";
 import { buildPackHeuristic } from "./interview";
-import { classifyRole, defaultLanguagesFor, roleKey, APPLIED_OR_LATER } from "./taxonomy";
+import { classifyRole, defaultLanguagesFor, roleKey, APPLIED_OR_LATER, PLANS } from "./taxonomy";
 import { count, plural } from "../ru";
 import { toUSD } from "./fx";
 import { salaryAnswer } from "./salary";
 import { startOfToday } from "../time";
+
+// Journal wording for employer emails (Settings → audit log shows these lines).
+const INBOX_EVENT_RU: Record<string, string> = { confirmation: "подтверждение получения заявки", rejection: "отказ", assessment: "приглашение на тест", interview: "приглашение на интервью", offer: "оффер", info: "информационное письмо" };
+const STATUS_RU_EVENT: Record<string, string> = { pending: "ждём ответа", rejected: "отказ", assessment: "тест", recruiter: "рекрутер", hiring_manager: "нанимающий менеджер", technical: "техническое интервью", final: "финал", offer: "оффер" };
 
 export async function notify(userId: string, type: string, title: string, body = "", href = "") {
   await db.notification.create({ data: { userId, type, title, body, href } });
@@ -42,13 +46,20 @@ export async function loadCandidate(userId: string) {
     workModes: j<string[]>(g.workModes, ["remote"]), industries: j<string[]>(g.industries, []), dreamCompanies: j<string[]>(g.dreamCompanies, []), blockedCompanies: j<string[]>(g.blockedCompanies, []), mode: g.mode,
   };
   const autonomy = readAutonomy(user.autonomy);
-  const ctx = (allocation: Record<string, number>): CandidateCtx => ({
+  const ctx = (allocation: Record<string, number>, plan?: string): CandidateCtx => ({
     skills: profile.skills, yearsExperience: p.yearsExperience, englishLevel: p.englishLevel,
     languages: [...spokenLanguages, "English"], workAuth: profile.workAuth, needsSponsorship: p.needsSponsorship, relocation: p.relocation,
     educationLevel: /phd|доктор/.test(edu) ? "phd" : /master|магистр|msc/.test(edu) ? "master" : /bachelor|бакалавр|bsc|university|университет/.test(edu) ? "bachelor" : "none",
     goal, allocation, permissions: { outsideCountries: autonomy.outsideCountries, belowSalaryFloor: autonomy.belowSalaryFloor },
+    plan: planScopeOf(plan),
   });
   return { user, profile, facts, goal, ctx, stories: user.stories, autonomy };
+}
+
+/** The campaign plan as a scoring scope (PLANS[plan].regions); unknown / missing plan = no limit. */
+export function planScopeOf(plan: string | null | undefined): CandidateCtx["plan"] {
+  const p = plan ? PLANS[plan as keyof typeof PLANS] : undefined;
+  return p ? { key: p.key, label: p.label, regions: p.regions } : undefined;
 }
 
 const jobLite = (job: { title: string; company: string; roleFamily: string; description: string; technologies: string; requirements: string; countries: string; remote: string; sponsorship: string; salaryMin: number | null; salaryMax: number | null; industry: string }) => ({
@@ -104,7 +115,7 @@ export async function discover(campaignId: string) {
   const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
   await ensureSeedJobs();
   const { ctx } = await loadCandidate(campaign.userId);
-  const c = ctx(j<Record<string, number>>(campaign.allocation, {}));
+  const c = ctx(j<Record<string, number>>(campaign.allocation, {}), campaign.plan);
   const wanted = new Set([c.goal.primaryRole, ...c.goal.extraRoles].map(classifyRole));
   const known = new Set((await db.opportunity.findMany({ where: { campaignId }, select: { jobId: true } })).map((o) => o.jobId));
   // A new campaign (e.g. after HIRED) must not re-find roles the user already applied to or was rejected from before.
@@ -133,7 +144,7 @@ export async function discover(campaignId: string) {
   const scored = fetched.map((job) => ({ job, r: scoreJob(c, scoreCtx(job)) }));
   const rank = (x: (typeof scored)[number]) => (x.r.eligibility === "blocked" ? 0 : 1) * 1e6 + x.r.priority * 1e3 + x.r.match;
   scored.sort((a, b) => rank(b) - rank(a));
-  let found = 0, qualified = 0, blocked = 0, fits = 0, weaker = 0;
+  let found = 0, qualified = 0, blocked = 0, fits = 0, weaker = 0, filtered = 0;
   for (const { job, r } of scored) {
     const key = roleKey(job.company, job.title);
     if (takenKeys.has(key)) continue;
@@ -148,7 +159,11 @@ export async function discover(campaignId: string) {
     }
     found++;
     if (status === "qualified") qualified++;
-    if (status === "skipped") blocked++;
+    if (status === "skipped") {
+      blocked++;
+      // Blocked only by the user's own filters (plan, regions, salary floor, format…) vs. requirements the user misses.
+      if (r.blockers.every((b) => blockerKind(b) === "filter")) filtered++;
+    }
     // The same split as Today's «подошли» (isQualified in src/lib/ops-data.ts): fits + weaker + blocked = found.
     else if (r.match >= STRONG_MATCH) fits++;
     else weaker++;
@@ -157,9 +172,10 @@ export async function discover(campaignId: string) {
     const parts = [
       fits ? `${fits} ${plural(fits, ["подошла", "подошли", "подошли"])} (Match ${STRONG_MATCH}+)` : "",
       weaker ? `${weaker} со слабым совпадением` : "",
-      blocked ? `${blocked} не ${plural(blocked, ["проходит", "проходят", "проходят"])} по требованиям` : "",
+      blocked - filtered ? `${blocked - filtered} не ${plural(blocked - filtered, ["проходит", "проходят", "проходят"])} по требованиям` : "",
+      filtered ? `${filtered} вне твоих настроек поиска` : "",
     ].filter(Boolean);
-    await logEvent(campaign.userId, "discovery", `Найдено ${count(found, ["новая вакансия", "новые вакансии", "новых вакансий"])}: ${parts.join(", ")}`, null, { found, fits, weaker, blocked, queued: qualified });
+    await logEvent(campaign.userId, "discovery", `Найдено ${count(found, ["новая вакансия", "новые вакансии", "новых вакансий"])}: ${parts.join(", ")}`, null, { found, fits, weaker, blocked, filtered, queued: qualified });
   }
   return { found, qualified, blocked };
 }
@@ -179,7 +195,7 @@ export async function rerank(campaignId: string) {
   })));
   await db.campaign.update({ where: { id: campaignId }, data: { allocation: s(allocation) } });
   const { ctx } = await loadCandidate(campaign.userId);
-  const c = ctx(allocation);
+  const c = ctx(allocation, campaign.plan);
 
   // Skips the user made (manual move or a rejected approval) are never undone; only eligibility skips are.
   const skippedIds = opps.filter((o) => o.status === "skipped").map((o) => o.id);
@@ -194,8 +210,8 @@ export async function rerank(campaignId: string) {
 
   let nowBlocked = 0, unblocked = 0;
   for (const o of opps.filter((o) => o.status === "qualified" || o.status === "found" || autoSkipped(o))) {
-    const r = scoreJob(c, scoreCtx(o.job));
     const userPicked = o.decision === "apply" || o.decision === "auto";
+    const r = scoreJob(c, scoreCtx(o.job), new Date(), { userPicked });
     // An off-goal role (e.g. the goal's extra roles changed) leaves the agent's queue unless the user picked it.
     const kept = o.status === "qualified" && !r.onGoal && !userPicked ? "found" : o.status;
     const status = o.status === "skipped" ? (r.eligibility === "blocked" ? "skipped" : statusFor(r)) : r.eligibility === "blocked" ? "skipped" : kept;
@@ -206,7 +222,7 @@ export async function rerank(campaignId: string) {
     const same = (Object.keys(data) as (keyof typeof data)[]).every((k) => o[k] === data[k]);
     if (!same) await db.opportunity.update({ where: { id: o.id }, data });
   }
-  if (nowBlocked || unblocked) await logEvent(campaign.userId, "rerank", `Переоценка очереди: теперь не проходят по требованиям — ${nowBlocked}, вернулись в очередь — ${unblocked}`);
+  if (nowBlocked || unblocked) await logEvent(campaign.userId, "rerank", `Переоценка очереди: выбыли из очереди — ${nowBlocked}, вернулись в очередь — ${unblocked}`);
   return allocation;
 }
 
@@ -214,8 +230,8 @@ export async function rerank(campaignId: string) {
 // and answering one pending copy answers every other pending copy of the same question (see ./approvals.ts).
 export const STANDING_KINDS = new Set(["sensitive", "legal", "sponsorship"]);
 
-/** The answer the agent gives to a sensitive question when Autonomy.sensitive = "decline". */
-export const SENSITIVE_DECLINE = "I don't wish to answer";
+// The opt-out answer for sensitive questions (one wording per audience) lives in ./autonomy.ts (pure, UI-safe).
+export { SENSITIVE_DECLINE, SENSITIVE_DECLINE_LEGACY, SENSITIVE_DECLINE_RU, answerRu } from "./autonomy";
 
 /** Note written into Approval.answer when a question is closed because its campaign ended (HIRED / expired). */
 export const CAMPAIGN_CLOSED_NOTE = "Кампания завершена — вопрос закрыт";
@@ -285,7 +301,8 @@ export async function prepare(opportunityId: string, opts: PrepareOptions = {}) 
   await db.opportunity.update({ where: { id: opportunityId }, data: { status: "prepared" } });
   const waits = pending.length ? `, ${count(pending.length, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} подтверждения` : "";
   const reusedNote = reused ? `, ${count(reused, ["ответ взят", "ответа взяты", "ответов взяты"])} из ранее подтверждённых` : "";
-  await logEvent(userId, "prepared", `Пакет готов: ${opp.job.title} — ${opp.job.company} (CV ${version}${waits}${reusedNote})`, opportunityId, { reused, pending: pending.length });
+  // No internal version ids ("v3-data_analyst") in user-facing text: the CV is named by its company.
+  await logEvent(userId, "prepared", `Пакет готов: ${opp.job.title} — ${opp.job.company} (CV для ${opp.job.company}${waits}${reusedNote})`, opportunityId, { reused, pending: pending.length, cvVersion: version });
   return { pending: pending.length };
 }
 
@@ -390,10 +407,25 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
     } else waiting++;
   }
   await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: new Date() } });
+  const decisions = await pendingDecisions(campaignId, campaign.autoSubmit, autonomy);
   // No "ждут тебя: N" here: a stored count goes stale as soon as the user answers, and Today counts pending questions
   // (pendingApprovalsCount) — a different thing from roles this cycle left unsent. The live number lives on Today.
-  await logEvent(campaign.userId, "tick", `Цикл агента: найдено +${d.found}, подготовлено ${prepared}, отправлено ${submitted}${waiting ? " · часть заявок ждёт твоего решения" : ""}`, null, { found: d.found, prepared, submitted, waiting });
+  await logEvent(campaign.userId, "tick", `Цикл агента: найдено +${d.found}, подготовлено ${prepared}, отправлено ${submitted}${decisions ? " · часть заявок ждёт твоего решения" : ""}`, null, { found: d.found, prepared, submitted, waiting, decisions });
   return { ...d, prepared, submitted, waiting, budget: startBudget };
+}
+
+/**
+ * Decisions really waiting on the user in a campaign right now: open questions/handoffs (pending approvals) plus prepared
+ * roles with no open question that the agent may not send on its own (they wait for the user's Apply). Roles that are
+ * merely queued for a later cycle (daily limit) are not the user's decision.
+ */
+export async function pendingDecisions(campaignId: string, autoSubmit: boolean, autonomy: Parameters<typeof agentMaySubmit>[1]) {
+  const [approvals, prepared] = await Promise.all([
+    db.approval.count({ where: { status: "pending", opportunity: { campaignId } } }),
+    db.opportunity.findMany({ where: { campaignId, status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } }, select: { decision: true, match: true } }),
+  ]);
+  const needApply = prepared.filter((o) => !autoSubmit || !agentMaySubmit(o, autonomy)).length;
+  return approvals + needApply;
 }
 
 // ——— Inbox Intelligence → pipeline ———
@@ -419,7 +451,7 @@ export async function ingestEmail(userId: string, msg: { from: string; subject: 
   if (next && (closed || (next !== "rejected" && !isAhead(next, opp.status)))) next = null;
   if (next) {
     await db.opportunity.update({ where: { id: oppId }, data: { status: next } });
-    await logEvent(userId, "inbox", `${opp.job.company}: письмо распознано как «${c.cls}» → ${next}`, oppId, { confidence: c.confidence });
+    await logEvent(userId, "inbox", `${opp.job.company}: ${INBOX_EVENT_RU[c.cls] ?? "новое письмо"} → статус «${STATUS_RU_EVENT[next] ?? next}»`, oppId, { confidence: c.confidence });
   }
   if (closed) return { message: saved, updated: false };
   const NOTE: Record<string, { title: string; body: string }> = {

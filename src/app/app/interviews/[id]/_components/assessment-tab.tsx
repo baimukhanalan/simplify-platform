@@ -32,13 +32,13 @@ export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
             { icon: ListChecks, k: "Темы", v: String(a.topics.length), hint: a.topics.map((t) => t.short).join(", ") },
           ].map(({ icon: Icon, k, v, hint, warn }) => (
             <div key={k} className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-line bg-white/60 p-3.5">
-              <dt className="flex items-center gap-1.5"><Icon className="size-3.5 text-teal" strokeWidth={1.7} aria-hidden /><span className="label !text-[10px]">{k}</span></dt>
+              <dt className="flex items-center gap-1.5"><Icon className="size-3.5 text-teal" strokeWidth={1.7} aria-hidden /><span className="label !text-[11px]">{k}</span></dt>
               <dd className={cx("num text-[24px] leading-none", warn ? "text-amber" : "text-head")}>{v}</dd>
               {hint && <dd className="truncate text-[12px] text-ink-3" title={hint}>{hint}</dd>}
             </div>
           ))}
           <div className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-line bg-white/60 p-3.5">
-            <dt className="label !text-[10px]">Сложность</dt>
+            <dt className="label !text-[11px]">Сложность</dt>
             <dd className="flex items-center gap-2">
               <span className="text-[18px] text-head first-letter:uppercase">{a.difficulty.label}</span>
               <span className="flex gap-1" aria-label={`${a.difficulty.level} из 3`}>
@@ -74,7 +74,7 @@ export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
           {a.plan.map((p, i) => (
             <li key={i} className="relative">
               <span aria-hidden className="absolute -left-[25px] top-1.5 size-2.5 rounded-full border-2 border-white bg-green shadow" />
-              <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-teal">{p.when}</span>
+              <span className="font-mono text-[11px] uppercase tracking-[.08em] text-teal">{p.when}</span>
               <p className="text-[14.5px] leading-relaxed text-ink-2">{p.what}</p>
             </li>
           ))}
@@ -92,7 +92,7 @@ export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
               <div className="flex gap-3">
                 <span className="num w-5 shrink-0 text-[14px] text-ink-4">{i + 1}</span>
                 <div className="flex min-w-0 flex-1 flex-col gap-2">
-                  <span className="font-mono text-[10px] uppercase tracking-[.08em] text-teal">{p.topic}</span>
+                  <span className="font-mono text-[11px] uppercase tracking-[.08em] text-teal">{p.topic}</span>
                   <p className="text-[14.5px] text-head">{p.q}</p>
                   <details className="group">
                     <summary className="inline-flex min-h-10 cursor-pointer list-none items-center rounded-full border border-line bg-white/60 px-4 text-[12.5px] text-ink-2 transition hover:bg-white focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">

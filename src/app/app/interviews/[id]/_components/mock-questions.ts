@@ -26,6 +26,14 @@ export const MOCK_SETS: Record<string, string[]> = {
 export type MockCtx = { stories: StoryLite[]; facts: FactLite[]; skills: string[]; yearsExperience: number; company: string; role: string; currentTitle?: string; salary?: { low: number; high: number; source?: "floor" | "published" | "market" | "none" } };
 type Score = ReturnType<typeof scoreAnswer>;
 
+/**
+ * "Who you are now" in an intro: "I'm a data analyst", "I am…", "currently…", "right now", "at Kaspi", "работаю…", "сейчас…".
+ * "at X" needs a capitalised name after it ("at Kaspi", not "at the end").
+ */
+const WHO_NOW_WORDS = /(?<![\p{L}])(?:i['’]m|i am|currently|right now|now i|these days|сейчас|работаю|я\s+—|я\s+-)(?![\p{L}])/iu;
+const AT_COMPANY = /(?<![\p{L}])at\s+\p{Lu}/u; // case-sensitive on purpose: "at Kaspi", not "at the end"
+const WHO_NOW = { test: (a: string) => WHO_NOW_WORDS.test(a) || AT_COMPANY.test(a) };
+
 /** What the answer lacks, in plain words — beyond the engine's generic tips. */
 export function missingPoints(question: string, answer: string, s: Score, ctx: MockCtx): string[] {
   const intent = detectIntent(question);
@@ -38,7 +46,7 @@ export function missingPoints(question: string, answer: string, s: Score, ctx: M
   }
   if (!/\d/.test(answer)) out.push("цифра результата (было → стало)");
   if ((intent === "motivation" || /why .*compan/i.test(question)) && !low.includes(ctx.company.toLowerCase())) out.push(`конкретика о ${ctx.company}`);
-  if (intent === "intro" && !/(now|currently|сейчас)/i.test(answer)) out.push("кто ты сейчас");
+  if (intent === "intro" && !WHO_NOW.test(answer)) out.push("кто ты сейчас");
   if (intent === "technical" && !/(first|then|step|сначала|затем)/i.test(answer)) out.push("пошаговый подход");
   if (intent === "closing" && !answer.includes("?")) out.push("1–2 твоих вопроса");
   return [...new Set(out)].slice(0, 4);

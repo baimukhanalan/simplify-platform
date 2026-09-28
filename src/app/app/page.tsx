@@ -29,7 +29,7 @@ function relDay(d: Date, now: number) {
  * found = qualified + weaker + blocked + setAside, qualified = queued + prepared + applied + waiting.
  * Submissions today are a separate number (they include roles found earlier) and are said separately.
  */
-function todayStory(d: Today) {
+function todayStory(d: Today, awaitsApply: boolean) {
   const b = d.todayBreakdown;
   const t = d.today;
   const parts: string[] = [];
@@ -38,7 +38,9 @@ function todayStory(d: Today) {
     if (b.qualified) {
       const split = [
         b.applied && `${b.applied} уже ${plural(b.applied, ["подана", "поданы", "подано"])}`,
-        b.prepared && `${b.prepared} ${plural(b.prepared, ["готова", "готовы", "готовы"])} к отправке`,
+        b.prepared && (awaitsApply
+          ? `${b.prepared} ${plural(b.prepared, ["ждёт", "ждут", "ждут"])} твоего Apply`
+          : `${b.prepared} ${plural(b.prepared, ["готова", "готовы", "готовы"])} к отправке`),
         b.queued && `${b.queued} в очереди на подготовку`,
         b.waiting && `${b.waiting} ${plural(b.waiting, ["ждёт", "ждут", "ждут"])} твоего решения`,
       ].filter(Boolean).join(", ");
@@ -70,7 +72,7 @@ function pickNext(d: Today): { action: NextAction; also: { label: string; href: 
     eyebrow,
     title: i.scheduledAt ? `Интервью ${relDay(i.scheduledAt, d.now)} — ${i.opportunity.job.company}` : `Интервью — ${i.opportunity.job.company}`,
     sub: `${i.opportunity.job.title}${i.scheduledAt ? ` · ${hhmm(i.scheduledAt)}` : ""}. Материалы для подготовки уже готовы.`,
-    href: `/app/interviews/${i.id}`, cta: "Prepare", icon: CalendarClock,
+    href: `/app/interviews/${i.id}`, cta: "Подготовиться", icon: CalendarClock,
   });
   if (soonIv) cands.push(iv(soonIv, "Интервью"));
   const a = assessments[0];
@@ -89,7 +91,7 @@ function pickNext(d: Today): { action: NextAction; also: { label: string; href: 
   if (d.handoffs) cands.push({
     eyebrow: "Отправь сам",
     title: handoffsWaiting(d.handoffs),
-    sub: "Пакеты готовы: это живые вакансии, их отправляют через форму работодателя. Отметь отправку — и агент поведёт заявку дальше.",
+    sub: "Пакеты готовы — их нужно отправить через сайт работодателя. Отметь отправку, и агент поведёт заявку дальше.",
     href: "/app/approvals#kind-handoff", cta: "Открыть", icon: ShieldCheck,
   });
   const later = interviews.find((i) => i !== soonIv);
@@ -114,22 +116,25 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const tagline = { active: "Your agent is working.", paused: "Агент на паузе.", hired: "Работа найдена.", expired: "Кампания завершена." }[status] ?? "Your agent is working.";
   const demo = demoToolsEnabled(user);
 
-  const story = todayStory(d) || (isActive ? "Сегодня агент ещё не нашёл новых вакансий — он проверяет рынок по расписанию." : "");
+  // Prepared packages wait for the user's Apply when the agent doesn't send on its own (autoSubmit off).
+  const story = todayStory(d, !campaign.autoSubmit) || (isActive ? "Сегодня агент ещё не нашёл новых вакансий — он проверяет рынок по расписанию." : "");
 
   return (
     <div className="flex flex-col gap-5">
       <h1 className="sr-only">Today</h1>
 
       {sp.started === "1" && (
-        <section role="status" aria-labelledby="started-h" className="relative animate-rise overflow-hidden rounded-[var(--radius-card)] border border-green/20 bg-white/90 p-5 shadow-(--shadow-glass) sm:p-7">
+        <section role="status" aria-labelledby="started-h" className="relative animate-rise overflow-hidden rounded-[var(--radius-card)] border border-green/20 bg-white/90 p-4 shadow-(--shadow-glass) sm:p-7">
           <div aria-hidden className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full border border-green/15" />
           <div aria-hidden className="pointer-events-none absolute -right-4 -top-4 size-32 rounded-full border border-green/20" />
           <div className="relative flex items-start gap-4">
             <span className="mt-1.5 size-3 shrink-0 rounded-full bg-green animate-pulse-dot" aria-hidden />
             <div className="flex-1">
-              <span className="font-mono text-[10.5px] uppercase tracking-[.1em] text-green">Kaspi Pay · оплачено</span>
+              <span className="font-mono text-[11px] uppercase tracking-[.1em] text-green">Kaspi Pay · оплачено</span>
               <h2 id="started-h" className="h-serif mt-1.5 text-[clamp(26px,3vw,34px)]">Кампания <Script>запущена</Script>.</h2>
-              <p className="mt-2 max-w-2xl text-[14.5px] text-ink-2">
+              {/* Phones: one short line, so «Следующий шаг» stays above the fold on the first visit. */}
+              <p className="mt-1.5 text-[14px] text-ink-2 sm:hidden">Агент уже работает — дальше он сам.</p>
+              <p className="mt-2 hidden max-w-2xl text-[14.5px] text-ink-2 sm:block">
                 Агент уже провёл первый цикл{d.todayBreakdown.found ? <>: нашёл <span className="num text-head">{d.todayBreakdown.found}</span> {plural(d.todayBreakdown.found, ["вакансию", "вакансии", "вакансий"])}</> : ""}
                 {t.submitted ? <> и отправил <span className="num text-head">{t.submitted}</span> {plural(t.submitted, ["заявку", "заявки", "заявок"])}</> : ""}.
                 Дальше он работает сам — каждый день, до {campaign.dailyLimit} {plural(campaign.dailyLimit, ["заявки", "заявок", "заявок"])}. Агент позовёт тебя, только когда без тебя нельзя.
@@ -179,7 +184,11 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           <Label>Где ты сейчас</Label>
           <Link href="/app/applications" className="inline-flex min-h-10 items-center gap-1 text-[13px] text-teal hover:text-head">Applications <ArrowRight className="size-3.5" aria-hidden /></Link>
         </div>
-        <StageBar stage={d.stage} values={d.stageValues} />
+        <StageBar stage={d.stage} values={d.stageValues} open={{
+          assessments: d.upcoming.some((i) => i.round === "assessment"),
+          interviews: d.upcoming.some((i) => i.round !== "assessment"),
+          offers: d.offers.length > 0,
+        }} />
         <div className="flex flex-col gap-4 border-t border-line pt-6">
           <KeyNumbers t={d.totals} />
           <TodayStrip d={{ found: d.todayBreakdown.found, qualified: d.todayBreakdown.qualified, submitted: t.submitted, responses: t.responses }} />
@@ -197,7 +206,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       {/* Demo tools (demo account, staff, local dev): available, not advertised. */}
       {demo && (
         <div className="flex flex-wrap items-start gap-2 px-1 pt-2 text-[12.5px] text-ink-3">
-          <span className="label mr-1 pt-3 !text-[9.5px] !text-ink-3">Демо-инструменты</span>
+          <span className="label mr-1 pt-3 !text-[11px] !text-ink-3">Демо-инструменты</span>
           {isActive && <RunAgentButton />}
           <SimulateButton />
         </div>

@@ -30,13 +30,13 @@ export async function saveAutonomy(_prev: AutonomyState, form: FormData): Promis
   await db.user.update({ where: { id: user.id }, data: { autonomy: s(next) } });
   // Campaign.autoSubmit is not touched here: it mirrors only the auto-submit consent (Settings → Privacy).
 
-  const changed = AUTONOMY_LABELS.filter(({ key }) => before[key] !== next[key]).map(({ key, label }) => `${label}: ${next[key] ? "ON" : "OFF"}`);
+  const changed = AUTONOMY_LABELS.filter(({ key }) => before[key] !== next[key]).map(({ key, label }) => `${label}: ${next[key] ? "вкл" : "выкл"}`);
   if (before.submitApplications !== next.submitApplications || before.autoApplyMinMatch !== next.autoApplyMinMatch) {
-    changed.push(next.submitApplications ? `Auto-apply: ON, Match ≥ ${next.autoApplyMinMatch}%` : "Auto-apply: OFF (только Apply / Auto)");
+    changed.push(next.submitApplications ? `Автоподача: вкл, Match от ${next.autoApplyMinMatch}%` : "Автоподача: выкл (только Apply / Auto)");
   }
-  if (before.sensitive !== next.sensitive) changed.push(`Sensitive: ${next.sensitive === "ask" ? "ask me" : "prefer not to say"}`);
+  if (before.sensitive !== next.sensitive) changed.push(`Чувствительные вопросы: ${next.sensitive === "ask" ? "спрашивать меня" : "отвечать «Предпочитаю не указывать»"}`);
   if (changed.length) await logEvent(user.id, "autonomy", `Настройки агента: ${changed.join(", ")}`);
-  // Switching Sensitive to "prefer not to say" applies to questions already waiting too, not only to new packages:
+  // Switching Sensitive to «Предпочитаю не указывать» applies to questions already waiting too, not only to new packages:
   // each pending sensitive approval is answered the same way prepare() would answer it, and ready roles continue.
   if (before.sensitive !== "decline" && next.sensitive === "decline") {
     await answerMatchingApprovals(user.id, { kind: "sensitive", answer: SENSITIVE_DECLINE, status: "approved" });

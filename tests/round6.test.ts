@@ -147,10 +147,10 @@ describe("pure helpers", () => {
     assert.equal(v.reason, "Офис или гибрид, спонсорство визы недоступно"); // legacy English rows read in Russian
     assert.equal(fitVerdict({ eligibility: "eligible", match: 90, blockers: [] }).showWhyFits, true);
   });
-  test("goalTitle: role only; «International» only for named foreign markets", () => {
+  test("goalTitle: role only — the market goes into the subtitle (round 8: no «International» prefix)", () => {
     assert.equal(goalTitle("Product Manager", ["WORLD"]), "Product Manager");
     assert.equal(goalTitle("Product Manager удалённо", ["WORLD"]), "Product Manager");
-    assert.equal(goalTitle("Product Manager", ["EU", "WORLD"]), "International Product Manager");
+    assert.equal(goalTitle("Product Manager", ["EU", "WORLD"]), "Product Manager");
     assert.equal(goalTitle("Data Analyst", ["KZ"]), "Data Analyst");
     assert.equal(cleanRoleTitle("Remote Data Analyst"), "Data Analyst");
   });

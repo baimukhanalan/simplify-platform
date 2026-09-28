@@ -13,7 +13,10 @@ const COUNTRY_WORDS: [RegExp, string][] = ([
   ["germany|deutschland|berlin|munich|münchen|hamburg|frankfurt|köln|cologne", "DE"], ["netherlands|amsterdam|rotterdam", "NL"],
   ["poland|warsaw|kraków|krakow|wroclaw", "PL"], ["spain|madrid|barcelona", "ES"], ["france|paris", "FR"], ["ireland|dublin", "IE"],
   ["portugal|lisbon|porto", "PT"], ["estonia|tallinn", "EE"], ["austria|vienna|wien", "AT"], ["sweden|stockholm", "SE"],
-  ["kazakhstan|almaty|astana|алматы|астана", "KZ"], ["uzbekistan|tashkent", "UZ"], ["uae|dubai|abu dhabi", "AE"],
+  ["kazakhstan|almaty|astana|nur-sultan|shymkent|karaganda|karagandy|aktobe|atyrau|pavlodar|казахстан|алматы|астана|шымкент|караганда|актобе|атырау|павлодар", "KZ"],
+  ["uzbekistan|tashkent|узбекистан|ташкент", "UZ"], ["kyrgyzstan|bishkek|кыргызстан|бишкек", "KG"], ["armenia|yerevan|армения|ереван", "AM"],
+  ["tbilisi|тбилиси|грузия", "GE"], ["azerbaijan|baku|азербайджан|баку", "AZ"], ["belarus|minsk|беларусь|минск", "BY"], ["russia|moscow|россия|москва", "RU"],
+  ["uae|dubai|abu dhabi", "AE"],
   ["worldwide|anywhere|global", "*"], ["europe|emea|eu", "EU*"],
 ] as const).map(([words, code]) => [wordRe(words), code]);
 const EU = ["DE", "NL", "PL", "ES", "FR", "IE", "PT", "SE", "EE", "LT", "CZ", "AT", "BE", "DK", "FI", "IT"];

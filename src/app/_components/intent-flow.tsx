@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import { useRouter } from "next/navigation";
 import { ArrowRight, ArrowLeft, Check, AlertCircle } from "lucide-react";
 import { cx } from "@/components/ui";
-import { ROLE_SUGGESTIONS, SALARY_PRESETS, WHERE_OPTIONS, fmtUsd, intentQuery, storeIntent, type Intent, type WhereKey } from "./campaign-intent";
+import { ROLE_SUGGESTIONS, SALARY_PRESETS, SALARY_PRESETS_KZT, WHERE_OPTIONS, fmtSalary, intentQuery, salaryCurrencyFor, salaryPhrase, storeIntent, type Intent, type SalaryCurrency, type WhereKey } from "./campaign-intent";
 
 const QUESTIONS = ["Кем ты хочешь работать?", "Где?", "Минимальная зарплата?"] as const;
 
@@ -18,7 +18,8 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
   const [step, setStep] = useState(0);
   const [role, setRole] = useState("");
   const [where, setWhere] = useState<WhereKey[]>([]);
-  const [salary, setSalary] = useState("");
+  // The amount belongs to the currency it was typed in: switching Kazakhstan ↔ international clears it.
+  const [salaryIn, setSalaryIn] = useState<{ v: string; cur: SalaryCurrency }>({ v: "", cur: "USD" });
   const [error, setError] = useState("");
   const [going, setGoing] = useState(false);
   const headRef = useRef<HTMLHeadingElement>(null);
@@ -47,7 +48,11 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
   }, [errTick]);
 
   const go = (n: number) => { moved.current = true; setError(""); setStep(n); };
-  const salaryNum = Number(salary.replace(/\D/g, "")) || 0;
+  const currency = salaryCurrencyFor(where);
+  const kzt = currency === "KZT";
+  const salaryNum = salaryIn.cur === currency ? Number(salaryIn.v.replace(/\D/g, "")) || 0 : 0;
+  const setSalary = (v: string) => setSalaryIn({ v, cur: currency });
+  const presets = kzt ? SALARY_PRESETS_KZT : SALARY_PRESETS;
 
   const validate = (s: number) => {
     if (s === 0 && role.trim().length < 2) return "Напиши роль — например, Product Manager";
@@ -74,7 +79,7 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
       const err = validate(s);
       if (err) { fail(s, err); return; }
     }
-    const intent: Intent = { role: role.trim().slice(0, 100), where, salary: salaryNum };
+    const intent: Intent = { role: role.trim().slice(0, 100), where, salary: salaryNum, currency };
     storeIntent(intent);
     const q = intentQuery(intent);
     setGoing(true);
@@ -88,7 +93,7 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
   const answered = [
     role.trim() || null,
     where.length ? where.map((w) => WHERE_OPTIONS.find((o) => o.key === w)?.label).join(", ") : null,
-    salaryNum ? `${fmtUsd(salaryNum)}+` : null,
+    salaryNum ? salaryPhrase(salaryNum, currency) : null,
   ];
 
   return (
@@ -164,21 +169,21 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
 
         {step === 2 && (
           <div className="flex flex-col gap-3">
-            <label htmlFor={`${uid}-sal`} className="sr-only">Минимальная зарплата, USD в год</label>
+            <label htmlFor={`${uid}-sal`} className="sr-only">{kzt ? "Минимальная зарплата, ₸ в месяц" : "Минимальная зарплата, USD в год"}</label>
             <div className="relative">
-              <span aria-hidden className="num pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-[18px] text-ink-3">$</span>
+              <span aria-hidden className="num pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-[18px] text-ink-3">{kzt ? "₸" : "$"}</span>
               <input
-                ref={salaryRef} id={`${uid}-sal`} inputMode="numeric" autoComplete="off" placeholder="70,000"
-                value={salaryNum ? salaryNum.toLocaleString("en-US") : ""} onChange={(e) => setSalary(e.target.value.replace(/\D/g, "").slice(0, 7))}
+                ref={salaryRef} id={`${uid}-sal`} inputMode="numeric" autoComplete="off" placeholder={kzt ? "600 000" : "50,000"}
+                value={salaryNum ? salaryNum.toLocaleString(kzt ? "ru-RU" : "en-US") : ""} onChange={(e) => setSalary(e.target.value.replace(/\D/g, "").slice(0, 7))}
                 aria-describedby={`${uid}-sal-hint`} className="field num !h-14 !rounded-2xl !pl-9 !pr-28 !text-[18px]"
               />
-              <span aria-hidden className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[13px] text-ink-3">в год, до налогов</span>
+              <span aria-hidden className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[13px] text-ink-3">{kzt ? "в месяц" : "в год"}, до налогов</span>
             </div>
             <div className="flex flex-wrap gap-1.5" role="group" aria-label="Быстрый выбор">
-              {SALARY_PRESETS.map((n) => (
+              {presets.map((n) => (
                 <button key={n} type="button" onClick={() => setSalary(String(n))} aria-pressed={salaryNum === n}
                   className={cx("num inline-flex min-h-10 items-center rounded-full border px-3.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green", salaryNum === n ? "border-green/40 bg-green-soft text-green" : "border-line bg-white/60 text-ink-2 hover:border-teal/40 hover:text-head")}
-                >{fmtUsd(n)}+</button>
+                >{fmtSalary(n, currency)}+</button>
               ))}
             </div>
             <span id={`${uid}-sal-hint`} className="text-[12.5px] text-ink-3">Необязательно. Simplify не будет тратить заявки на вакансии ниже этой суммы.</span>

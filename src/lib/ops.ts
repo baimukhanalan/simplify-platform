@@ -1,5 +1,5 @@
 // Agent C — pure presentation helpers for the campaign operating screens (safe for server and client).
-import { STATUS_LABEL } from "./engine/taxonomy";
+import { STATUS_LABEL, fmtMoney, fmtMoneyRange } from "./engine/taxonomy";
 import { NBSP, fmtNum, fmtYearsRu, plural, count } from "./ru";
 
 export { plural, count, fmtNum };
@@ -55,15 +55,14 @@ export const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) 
 
 export const pctLabel = (a: number, b: number) => (b > 0 ? `${pct(a, b)}%` : "—");
 
+/** A job's published salary in the one money style: «$60 000–$80 000», «$75 000». Null when none is published. */
 export function salaryLabel(min: number | null, max: number | null, cur = "USD") {
   if (!min && !max) return null;
-  const k = (n: number) => `${Math.round(n / 1000)}k`;
-  const sym = cur === "USD" ? "$" : cur === "EUR" ? "€" : cur === "GBP" ? "£" : `${cur} `;
-  if (min && max && min !== max) return `${sym}${k(min)}–${k(max)}`;
-  return `${sym}${k((max || min)!)}`;
+  if (min && max && min !== max) return fmtMoneyRange(min, max, cur);
+  return fmtMoney((max || min)!, cur);
 }
 
-export const statusLabel = (s: string) => (s === "skipped" ? "Skipped" : STATUS_LABEL[s] ?? s);
+export const statusLabel = (s: string) => (s === "skipped" ? "Пропущено" : STATUS_LABEL[s] ?? s);
 
 export function statusTone(s: string): Tone {
   if (["offer", "hired"].includes(s)) return "green";

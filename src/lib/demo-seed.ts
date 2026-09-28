@@ -1,11 +1,11 @@
 // Demo scenario from the product brief (Data Analyst from Almaty). Used by `npm run seed` and /api/admin/seed-demo.
 import { db, s } from "./db";
 import { hashPassword } from "./auth-hash";
-import { parseCVHeuristic } from "./engine/profile";
+import { parseCVHeuristic, yearsFromFacts } from "./engine/profile";
 import { runTick, simulateResponses, createInterview, ingestEmail, logEvent, notify, rescheduleInterview, NOTIFY_TITLE, SENSITIVE_DECLINE } from "./engine/agent";
 import { patchPackageAnswer } from "./engine/approvals";
 import { renormalizeDemoJobs } from "./engine/ingest";
-import { PLANS } from "./engine/taxonomy";
+import { PLANS, seniorityFromYears } from "./engine/taxonomy";
 import { loadCareer } from "./career";
 import { assessReadinessFor } from "./payments/readiness-snapshot";
 import { startOfToday } from "./time";
@@ -76,7 +76,7 @@ Data Analyst
 Almaty, Kazakhstan · aruzhan.demo@example.com · +7 700 000 00 00 · linkedin.com/in/aruzhan-demo · github.com/aruzhan-demo
 
 SUMMARY
-Data analyst with 2 years of experience in fintech and e-commerce analytics. English C1.
+Data analyst in fintech and e-commerce analytics. English C1.
 
 EXPERIENCE
 Data Analyst — Kaspi-like Fintech Demo LLP (Jan 2024 – present)
@@ -117,6 +117,8 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
   await db.partner.upsert({ where: { code: "MAPLE" }, create: { name: "Canadian workforce partner (pilot)", code: "MAPLE", revShare: 0.15, audience: 40000 }, update: {} });
 
   const parsed = parseCVHeuristic(CV);
+  // Years and level come from the seeded dates (Jan 2024 – present, Mar 2023 – Dec 2023), never a hardcoded number.
+  const years = yearsFromFacts(parsed.facts);
   const user = await db.user.create({
     data: {
       email: "demo@simplify.kz", name: "Aruzhan Sadykova", passwordHash: pw, referredByCode: "AMASKILLS",
@@ -124,11 +126,11 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
       profile: { create: {
         headline: "Data Analyst", location: "Almaty, Kazakhstan", city: "Almaty", country: "KZ", citizenship: "KZ", workAuth: s(["KZ"]),
         languages: s([{ lang: "English", level: "C1" }, { lang: "Russian", level: "native" }, { lang: "Kazakh", level: "native" }]), englishLevel: "C1",
-        yearsExperience: 2, skills: s(parsed.skills), salaryExpectation: 60000, remotePref: "remote", relocation: true, needsSponsorship: true,
-        phone: "+7 700 000 00 00", linkedin: "linkedin.com/in/aruzhan-demo", github: "github.com/aruzhan-demo", summary: "Data analyst with 2 years in fintech and e-commerce analytics.", cvText: CV, cvFileName: "Aruzhan_Sadykova_CV.pdf",
+        yearsExperience: years, skills: s(parsed.skills), salaryExpectation: 60000, remotePref: "remote", relocation: true, needsSponsorship: true,
+        phone: "+7 700 000 00 00", linkedin: "linkedin.com/in/aruzhan-demo", github: "github.com/aruzhan-demo", summary: "Data analyst in fintech and e-commerce analytics.", cvText: CV, cvFileName: "Aruzhan_Sadykova_CV.pdf",
       } },
       goal: { create: {
-        primaryRole: "Data Analyst", extraRoles: s(["Product Analyst"]), seniority: "middle", minSalary: 60000, currency: "USD",
+        primaryRole: "Data Analyst", extraRoles: s(["Product Analyst"]), seniority: seniorityFromYears(years), minSalary: 60000, currency: "USD",
         countries: s(["EU", "WORLD", "KZ"]), industries: s(["Fintech", "SaaS"]), workModes: s(["remote", "hybrid"]), relocation: true, sponsorshipNeeded: true,
         dreamCompanies: s(["Northwind Pay", "Kestrel Analytics"]), blockedCompanies: s([]), companySize: "any", mode: "autonomous",
       } },

@@ -6,10 +6,11 @@ import { checkReferral, login, signup, type AuthState, type ReferralCheck } from
 import { Logo, Script, cx } from "@/components/ui";
 import { Atmosphere } from "./atmosphere";
 import { AgentPreview } from "./agent-preview";
-import { WHERE_OPTIONS, fmtUsd, storeIntent, type Intent } from "../../_components/campaign-intent";
+import { WHERE_OPTIONS, salaryPhrase, storeIntent, type Intent } from "../../_components/campaign-intent";
 import { RememberPlan } from "../../_components/remember-plan";
 import { LegalLinks } from "../../_components/legal-page";
 import type { PlanKey } from "../../_components/plan-pref";
+import { count } from "../../_components/ru";
 
 type Mode = "login" | "signup";
 type FieldKey = "name" | "email" | "password" | "terms";
@@ -58,7 +59,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
     const e: Partial<Record<FieldKey, string>> = {};
     if (mode === "signup" && name.trim().length < 2) e.name = "Введи имя — минимум 2 символа";
     if (!EMAIL.test(email.trim())) e.email = email ? "Проверь формат email" : "Введи email";
-    if (mode === "signup" ? password.length < 8 : !password) e.password = mode === "signup" ? "Минимум 8 символов" : "Введи пароль";
+    if (mode === "signup" ? password.length < 8 : !password) e.password = mode === "signup" ? (password ? `Ещё ${count(8 - password.length, ["символ", "символа", "символов"])} — пароль слишком короткий` : "Придумай пароль") : "Введи пароль";
     if (mode === "signup" && !terms) e.terms = "Нужно согласие, чтобы создать аккаунт";
     return e;
   }, [mode, name, email, password, terms]);
@@ -197,7 +198,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                   {mode === "login" && (
                     <Link href="/reset" className="-my-2 inline-flex min-h-10 items-center rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Не помнишь пароль?</Link>
                   )}
-                  {mode === "signup" && password && <span className="label !text-[10px]" aria-live="polite">Надёжность: <span className={cx(pw.score >= 3 ? "text-green" : pw.score === 2 ? "text-amber" : "text-rose")}>{pw.label}</span></span>}
+                  {mode === "signup" && password && <span className="label !text-[11px]" aria-live="polite">Надёжность: <span className={cx(pw.score >= 3 ? "text-green" : pw.score === 2 ? "text-amber" : "text-rose")}>{pw.label}</span></span>}
                 </div>
                 <div className="relative">
                   <input
@@ -205,7 +206,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                     autoComplete={mode === "signup" ? "new-password" : "current-password"} value={password}
                     onChange={(e) => setPassword(e.target.value)} onBlur={() => setTouched((t) => ({ ...t, password: true }))}
                     onKeyUp={(e) => setCaps(e.getModifierState?.("CapsLock") ?? false)}
-                    aria-invalid={Boolean(show("password"))} aria-describedby={cx(show("password") && errId("password"), caps && `${uid}-caps`, mode === "signup" && `${uid}-pwhint`) || undefined}
+                    aria-invalid={Boolean(show("password"))} aria-describedby={cx(show("password") && errId("password"), caps && `${uid}-caps`, mode === "signup" && !show("password") && `${uid}-pwhint`) || undefined}
                     className={cx("field !pr-12", show("password") && "!border-rose/60")}
                     placeholder={mode === "signup" ? "Минимум 8 символов" : ""}
                   />
@@ -296,7 +297,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
             </form>
 
             <div className="mt-5 flex flex-col items-center gap-3 text-[13px] text-ink-3">
-              <div className="flex w-full items-center gap-3"><span className="h-px flex-1 bg-line" /><span className="label !text-[10px]">или</span><span className="h-px flex-1 bg-line" /></div>
+              <div className="flex w-full items-center gap-3"><span className="h-px flex-1 bg-line" /><span className="label !text-[11px]">или</span><span className="h-px flex-1 bg-line" /></div>
               <button type="button" onClick={fillDemo} disabled={pending} className="inline-flex h-10 items-center gap-2 rounded-full border border-line bg-white/60 px-4 text-[13.5px] text-head transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-green disabled:opacity-50">
                 <Sparkles className="size-3.5 text-teal" strokeWidth={1.7} />Войти в демо
               </button>
@@ -322,9 +323,9 @@ function IntentSummary({ intent }: { intent: Intent }) {
     <div className="mt-5 flex items-start gap-3 rounded-2xl border border-green/20 bg-green-soft/50 px-4 py-3 animate-fade">
       <Target className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />
       <div className="min-w-0 flex-1">
-        <div className="label !text-[10px] !text-green">Твоя кампания</div>
+        <div className="label !text-[11px] !text-green">Твоя кампания</div>
         <div className="mt-0.5 text-[14.5px] font-medium text-head">{intent.role}</div>
-        <div className="text-[12.5px] text-ink-3">{[where.join(", "), intent.salary ? `от ${fmtUsd(intent.salary)}` : ""].filter(Boolean).join(" · ")}</div>
+        <div className="text-[12.5px] text-ink-3">{[where.join(", "), intent.salary ? salaryPhrase(intent.salary, intent.currency) : ""].filter(Boolean).join(" · ")}</div>
       </div>
       <Link href="/" className="inline-flex min-h-10 shrink-0 items-center rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Изменить</Link>
     </div>

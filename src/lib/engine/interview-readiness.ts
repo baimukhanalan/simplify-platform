@@ -29,7 +29,7 @@ export type InterviewReadiness = ReturnType<typeof interviewReadiness>;
 export function roomReadiness(i: { match: number; bestMock: number | null; stories: number; hasPack: boolean }) {
   const parts = [
     { label: "Match с вакансией", value: clamp(i.match), w: 0.45 },
-    { label: "Пробное интервью", value: clamp(i.bestMock ?? NO_MOCK), w: 0.25, hint: i.bestMock == null ? "ещё не пройден" : "лучший результат" },
+    { label: "Пробное интервью", value: clamp(i.bestMock ?? NO_MOCK), w: 0.25, hint: i.bestMock == null ? "ещё не пройдено" : "лучший результат" },
     { label: "STAR-истории", value: clamp(i.stories * 25), w: 0.2, hint: `${i.stories} в библиотеке` },
     { label: "Бриф и ответы", value: i.hasPack ? 100 : 60, w: 0.1 },
   ];

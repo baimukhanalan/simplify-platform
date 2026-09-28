@@ -21,7 +21,9 @@ function hit(key: string, limit: number, windowMs: number) {
 export async function rateLimit(bucket: string, limit: number, windowMs: number) {
   const h = await headers();
   // On Vercel these headers are set by the edge (client-supplied values are overwritten).
-  const ip = h.get("x-vercel-forwarded-for")?.split(",")[0].trim() || h.get("x-real-ip") || (h.get("x-forwarded-for") ?? "").split(",")[0].trim() || "local";
+  // X-Forwarded-For is client-controlled unless a trusted proxy rewrites it: honour it only on Vercel or with TRUST_PROXY=1.
+  const trustXff = Boolean(process.env.VERCEL) || process.env.TRUST_PROXY === "1";
+  const ip = h.get("x-vercel-forwarded-for")?.split(",")[0].trim() || (trustXff ? h.get("x-real-ip") || (h.get("x-forwarded-for") ?? "").split(",")[0].trim() : "") || "local";
   return hit(`${bucket}:${ip}`, limit, windowMs);
 }
 

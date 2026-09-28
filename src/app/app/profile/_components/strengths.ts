@@ -20,6 +20,9 @@ const THEMES: { label: string; re: RegExp }[] = [
   { label: "Операции и процессы", re: /process improvement|оптимизир|operations|операцион|sla|логистик|supply/i },
 ];
 
+const LEAD_TITLE = /(?<![\p{L}])(team\s*lead|tech\s*lead|lead|head|manager|director|chief|руководител\p{L}*|тимлид|лид|начальник|директор|менеджер)(?![\p{L}])/iu;
+const TEAM_EVIDENCE = /(?<![\p{L}])(managed (?:a |the )?team|led (?:a |the )?team|team of \d+|managing \d+|direct reports?|hired (?:and|&) (?:mentored|trained)|mentored \d+|руководил\p{L}* (?:команд|отдел|групп)|управлял\p{L}* (?:команд|отдел|групп)|команд\p{L}* из \d+|в подчинении|нанимал\p{L}*)/iu;
+
 export function deriveStrengths(facts: FactIn[], skills: string[]): Strength[] {
   const work = facts.filter((f) => ["employment", "project", "achievement"].includes(f.kind));
   const skillText = skills.join(" ");
@@ -39,7 +42,9 @@ export function deriveStrengths(facts: FactIn[], skills: string[]): Strength[] {
     });
   }
 
-  const led = work.filter((f) => f.ownership === "led" || ((f.teamSize ?? 0) >= 3 && /lead|head|руковод|лид/i.test(f.title)));
+  // «Руководство командой» needs a management title or management written in the role itself. Ownership "led"
+  // («Самостоятельно» — the decisions were mine) is about autonomy, not about managing people.
+  const led = work.filter((f) => LEAD_TITLE.test(f.title) || TEAM_EVIDENCE.test(`${f.details} ${f.metrics}`));
   if (led.length) {
     const team = Math.max(0, ...led.map((f) => f.teamSize ?? 0));
     out.push({ label: "Руководство командой", evidence: led.map((f) => (f.org ? `${f.title} · ${f.org}` : f.title)).slice(0, 2), metric: team ? `Команда до ${team} человек` : "", score: led.length * 2 + (team ? 2 : 0) });

@@ -8,7 +8,7 @@ import { parseCV } from "../engine/profile";
 import { count } from "../ru";
 import { marketRange } from "../engine/market";
 import { REGIONS, SENIORITY, classifyRole, cleanRoleTitle, extractSkills } from "../engine/taxonomy";
-import { buildCareerCheck, chatTurnsFor, confirmSeniority, intlAuthRegions, markStepDone, readinessForUser, syncSeniorityFromYears, LAST_STEP, STEP } from "../onboarding";
+import { buildCareerCheck, chatTurnsFor, confirmSeniority, intlAuthRegions, markStepDone, readinessForUser, syncSeniorityFromYears, syncYearsFromFacts, LAST_STEP, STEP } from "../onboarding";
 import { cleanIntent, intentToGoal } from "../../app/_components/campaign-intent";
 
 export type FormState = { error?: string; ok?: boolean; message?: string; fields?: Record<string, string> } | undefined;
@@ -104,8 +104,10 @@ export async function saveSources(_: FormState, form: FormData): Promise<FormSta
     }
     factCount = add.length;
     skillCount = cv.skills.length;
+    // Years = the employment ranges now in the profile (new CV roles + roles the user already worked on), overlaps merged.
+    const years = await syncYearsFromFacts(user.id, cv.yearsExperience || prev?.yearsExperience || 0);
     // The goal level follows the parsed experience unless the user already chose it (goal_seniority_confirmed).
-    await syncSeniorityFromYears(user.id, cv.yearsExperience || prev?.yearsExperience || 0);
+    await syncSeniorityFromYears(user.id, years);
   } else {
     await db.profile.update({
       where: { userId: user.id },
@@ -243,9 +245,14 @@ export async function saveGoal(_: FormState, form: FormData): Promise<FormState>
   if (Object.keys(fields).length) return { error: "Проверь отмеченные поля", fields };
 
   const relocation = form.get("relocation") === "on";
+  // The ₸ form sends the annual amount in tenge (salaryLocal + salaryCurrency=KZT) next to its USD conversion: the goal
+  // keeps the user's own currency; engines convert via toUSD.
+  const kzt = str(form, "salaryCurrency", 3).toUpperCase() === "KZT" && form.has("salaryLocal");
+  const salary = kzt
+    ? { minSalary: Math.min(100_000_000, intOf(str(form, "salaryLocal", 14))), currency: "KZT" }
+    : { minSalary: Math.min(2_000_000, intOf(str(form, "minSalary", 12))), currency: "USD" };
   const data: Record<string, string | number | boolean> = {
-    primaryRole, seniority, countries: s(countries), workModes: s(workModes), relocation,
-    minSalary: Math.min(2_000_000, intOf(str(form, "minSalary", 12))), currency: "USD",
+    primaryRole, seniority, countries: s(countries), workModes: s(workModes), relocation, ...salary,
   };
   // Optional fields only change when the form actually sends them.
   if (form.has("industries")) data.industries = s(list(form, "industries", 8));

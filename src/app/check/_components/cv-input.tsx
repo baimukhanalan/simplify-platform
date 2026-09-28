@@ -105,7 +105,7 @@ export function CvInput({ initialText = "", initialFileName = "", minChars = 120
               <>
                 <UploadCloud className={cx("size-7 transition-colors", drag ? "text-green" : "text-teal")} strokeWidth={1.5} aria-hidden />
                 <span className="text-[14.5px] text-head"><span className="font-medium underline decoration-line underline-offset-4 group-hover:decoration-teal">Выбери файл</span> или перетащи сюда</span>
-                <span id={`${id}-hint`} className="label !text-[10px]">PDF или TXT · до 5 МБ</span>
+                <span id={`${id}-hint`} className="label !text-[11px]">PDF или TXT · до 5 МБ</span>
               </>
             )}
           </label>

@@ -3,7 +3,7 @@ import { db, j } from "@/lib/db";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { regionsFor } from "@/lib/regions";
 import { currentCampaign, isQualified, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, reachedAssessment, reachedInterviewRound, runningCampaign, windowNumbers } from "@/lib/ops-data";
-import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
+import { APPLIED_OR_LATER, fmtMoney } from "@/lib/engine/taxonomy";
 import { blockerRu } from "@/lib/engine/matching";
 import { APP_TZ as TZ, startOfToday } from "@/lib/time";
 import { regionsRu } from "@/app/_components/ru";
@@ -46,11 +46,8 @@ const REGION_IN: Record<string, string> = { KZ: "Казахстане", CIS: "С
 
 const joinRu = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} и ${xs[xs.length - 1]}`);
 
-function money(n: number, cur: string) {
-  const sym = cur === "USD" ? "$" : cur === "EUR" ? "€" : cur === "GBP" ? "£" : cur === "KZT" ? "₸" : `${cur} `;
-  if (cur === "KZT") return `${Math.round(n / 1000).toLocaleString("ru-RU")}k ₸`;
-  return `${sym}${Math.round(n / 1000)}k`;
-}
+/** The one money style (src/lib/engine/taxonomy.ts): «$60 000», «450 000 ₸». */
+const money = (n: number, cur: string) => fmtMoney(n, cur);
 
 export function goalLine(goal: { primaryRole: string; countries: string; minSalary: number; currency: string } | null) {
   if (!goal?.primaryRole) return { line: null as string | null, regions: [] as string[] };
@@ -203,7 +200,7 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
       where: { campaignId, createdAt: { gte: since }, status: "skipped" },
       orderBy: { match: "desc" },
       take: 60,
-      select: { id: true, blockers: true, createdAt: true, job: { select: { company: true } } },
+      select: { id: true, blockers: true, createdAt: true, job: { select: { company: true, title: true } } },
     }),
     db.inboxMessage.findMany({
       where: { userId, receivedAt: { gte: since } },
@@ -229,7 +226,7 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
     const first = j<string[]>(o.blockers, [])[0];
     const reason = first ? blockerRu(first) : "";
     if (!reason) continue;
-    if (bump(o.createdAt, "skipped") <= 3) items.push({ id: `s-${o.id}`, at: o.createdAt, kind: "skipped", text: `Пропущено — ${o.job.company}: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`, href: `/app/opportunities/${o.id}` });
+    if (bump(o.createdAt, "skipped") <= 3) items.push({ id: `s-${o.id}`, at: o.createdAt, kind: "skipped", text: `Пропущено — ${o.job.company} · ${o.job.title}: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`, href: `/app/opportunities/${o.id}` });
   }
 
   for (const e of events) {

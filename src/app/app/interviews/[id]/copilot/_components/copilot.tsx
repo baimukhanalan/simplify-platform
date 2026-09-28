@@ -246,7 +246,7 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
             {round && <span className="shrink-0 text-white/70"><span aria-hidden className="hidden sm:inline">· </span>{round}</span>}
           </h1>
           {debug && latency != null && (
-            <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] text-white/35" title="От конца вопроса до карточки на экране">
+            <span className="flex shrink-0 items-center gap-1 font-mono text-[11px] text-white/35" title="От конца вопроса до карточки на экране">
               <Gauge className="size-3" strokeWidth={1.8} aria-hidden />
               <span className="num">{latency < 10 ? latency.toFixed(1) : Math.round(latency)}</span>&nbsp;мс
             </span>
@@ -271,7 +271,7 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
 
             <div className="border-t border-white/10 px-4 py-2.5">
               <p className="line-clamp-2 min-h-[1.5em] text-[12.5px] leading-snug text-white/55">
-                <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[.08em] text-white/35">Распознано</span>
+                <span className="mr-1.5 font-mono text-[11px] uppercase tracking-[.08em] text-white/35">Распознано</span>
                 {live || (speech.listening ? "…" : "микрофон выключен")}
               </p>
               {history.length > 1 && (
@@ -299,11 +299,13 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
                   onClick={toggle}
                   disabled={!supported}
                   aria-pressed={speech.listening}
+                  aria-describedby={!supported ? `${uid}-nosr` : undefined}
+                  title={!supported ? "Распознавание речи недоступно в этом браузере — вставь вопрос текстом" : undefined}
                   className={cx("flex h-11 flex-1 items-center justify-center gap-2 rounded-full text-[14.5px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fd39a] disabled:cursor-not-allowed disabled:opacity-40", speech.listening ? "bg-[#e5484d] text-white hover:brightness-110" : "bg-white text-[#0c1512] hover:bg-white/90")}
                 >
                   {speech.listening ? <MicOff className="size-4.5" strokeWidth={1.8} aria-hidden /> : <Mic className="size-4.5" strokeWidth={1.8} aria-hidden />}
                   {speech.listening ? "Стоп" : "Слушать"}
-                  <kbd className="hidden rounded border border-current/30 px-1 font-mono text-[10px] opacity-60 sm:inline">Пробел</kbd>
+                  <kbd className="hidden rounded border border-current/30 px-1 font-mono text-[11px] opacity-60 sm:inline">Пробел</kbd>
                 </button>
                 <label htmlFor={`${uid}-lang`} className="sr-only">Язык интервью</label>
                 <select id={`${uid}-lang`} value={lang} onChange={(e) => setLang(e.target.value)} disabled={speech.listening} className="h-11 rounded-full border border-white/15 bg-transparent px-3 text-[13px] text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a] disabled:opacity-50 [&>option]:text-black">
@@ -325,9 +327,12 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
                   <CornerDownLeft className="size-4" strokeWidth={1.8} />
                 </button>
               </form>
-              {(speech.error || !supported) && (
-                <p role="alert" className="text-[12px] leading-snug text-amber-200">{speech.error ?? "Распознавание речи недоступно в этом браузере — вставляй вопросы текстом, карточка появится мгновенно."}</p>
-              )}
+              {/* Unsupported browser: a standing hint tied to the disabled button; a runtime error is announced. */}
+              {speech.error ? (
+                <p role="alert" className="text-[12px] leading-snug text-amber-200">{speech.error}</p>
+              ) : !supported ? (
+                <p id={`${uid}-nosr`} className="text-[12px] leading-snug text-amber-200">«Слушать» недоступно: этот браузер не распознаёт речь (нужен Chrome, Edge или Safari). Вставляй вопросы текстом — карточка появится мгновенно.</p>
+              ) : null}
               <p className="text-[11px] leading-snug text-white/35">Речь распознаёт браузер, Simplify ничего не записывает.</p>
             </footer>
           </>
@@ -343,18 +348,18 @@ function CardView({ item }: { item: Item }) {
   return (
     <article className="flex animate-fade flex-col gap-4">
       <p className="line-clamp-3 text-[13.5px] leading-snug text-white/55">«{q}»</p>
-      <span className={cx("w-fit rounded-full px-2.5 py-1 font-mono text-[10.5px] uppercase tracking-[.08em]", technical ? "bg-[#7fe3b6] text-[#0c1512]" : "bg-white/10 text-[#7fe3b6]")}>{MODE_LABEL[intent]}</span>
+      <span className={cx("w-fit rounded-full px-2.5 py-1 font-mono text-[11px] uppercase tracking-[.08em]", technical ? "bg-[#7fe3b6] text-[#0c1512]" : "bg-white/10 text-[#7fe3b6]")}>{MODE_LABEL[intent]}</span>
 
       {card.opener && (
         <div className="flex flex-col gap-1">
-          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Первая фраза</span>
+          <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/40">Первая фраза</span>
           <p className="font-serif text-[22px] leading-[1.18] text-white">{card.opener}</p>
         </div>
       )}
 
       {card.mode === "technical" && (
         <div className="flex flex-col gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Метод · {card.method.title}</span>
+          <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/40">Метод · {card.method.title}</span>
           <ol className="flex flex-col gap-2">
             {card.method.steps.map((s, i) => (
               <li key={s} className="flex gap-3 text-[15px] leading-snug text-white/92">
@@ -365,13 +370,13 @@ function CardView({ item }: { item: Item }) {
           </ol>
           {card.method.formula && (
             <div className="rounded-xl bg-white/6 px-3 py-2.5 ring-1 ring-white/10">
-              <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Формула</span>
+              <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/40">Формула</span>
               <p className="num mt-0.5 text-[15px] text-[#7fe3b6]">{card.method.formula}</p>
             </div>
           )}
           {card.method.mention && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Стоит упомянуть</span>
+              <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/40">Стоит упомянуть</span>
               {card.method.mention.map((m) => <span key={m} className="rounded-full bg-white/8 px-2 py-0.5 text-[12px] text-white/80">{m}</span>)}
             </div>
           )}
@@ -380,11 +385,11 @@ function CardView({ item }: { item: Item }) {
 
       {card.mode === "behavioral" && (
         <div className="flex flex-col gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Структура ответа</span>
+          <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/40">Структура ответа</span>
           <dl className="flex flex-col gap-2">
             {card.rows.map((r) => (
               <div key={r.k} className="grid grid-cols-[84px_1fr] gap-2.5">
-                <dt className="pt-0.5 font-mono text-[10.5px] uppercase tracking-[.06em] text-[#7fe3b6]">{r.k}</dt>
+                <dt className="pt-0.5 font-mono text-[11px] uppercase tracking-[.06em] text-[#7fe3b6]">{r.k}</dt>
                 <dd className="text-[14.5px] leading-snug text-white/90">{r.v}</dd>
               </div>
             ))}
@@ -394,7 +399,7 @@ function CardView({ item }: { item: Item }) {
 
       {card.mode === "general" && (
         <div className="flex flex-col gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Структура · {card.strategy}</span>
+          <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/40">Структура · {card.strategy}</span>
           <ul className="flex flex-col gap-2">
             {card.bullets.map((b, i) => (
               <li key={i} className="flex gap-2.5 text-[15px] leading-snug text-white/90">
@@ -408,7 +413,7 @@ function CardView({ item }: { item: Item }) {
 
       {card.keyNumber && (
         <div className="flex items-baseline gap-2 border-t border-white/10 pt-3">
-          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Цифра</span>
+          <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/40">Цифра</span>
           <span className="num text-[18px] text-[#7fe3b6]">{card.keyNumber}</span>
         </div>
       )}
@@ -419,7 +424,7 @@ function CardView({ item }: { item: Item }) {
 function Idle({ listening, supported }: { listening: boolean; supported: boolean }) {
   return (
     <div className="flex h-full min-h-[40dvh] flex-col justify-center gap-3 py-6 sm:min-h-0 sm:justify-start">
-      <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-white/45">{listening ? "Copilot слушает интервьюера" : "Ждёт вопроса"}</span>
+      <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/45">{listening ? "Copilot слушает интервьюера" : "Ждёт вопроса"}</span>
       <p className="font-serif text-[24px] leading-[1.15] text-white">
         {listening ? "Как только вопрос закончится, здесь появится карточка." : supported ? "Нажми «Слушать», когда начнётся звонок." : "Вставь вопрос интервьюера в поле ниже."}
       </p>

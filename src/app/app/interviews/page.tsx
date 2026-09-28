@@ -105,7 +105,7 @@ export default async function InterviewsPage() {
                 const n = r === "offer" ? offers : reached(r);
                 return (
                   <li key={r} className="flex flex-col gap-1.5 bg-white/40 px-4 py-3.5">
-                    <span className="label !text-[9.5px]">{r === "offer" ? "Оффер" : ROUND_LABEL[r]}</span>
+                    <span className="label !text-[11px]">{r === "offer" ? "Оффер" : ROUND_LABEL[r]}</span>
                     <span className={cx("num text-[26px] leading-none", n ? (r === "offer" ? "text-green" : "text-head") : "text-ink-4")}>{n}</span>
                   </li>
                 );
@@ -179,7 +179,7 @@ function NextUp({ iv, now }: { iv: Row; now: number }) {
             href={`/app/interviews/${iv.id}`}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-6 text-[15px] font-medium text-[#141414] transition hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]"
           >
-            {isAssessment ? "Открыть тестовое задание" : "Prepare"}<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
+            {isAssessment ? "Открыть тестовое задание" : "Подготовиться"}<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </Link>
         </div>
       </div>
@@ -195,7 +195,7 @@ function UpcomingCard({ iv, now }: { iv: Row; now: number }) {
     <li className="glass group relative flex flex-col gap-4 p-5 transition hover:bg-white/85">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <Link href={`/app/interviews/${iv.id}`} className="truncate text-[17px] font-medium text-head after:absolute after:inset-0 after:rounded-[22px] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-green">
+          <Link href={`/app/interviews/${iv.id}`} className="-my-2 block truncate py-2 text-[17px] font-medium text-head after:absolute after:inset-0 after:rounded-[22px] focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-green">
             {iv.opportunity.job.company}
           </Link>
           <span className="truncate text-[13.5px] text-ink-3">{iv.opportunity.job.title}</span>
@@ -215,7 +215,7 @@ function UpcomingCard({ iv, now }: { iv: Row; now: number }) {
           )}
         </div>
         <span className="relative z-10 inline-flex items-center gap-1 text-[13px] font-medium text-head" aria-hidden>
-          Prepare<ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" strokeWidth={1.8} />
+          Подготовиться<ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" strokeWidth={1.8} />
         </span>
       </div>
     </li>
@@ -227,7 +227,7 @@ function PastRow({ iv }: { iv: Row }) {
   return (
     <li className="relative flex flex-col gap-2 px-5 py-4 transition-colors hover:bg-white/60 sm:flex-row sm:items-center sm:gap-5">
       <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <Link href={`/app/interviews/${iv.id}?tab=debrief`} className="min-w-0 truncate text-[15.5px] font-medium text-head after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-green">
+        <Link href={`/app/interviews/${iv.id}?tab=debrief`} className="-my-2.5 block min-w-0 truncate py-2.5 text-[15.5px] font-medium text-head after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-green">
           {iv.opportunity.job.company} <span className="font-normal text-ink-3">· {iv.opportunity.job.title}</span>
         </Link>
         <span className="text-[12.5px] text-ink-3">{iv.scheduledAt ? day(iv.scheduledAt) : "—"}</span>

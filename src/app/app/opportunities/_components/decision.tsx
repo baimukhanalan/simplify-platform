@@ -6,6 +6,7 @@ import { cx } from "@/components/ui";
 import { decideOpportunity, type DecisionState } from "@/lib/actions/opportunities";
 import { plural } from "../../../_components/ru";
 import { announce } from "./announcer";
+import { blockedNote, type BlockKind } from "../_lib/fit";
 
 type Props = {
   id: string;
@@ -13,6 +14,8 @@ type Props = {
   decision: string; // "" | apply | auto | skip
   status: string;
   blocked: boolean;
+  /** Why it's blocked: the user's own filters («Не подходит тебе») or the posting's requirements («Не проходишь»). */
+  blockedBy?: BlockKind;
   /** Pending sensitive questions for this role. */
   pending?: number;
   size?: "sm" | "md";
@@ -29,7 +32,7 @@ const ru = (s: string) => s.replace(/У вакансии hard blocker/i, "Ты �
  * Auto and Skip are one click because both are reversible. The result goes to the page toast (<Announcer/>, a polite
  * live region) — the card itself may leave the list after the refresh, the toast stays.
  */
-export function DecisionBar({ id, company, decision, status, blocked, pending = 0, size = "sm" }: Props) {
+export function DecisionBar({ id, company, decision, status, blocked, blockedBy = "requirement", pending = 0, size = "sm" }: Props) {
   const [confirming, setConfirming] = useState(false);
   const [intent, setIntent] = useState<string>("");
   const applyRef = useRef<HTMLButtonElement>(null);
@@ -71,7 +74,7 @@ export function DecisionBar({ id, company, decision, status, blocked, pending = 
       <form action={action} onSubmit={onSubmit} className="flex flex-col gap-2">
         <input type="hidden" name="id" value={id} />
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[13px] text-ink-3">{blocked ? "Пропущено — ты не проходишь по требованиям" : "Пропущено"}</span>
+          <span className="text-[13px] text-ink-3">{blocked ? (blockedBy === "filter" ? "Пропущено — вне твоих фильтров цели" : "Пропущено — ты не проходишь по требованиям") : "Пропущено"}</span>
           {!blocked && (
             <button name="decision" value="reset" disabled={busy} aria-busy={busy || undefined} className={cx(pill, h, "glass !rounded-full text-head hover:bg-white")}>
               <Undo2 className="size-3.5" aria-hidden />{busy ? "Возвращаем…" : "Вернуть"}
@@ -93,7 +96,7 @@ export function DecisionBar({ id, company, decision, status, blocked, pending = 
           disabled={busy || blocked}
           aria-expanded={confirming}
           aria-controls={panelId}
-          title={blocked ? "Ты не проходишь по требованиям — агент не подаёт" : undefined}
+          title={blocked ? blockedNote(blockedBy) : undefined}
           className={cx(pill, h, decision === "apply" ? "bg-cta text-white ring-2 ring-green/40" : "bg-cta text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c]")}
         >
           <Send className="size-3.5" aria-hidden />Apply

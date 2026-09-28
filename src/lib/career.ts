@@ -47,6 +47,8 @@ export async function loadCareer(userId: string) {
     currentSalary,
     demandJobs,
     regions,
+    // One level everywhere: the goal's seniority drives the market level (Offer Desk, Readiness, Career).
+    seniority: g?.seniority || undefined,
   });
   // "Underpaid" compares a real salary with the market; an expectation below market is not underpayment.
   return { user, role, family, regions, demandJobs, mockAvg, mockCount: mockScores.length, currentSalary, salarySource, compensationKind, compensationLabel, accepted, ...result, underpaid: compensationKind === "actual" && result.underpaid };

@@ -1,4 +1,4 @@
-import { ROLE_FAMILIES, SENIORITY, SENIORITY_LABEL, seniorityFromYears, type Seniority } from "@/lib/engine/taxonomy";
+import { ROLE_FAMILIES, SENIORITY, SENIORITY_LABEL, type Seniority } from "@/lib/engine/taxonomy";
 
 /** The five components shown in Career Mode (careerScore keys → UI labels). */
 export const BREAKDOWN: { key: "skillStrength" | "experience" | "marketDemand" | "compensationPosition" | "interviewReadiness"; label: string }[] = [
@@ -34,12 +34,6 @@ const SENIORITY_WORD: [RegExp, Seniority][] = [
   [/\bsenior|\bsr\b|старш|ведущ/i, "senior"],
   [/\blead\b|\bhead\b|principal|staff|руковод/i, "lead"],
 ];
-
-/** Current level: explicit word in the current title wins, else inferred from years of experience. */
-export function currentSeniority(title: string, years: number): Seniority {
-  for (const [re, s] of SENIORITY_WORD) if (re.test(title)) return s;
-  return seniorityFromYears(years);
-}
 
 /** A job title we can put a level in front of: "Data Analyst", "QA Engineer" — not "Other" or "Sales / SDR". */
 const TITLE_LIKE = /\b(analyst|engineer|scientist|manager|designer|developer|specialist|marketer|consultant|accountant|coordinator)\b/i;

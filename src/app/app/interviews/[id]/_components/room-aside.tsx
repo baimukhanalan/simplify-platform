@@ -109,7 +109,7 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
               ["Ответы", String(pkg.answers)],
             ].map(([k, v]) => (
               <div key={k} className="rounded-xl border border-line bg-white/55 px-2 py-2.5">
-                <dt className="label !text-[9.5px]">{k}</dt>
+                <dt className="label !text-[11px]">{k}</dt>
                 <dd className="num mt-1 truncate text-[15px] text-head">{v}</dd>
               </div>
             ))}

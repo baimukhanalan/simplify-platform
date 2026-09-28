@@ -40,7 +40,7 @@ export function MatchReasons({ reasons, limit = 6, className }: { reasons: { lab
 export function Metric({ label, value, tone, className }: { label: string; value: string; tone?: "green" | "amber" | "rose" | "teal"; className?: string }) {
   return (
     <div className={cx("flex flex-col gap-1", className)}>
-      <span className="label !text-[9.5px]">{label}</span>
+      <span className="label !text-[11px]">{label}</span>
       <span className={cx("num text-[20px] leading-none text-head", tone === "green" && "text-green", tone === "amber" && "text-amber", tone === "rose" && "text-rose", tone === "teal" && "text-teal")}>{value}</span>
     </div>
   );
@@ -69,7 +69,7 @@ export function StatusMover({ id, current, label = "Переместить", ari
         <input type="hidden" name="id" value={id} />
         {sets.map(({ g, items }) => (
           <fieldset key={g} className="flex flex-col gap-1">
-            <legend className="label mb-1 !text-[9px]">{GROUP_LABEL[g]}</legend>
+            <legend className="label mb-1 !text-[11px]">{GROUP_LABEL[g]}</legend>
             <div className="flex flex-wrap gap-1.5">
               {items.map((p) => (
                 <button

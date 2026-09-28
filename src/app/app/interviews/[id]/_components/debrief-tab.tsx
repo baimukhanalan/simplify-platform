@@ -98,15 +98,15 @@ export function DebriefTab({ iv, debrief, debug }: Props) {
         <dl className="grid gap-4 sm:grid-cols-3">
           <div className="flex gap-3">
             <Route className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
-            <div><dt className="label !text-[10px]">Следующий этап</dt><dd className="mt-1 text-[14px] text-head">{debrief.nextSteps || "Не назвали"}</dd></div>
+            <div><dt className="label !text-[11px]">Следующий этап</dt><dd className="mt-1 text-[14px] text-head">{debrief.nextSteps || "Не назвали"}</dd></div>
           </div>
           <div className="flex gap-3">
             <CalendarClock className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
-            <div><dt className="label !text-[10px]">Ответ обещали</dt><dd className="mt-1 text-[14px] text-head">{answerBy ?? "Срок не назвали"}</dd></div>
+            <div><dt className="label !text-[11px]">Ответ обещали</dt><dd className="mt-1 text-[14px] text-head">{answerBy ?? "Срок не назвали"}</dd></div>
           </div>
           <div className="flex gap-3">
             <CircleDollarSign className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
-            <div><dt className="label !text-[10px]">Зарплата</dt><dd className="mt-1 text-[14px] text-head">{debrief.salaryDiscussed ? debrief.salaryNote || "Обсуждали" : "Не обсуждали"}</dd></div>
+            <div><dt className="label !text-[11px]">Зарплата</dt><dd className="mt-1 text-[14px] text-head">{debrief.salaryDiscussed ? debrief.salaryNote || "Обсуждали" : "Не обсуждали"}</dd></div>
           </div>
         </dl>
 

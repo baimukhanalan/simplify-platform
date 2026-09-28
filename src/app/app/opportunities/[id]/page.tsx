@@ -17,7 +17,7 @@ import { LaneChip, StatusChip } from "../_components/bits";
 import { DecisionBar } from "../_components/decision";
 import { Announcer } from "../_components/announcer";
 import { fitCandidate } from "../_lib/candidate";
-import { cleanRequirement, cvVersionLabel, eligibilityVerdict, interviewChance, risks, whyFits, type Reason } from "../_lib/fit";
+import { blockedNote, cleanRequirement, cvVersionLabel, eligibilityVerdict, interviewChance, risks, whyFits, type Reason } from "../_lib/fit";
 import { experiencePair } from "./_lib/compare";
 import { agoRu, placeRu } from "../_lib/when";
 
@@ -51,15 +51,15 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
   const fitOpp = { match: opp.match, eligibility: opp.eligibility, pInterview: opp.pInterview, reasons: j<Reason[]>(opp.matchReasons, []), blockers: j<string[]>(opp.blockers, []).map(blockerRu), softGaps: j<string[]>(opp.softGaps, []).map(blockerRu) };
   const strengths = whyFits(fitOpp, job, candidate, 8);
   const riskList = risks(fitOpp, job, candidate);
-  const verdict = eligibilityVerdict(opp.eligibility);
   const chance = interviewChance(opp);
   const requirements = j<string[]>(job.requirements, []).map(cleanRequirement).filter(Boolean);
   const tech = j<string[]>(job.technologies, []);
   const salary = salaryLabel(job.salaryMin, job.salaryMax, job.currency);
   const applied = APPLIED_OR_LATER.includes(opp.status);
   // «Не проходишь» + the failing requirement go first; "Why this fits" is hidden for a blocked role (src/lib/engine/matching.ts).
-  const fit = fitVerdict({ eligibility: opp.eligibility, match: opp.match, blockers: fitOpp.blockers });
+  const fit = fitVerdict({ eligibility: opp.eligibility, match: opp.match, blockers: fitOpp.blockers, pInterview: opp.pInterview });
   const blocked = fit.blocked;
+  const verdict = eligibilityVerdict(opp.eligibility, fit.kind);
   const isDemo = job.source === "demo";
   const pending = opp.approvals.filter((a) => a.kind !== "handoff").length;
   const handoff = !isDemo && !applied && Boolean(pkg) && pending === 0 && opp.status === "prepared";
@@ -100,7 +100,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
         </p>
       )}
 
-      <AgentStatus needs={needs} working={applied ? "Заявка отправлена — агент следит за ответом работодателя." : undefined} className="-mt-3" />
+      <AgentStatus needs={needs} hereNeeds={!applied} working={applied ? "Заявка отправлена — агент следит за ответом работодателя." : undefined} className="-mt-3" />
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Decision first in the DOM so it is near the top on mobile; on desktop it is the sticky right column. */}
@@ -117,7 +117,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             ) : handoff ? (
               <div className="flex flex-col gap-3">
                 <p className="text-[13.5px] leading-snug text-ink-2">
-                  Пакет готов. Это живая вакансия: агент не отправляет в неё сам. Открой официальную форму {job.company}, вставь CV и сопроводительное письмо и отметь отправку.
+                  Пакет готов. Эту заявку нужно отправить через сайт работодателя: открой форму {job.company}, вставь CV и сопроводительное письмо и отметь отправку.
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {realUrl(job.url) && (
@@ -130,7 +130,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                     <SubmitButton size="sm" variant="glass" pendingText="Отмечаем…" className="!h-10">Отправлено</SubmitButton>
                   </form>
                 </div>
-                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} />
+                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} blockedBy={fit.kind ?? undefined} />
               </div>
             ) : (
               <>
@@ -138,7 +138,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                   <b className="font-medium text-head">Apply</b> — подать сейчас. <b className="font-medium text-head">Auto</b> — агент подаст сам.{" "}
                   <b className="font-medium text-head">Skip</b> — больше не показывать.
                 </p>
-                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} pending={pending} size="md" />
+                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} blockedBy={fit.kind ?? undefined} pending={pending} size="md" />
               </>
             )}
           </Card>
@@ -156,24 +156,33 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             </div>
             <dl className="grid grid-cols-3 gap-3 sm:gap-6">
               <div className="flex flex-col items-start gap-2">
-                <dt className="label !text-[9.5px]">{fit.blocked ? "Совпадение навыков" : "Match"}</dt>
+                <dt className="label !text-[11px]">{fit.blocked ? "Совпадение навыков" : "Match"}</dt>
                 <dd>
                   <span aria-hidden><Ring value={opp.match} size={56} stroke={5} /></span>
                   <span className="sr-only">{opp.match}%</span>
                 </dd>
               </div>
               <div className="flex flex-col gap-2">
-                <dt className="label !text-[9.5px]">Требования</dt>
+                <dt className="label !text-[11px]">Требования</dt>
                 <dd className="flex flex-col gap-1">
                   <span className={cx("text-[17px] font-medium leading-tight sm:text-[20px]", TONE_TEXT[verdict.tone])}>{verdict.label}</span>
                   <span className="text-[12px] leading-snug text-ink-3">{verdict.hint}</span>
                 </dd>
               </div>
               <div className="flex flex-col gap-2">
-                <dt className="label !text-[9.5px]">Interview probability</dt>
+                <dt className="label !text-[11px]">Interview probability</dt>
                 <dd className="flex flex-col gap-1">
-                  <span className={cx("num text-[28px] leading-none", TONE_TEXT[chance.tone])}>{chance.pct}%</span>
-                  <span className="text-[12px] leading-snug text-ink-3">{blocked ? "не проходишь по требованиям — агент не подаёт" : chance.qual}</span>
+                  {fit.pInterview === null ? (
+                    <>
+                      <span className="num text-[28px] leading-none text-ink-4" aria-hidden>—</span>
+                      <span className="text-[12px] leading-snug text-ink-3">не считается: вакансия вне твоих фильтров</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={cx("num text-[28px] leading-none", TONE_TEXT[chance.tone])}>{chance.pct}%</span>
+                      <span className="text-[12px] leading-snug text-ink-3">{blocked ? "не проходишь по требованиям — агент не подаёт" : chance.qual}</span>
+                    </>
+                  )}
                 </dd>
               </div>
             </dl>
@@ -220,7 +229,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                 {originalSummary && <Compare title="Краткое резюме" original={originalSummary} simplify={null} />}
                 <div className="flex flex-col gap-3 rounded-2xl border border-dashed border-line p-4 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-[13.5px] text-ink-2">
-                    {blocked ? "Ты не проходишь по требованиям — агент не готовит под эту вакансию CV." : "Персональную версию CV агент соберёт, когда ты выберешь Apply или Auto. Черновик можно посмотреть заранее — это ничего не отправляет и не меняет статус."}
+                    {blocked ? `${fit.kind ? blockedNote(fit.kind) : "Агент не подаёт"}: CV под эту вакансию не готовится.` : "Персональную версию CV агент соберёт, когда ты выберешь Apply или Auto. Черновик можно посмотреть заранее — это ничего не отправляет и не меняет статус."}
                   </p>
                   {!blocked && opp.status !== "skipped" && (
                     <form action={prepareOpportunity} className="shrink-0">
@@ -240,7 +249,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             {tech.length > 0 && <ul className="flex flex-wrap gap-1.5" aria-label="Технологии">{tech.map((t) => <li key={t}><Chip>{t}</Chip></li>)}</ul>}
             {requirements.length > 0 && (
               <div className="flex flex-col gap-2">
-                <span className="label !text-[9.5px]">Требования</span>
+                <span className="label !text-[11px]">Требования</span>
                 <ul className="flex list-disc flex-col gap-1 pl-5 text-[14px] text-ink-2 marker:text-teal">{requirements.map((r) => <li key={r}>{r}</li>)}</ul>
               </div>
             )}
@@ -284,7 +293,7 @@ function JobFacts({ job, isDemo }: { job: { seniority: string; minYears: number;
 function Fact({ k, v }: { k: string; v: string }) {
   return (
     <div className="flex min-w-0 flex-col gap-0.5">
-      <dt className="label !text-[9.5px]">{k}</dt>
+      <dt className="label !text-[11px]">{k}</dt>
       <dd className="truncate text-head" title={v}>{v}</dd>
     </div>
   );
@@ -303,11 +312,11 @@ function Compare({ title, original, simplify, list }: { title: string; original:
       <h3 className="text-[14px] font-medium text-head">{title}</h3>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="flex flex-col gap-2 rounded-2xl border border-stroke bg-white/45 p-4">
-          <span className="label !text-[9.5px]">Было</span>
+          <span className="label !text-[11px]">Было</span>
           <div className="text-[13.5px] leading-relaxed text-ink-3">{body(original)}</div>
         </div>
         <div className="flex flex-col gap-2 rounded-2xl border border-green/20 bg-mint-2/80 p-4">
-          <span className="label !text-[9.5px] !text-green">Версия агента</span>
+          <span className="label !text-[11px] !text-green">Версия агента</span>
           <div className="text-[13.5px] leading-relaxed text-ink">{simplify ? body(simplify) : <p className="text-ink-3">Появится после подготовки пакета.</p>}</div>
         </div>
       </div>

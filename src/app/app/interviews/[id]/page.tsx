@@ -97,7 +97,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
 
   return (
     <>
-      <Link href="/app/interviews" className="mb-5 inline-flex items-center gap-1.5 rounded-full text-[13px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
+      <Link href="/app/interviews" className="mb-5 inline-flex min-h-10 items-center gap-1.5 rounded-full text-[13px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
         <ArrowLeft className="size-3.5" strokeWidth={1.7} aria-hidden />Все интервью
       </Link>
 
@@ -127,7 +127,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
       {justHappened && tab !== "debrief" && (
         <Link href={`/app/interviews/${iv.id}?tab=debrief`} className="mb-6 flex items-center justify-between gap-4 rounded-[22px] bg-cta px-5 py-4 text-white shadow-(--shadow-cta) transition hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green sm:px-6">
           <span className="flex flex-col gap-0.5">
-            <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-white/55">Интервью закончилось</span>
+            <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/55">Интервью закончилось</span>
             <span className="h-serif text-[22px] !text-white">Как прошло? Расскажи за минуту</span>
           </span>
           <ArrowRight className="size-5 shrink-0" strokeWidth={1.7} aria-hidden />

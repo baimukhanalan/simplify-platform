@@ -140,8 +140,8 @@ export type NotQueuedReason =
 export const NOT_QUEUED_LABEL: Record<NotQueuedReason, string> = {
   inactive: "Кампания не активна — агент сейчас не подаёт",
   "no-consent": "Автоотправка выключена в настройках приватности",
-  "off-goal": "Роль вне цели — агент подаст её только после Apply или Auto",
-  stale: "Вакансии больше 30 дней — агент подаст её только после Apply или Auto",
+  "off-goal": "Роль вне цели — агент подаст на неё только после Apply или Auto",
+  stale: "Вакансия старше 30 дней — агент подаст на неё только после Apply или Auto",
   "user-skip": "Отмечено «Пропустить» — агент не подаёт",
   duplicate: "На эту роль в компании уже есть заявка из другой локации",
   "needs-answers": "Ждёт твоего ответа на вопрос работодателя",
@@ -326,7 +326,9 @@ export async function expirePastInterviewPushes(userId: string, now = new Date()
 export async function unreadPushes(userId: string, opts: { currentPath?: string | null; excludeRoutes?: RegExp[] } = {}) {
   await expirePastInterviewPushes(userId);
   if (isPushHiddenOn(opts.currentPath, opts.excludeRoutes ?? PUSH_EXCLUDED_ROUTES)) return { top: null, more: 0, items: [], hidden: true };
-  const unread = await db.notification.findMany({ where: { userId, readAt: null }, orderBy: { createdAt: "desc" }, take: 20 });
+  const all = await db.notification.findMany({ where: { userId, readAt: null }, orderBy: { createdAt: "desc" }, take: 20 });
+  // A push is quiet on the screen that already shows its news (offer → Offer Desk, hired → HIRED): src/lib/push.ts.
+  const unread = all.filter((n) => !isPushHiddenOn(opts.currentPath, opts.excludeRoutes ?? PUSH_EXCLUDED_ROUTES, n.type));
   if (!unread.length) return { top: null, more: 0, items: [], hidden: false };
   return {
     top: await resolveNotification(unread[0]),

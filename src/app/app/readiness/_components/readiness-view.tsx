@@ -13,7 +13,7 @@ const VERDICT: Record<string, { label: string; tone: "green" | "teal" | "rose" }
 };
 
 /** "Readiness — 78/100" headline card. */
-export function ReadinessHero({ score, verdict, goal, children }: { score: number; verdict: string; goal: ReactNode; children?: ReactNode }) {
+export function ReadinessHero({ score, verdict, goal, market, children }: { score: number; verdict: string; goal: ReactNode; market?: string; children?: ReactNode }) {
   const v = VERDICT[verdict] ?? VERDICT.stretch;
   return (
     <section aria-label={`Readiness: ${score} из 100`} className="glass-strong flex flex-col gap-5 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-7">
@@ -30,6 +30,7 @@ export function ReadinessHero({ score, verdict, goal, children }: { score: numbe
       <div className="flex flex-col gap-2 sm:items-end sm:text-right">
         <Chip tone={v.tone} dot>{v.label}</Chip>
         <div className="text-[15px] text-head">{goal}</div>
+        {market && <div className="text-[13px] text-ink-3">{market}</div>}
         {children}
       </div>
     </section>

@@ -31,10 +31,10 @@ const lastTick = async (userId) => (await db.event.findFirst({ where: { userId, 
   check(r.result?.ok, "J7.save", "saveAutonomy ok", r.result);
   check(a.autoApplyMinMatch === 95, "J7.threshold.persist", "Agent screen: slider at 95% + auto-apply ON persists threshold 95", a);
   const pg = await c.get("/app/agent");
-  const shown = pg.text.match(/Auto-apply all jobs above (?:<!-- -->)?([^%<]+)(?:<!-- -->)?%/)?.[1];
+  const shown = pg.text.match(/Автоподача на все вакансии с Match от (?:<!-- -->)?([^%<]+)(?:<!-- -->)?%/)?.[1]; // Russian label since round 6
   check(shown === "95", "J7.threshold.render", "Agent screen re-renders the saved threshold", shown);
   const op = await c.get("/app/opportunities");
-  const shownOpp = op.text.match(/Auto-apply all jobs above <span class="num">(?:<!-- -->)?([^%<]+)/)?.[1];
+  const shownOpp = op.text.match(/Автоподача на все вакансии с Match от <span class="num">(?:<!-- -->)?([^%<]+)/)?.[1];
   console.log("  Opportunities toggle label shows:", shownOpp);
   // behaviour: with threshold lost, the agent submits below 95
   await db.approval.deleteMany({ where: { userId: c.user.id } });

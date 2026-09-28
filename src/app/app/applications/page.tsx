@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronDown, LayoutGrid, List } from "lucide-react";
+import { ArrowRight, ChevronDown, LayoutGrid, List } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { currentCampaign, pendingApprovalsCount, pendingHandoffsCount } from "@/lib/ops-data";
@@ -30,6 +30,11 @@ const header = (
     eyebrow="Applications"
     title={<>Твои <Script>заявки</Script></>}
     sub="Каждая заявка двигается по этапам сама — по письмам работодателей. Если что-то произошло вне почты, статус можно поменять на странице заявки."
+    actions={
+      <Link href="/app/insights" className="inline-flex min-h-10 items-center gap-1.5 rounded text-[13.5px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
+        Стратегия агента<ArrowRight className="size-3.5" aria-hidden />
+      </Link>
+    }
   />
 );
 

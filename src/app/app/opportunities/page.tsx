@@ -129,6 +129,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         needs={needs}
         idle={campaign.status !== "active"}
         here={here}
+        hereNeeds={Boolean(waitingHere)}
         working={campaign.status === "active" ? "Агент ищет вакансии и подаёт на сильные сам." : campaign.status === "paused" ? "Кампания на паузе — агент не ищет и не подаёт." : "Кампания завершена — новые вакансии не ищутся."}
         className="-mt-3"
       />
@@ -247,7 +248,7 @@ function OpportunityCard({ o, candidate, queued, hold }: { o: Row; candidate: Fi
   const salary = salaryLabel(o.job.salaryMin, o.job.salaryMax, o.job.currency);
   const applied = APPLIED_OR_LATER.includes(o.status);
   // A hard-blocked role can still score Match 100 (skills fit): the verdict and its reason go first (src/lib/engine/matching.ts).
-  const verdict = fitVerdict({ eligibility: o.eligibility, match: o.match, blockers: fitOpp.blockers });
+  const verdict = fitVerdict({ eligibility: o.eligibility, match: o.match, blockers: fitOpp.blockers, pInterview: o.pInterview });
   const blocked = verdict.blocked;
   const titleId = `opp-${o.id}`;
   const place = placeRu(o.job.location, o.job.remote);
@@ -276,22 +277,25 @@ function OpportunityCard({ o, candidate, queued, hold }: { o: Row; candidate: Fi
         {verdict.blocked ? (
           // Secondary: for a blocked role the number is the skills fit, not a chance.
           <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-            <span className="label !text-[9.5px]">Совпадение навыков</span>
+            <span className="label !text-[11px]">Совпадение навыков</span>
             <span className="num text-[20px] leading-none text-ink-3">{o.match}%</span>
           </div>
         ) : (
           <div className="flex shrink-0 flex-col items-end gap-1">
-            <span className="label !text-[9.5px]">Match</span>
+            <span className="label !text-[11px]">Match</span>
             <span className={cx("num text-[30px] leading-none", TONE_TEXT[matchTone(o.match)])}>{o.match}%</span>
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-2">
-        <span className="inline-flex items-center gap-1.5">
-          <span className={cx("size-1.5 rounded-full", TONE_DOT[chance.tone])} aria-hidden />
-          Interview probability: <b className={cx("num font-medium", TONE_TEXT[chance.tone])}>{chance.label}</b>
-        </span>
+        {/* No probability for a role outside the user's own filters: fitVerdict returns null there (no judgement). */}
+        {verdict.pInterview !== null && (
+          <span className="inline-flex items-center gap-1.5">
+            <span className={cx("size-1.5 rounded-full", TONE_DOT[chance.tone])} aria-hidden />
+            Interview probability: <b className={cx("num font-medium", TONE_TEXT[chance.tone])}>{chance.label}</b>
+          </span>
+        )}
         {salary ? <span className="num text-head">{salary}</span> : <span className="text-ink-3">зарплата не указана</span>}
         {place.showMode && <Chip tone={o.job.remote === "remote" ? "green" : "neutral"}>{place.mode}</Chip>}
         {place.location && <span className="inline-flex min-w-0 items-center gap-1 text-ink-3"><MapPin className="size-3.5 shrink-0 text-ink-4" aria-hidden /><span className="truncate">{place.location}</span></span>}
@@ -300,7 +304,7 @@ function OpportunityCard({ o, candidate, queued, hold }: { o: Row; candidate: Fi
 
       {verdict.showWhyFits && why.length > 0 && (
         <div className="flex flex-col gap-2">
-          <span className="label !text-[9.5px]">Why this fits</span>
+          <span className="label !text-[11px]">Why this fits</span>
           <ul className="grid gap-x-4 gap-y-1.5 text-[13.5px] text-ink-2 sm:grid-cols-2">
             {why.map((w) => (
               <li key={w} className="flex min-w-0 items-start gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={2.2} aria-hidden /><span>{w}</span></li>
@@ -325,7 +329,7 @@ function OpportunityCard({ o, candidate, queued, hold }: { o: Row; candidate: Fi
                 {queued === "tomorrow" ? "В очереди — агент подаст завтра" : "В очереди — агент подаст в следующем цикле"}
               </span>
             )}
-            <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} pending={o.approvals.length} />
+            <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} blockedBy={verdict.kind ?? undefined} pending={o.approvals.length} />
           </div>
         )}
         <Link href={`/app/opportunities/${o.id}`} className="inline-flex min-h-10 items-center gap-1 text-[12.5px] text-ink-3 hover:text-head" aria-label={`Подробнее: ${o.job.title}, ${o.job.company}`}>

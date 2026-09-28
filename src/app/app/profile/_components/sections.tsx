@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Fact, Goal, Profile } from "@prisma/client";
 import { FileText, Plus, X, TrendingUp } from "lucide-react";
 import { Chip, Field } from "@/components/ui";
@@ -11,6 +12,7 @@ import { Check, Disclosure } from "./bits";
 import { Editable, Facts } from "./editable";
 import { WORK_MODE_RU, plural, regionRu } from "../../../_components/ru";
 import { CitizenshipField } from "./citizenship-field";
+import { noticeRu, placeRu } from "@/lib/ru";
 import type { Strength } from "./strengths";
 
 const COUNTRY_LABEL: Record<string, string> = { KZ: "Казахстан", UZ: "Узбекистан", KG: "Кыргызстан", RU: "Россия", BY: "Беларусь", UA: "Украина", AM: "Армения", GE: "Грузия", AZ: "Азербайджан", US: "США", GB: "Великобритания", CA: "Канада", AE: "ОАЭ", TR: "Турция" };
@@ -37,7 +39,7 @@ function Ext({ href }: { href: string }) {
 
 export function Basics({ name, email, profile: p, goal, currentRole }: { name: string; email: string; profile: Profile; goal: Goal | null; currentRole: string }) {
   const markets = [...new Set(j<string[]>(goal?.countries, []).map((c) => (regionRu(c) !== c ? regionRu(c) : REGIONS[c]?.label ?? c)))].join(", ");
-  const location = [p.city || p.location, COUNTRY_LABEL[p.country] ?? p.country].filter(Boolean).join(", ");
+  const location = [placeRu(p.city || p.location), COUNTRY_LABEL[p.country] ?? p.country].filter(Boolean).join(", ");
   return (
     <Editable
       id="basics" title="Основное"
@@ -173,6 +175,9 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
   const authLabels = [...(hasEU ? ["Евросоюз"] : []), ...auth.filter((c) => !(hasEU && REGIONS.EU.countries.includes(c))).map((c) => COUNTRY_LABEL[c] ?? c)];
   const minSalary = goal?.minSalary ? (goal.currency === "USD" ? usd(goal.minSalary) : `${goal.minSalary.toLocaleString("ru-RU")} ${goal.currency}`) : p.salaryExpectation ? usd(p.salaryExpectation) : "";
   const yesNo = (v: boolean) => (v ? "Да" : "Нет");
+  // Work format lives in the goal (the agent searches by it) — show it exactly as the Goal page does.
+  const goalModes = j<string[]>(goal?.workModes, []);
+  const workFormat = goalModes.length ? goalModes.map((m) => WORK_MODE_RU[m] ?? m).join(", ") : REMOTE_LABEL[p.remotePref] ?? p.remotePref;
   return (
     <Editable
       id="constraints" title="Ограничения" sub="Агент не подаётся туда, где эти условия не выполняются."
@@ -180,21 +185,30 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
         <Facts cols={3} rows={[
           ["Нужна рабочая виза", yesNo(p.needsSponsorship)],
           ["Переезд", yesNo(goal?.relocation ?? p.relocation)],
-          ["Формат работы", REMOTE_LABEL[p.remotePref] ?? p.remotePref],
+          ["Формат работы", workFormat],
           ["Минимальная зарплата", minSalary ? `${minSalary} / год` : ""],
           ["Право на работу", authLabels.join(", ")],
-          ["Выход на работу", NOTICE_LABEL[p.noticePeriod] ?? p.noticePeriod],
+          ["Выход на работу", NOTICE_LABEL[p.noticePeriod] ?? noticeRu(p.noticePeriod)],
         ]} />
       }
       editor={
         <ActionForm action={updateConstraints} closeDetailsOnSuccess className="flex flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <CitizenshipField defaultValue={p.citizenship} options={CITIZENSHIP_OPTIONS} />
-            <Field label="Формат работы">
-              <select name="remotePref" defaultValue={p.remotePref} className="field">
-                {Object.entries(REMOTE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-              </select>
-            </Field>
+            {goalModes.length ? (
+              <div className="flex flex-col gap-1.5">
+                <span className="label">Формат работы</span>
+                <input type="hidden" name="remotePref" value={p.remotePref} />
+                <p className="text-[14px] text-head">{workFormat}</p>
+                <Link href="/app/goal" className="inline-flex min-h-10 w-fit items-center text-[12.5px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">Меняется в цели →</Link>
+              </div>
+            ) : (
+              <Field label="Формат работы">
+                <select name="remotePref" defaultValue={p.remotePref} className="field">
+                  {Object.entries(REMOTE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                </select>
+              </Field>
+            )}
             <Field label="Минимальная зарплата, USD / год" hint={goal?.minSalary && goal.currency !== "USD" ? `≈ ${goal.minSalary.toLocaleString("ru-RU")} ${goal.currency}; пусто — не менять` : "Пусто — не менять"}>
               {/* The goal may be stored in KZT/EUR: prefill converted to USD, since the action saves this field as USD. */}
               <input name="minSalary" type="number" min={0} step={1000} inputMode="numeric" defaultValue={goal?.minSalary ? toUSD(goal.minSalary, goal.currency) : p.salaryExpectation || ""} className="field" placeholder="70000" />

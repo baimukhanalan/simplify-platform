@@ -8,7 +8,7 @@ export type Autonomy = {
   changeSalary: boolean; // may deviate from the salary expectation in answers
   outsideCountries: boolean; // may apply outside selected countries
   belowSalaryFloor: boolean; // may apply to roles paying below the minimum
-  sensitive: "ask" | "decline"; // sensitive questions: always ask, or answer "prefer not to say"
+  sensitive: "ask" | "decline"; // sensitive questions: always ask, or answer «Предпочитаю не указывать» (SENSITIVE_DECLINE)
   autoApplyMinMatch: number; // auto-apply threshold, 50..100 (always set; off/on is submitApplications)
 };
 
@@ -64,3 +64,19 @@ export const AUTONOMY_LABELS: { key: Exclude<keyof Autonomy, "sensitive" | "auto
   { key: "outsideCountries", label: "Подавать вне выбранных стран", hint: "Подавать заявки за пределами выбранных стран" },
   { key: "belowSalaryFloor", label: "Подавать ниже минимальной зарплаты", hint: "Подавать заявки на вакансии ниже минимальной зарплаты" },
 ];
+
+/** The answer the agent gives an employer to a sensitive question when Autonomy.sensitive = "decline" (employer-facing, English). */
+export const SENSITIVE_DECLINE = "I prefer not to answer";
+/** Earlier wording of the same answer, still stored on older approvals. */
+export const SENSITIVE_DECLINE_LEGACY = "I don't wish to answer";
+/** The same choice as the user sees it everywhere in the Russian UI. */
+export const SENSITIVE_DECLINE_RU = "Предпочитаю не указывать";
+
+/** A stored (English, employer-facing) screening answer as the Russian UI shows it: Yes → «Да», the opt-out → «Предпочитаю не указывать». */
+export function answerRu(answer: string) {
+  const a = answer.trim();
+  if (a === SENSITIVE_DECLINE || a === SENSITIVE_DECLINE_LEGACY || /^(decline to self-identify|prefer not to (say|answer)|i prefer not to (say|answer))$/i.test(a)) return SENSITIVE_DECLINE_RU;
+  if (/^yes$/i.test(a)) return "Да";
+  if (/^no$/i.test(a)) return "Нет";
+  return answer;
+}

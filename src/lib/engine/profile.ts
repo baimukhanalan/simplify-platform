@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { aiJSON } from "../ai";
 import { extractSkills, classifyRole } from "./taxonomy";
+import { findRanges, hasRange, reliableYears, yearsFromFacts } from "./dates";
+
+export { yearsFromFacts, reliableYears, fmtFactPeriod, fmtFactDate, experienceFromFacts } from "./dates";
 
 export const ParsedCV = z.object({
   name: z.string(),
@@ -29,26 +32,23 @@ export const ParsedCV = z.object({
 });
 export type ParsedCV = z.infer<typeof ParsedCV>;
 
-const MONTHS: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12, янв: 1, фев: 2, мар: 3, апр: 4, май: 5, мая: 5, июн: 6, июл: 7, авг: 8, сен: 9, окт: 10, ноя: 11, дек: 12 };
-const DATE = String.raw`((?:[A-Za-zА-Яа-я]{3,9}\.?\s+)?\d{4}|\d{1,2}[./]\d{4})`;
-const RANGE = new RegExp(`${DATE}\\s*(?:-|–|—|to|по|до)\\s*(${DATE.slice(1, -1)}|present|now|current|настоящее время|н\\.?в\\.?|сейчас)`, "i");
-
-function toMonths(token: string): number | null {
-  const t = token.trim().toLowerCase();
-  if (/present|now|current|настоящ|н\.?в|сейчас/.test(t)) {
-    const d = new Date();
-    return d.getFullYear() * 12 + d.getMonth() + 1;
-  }
-  const yr = t.match(/(\d{4})/);
-  if (!yr) return null;
-  const m1 = t.match(/^(\d{1,2})[./]/);
-  const name = t.match(/^([a-zа-я]{3})/);
-  const month = m1 ? Number(m1[1]) : name ? MONTHS[name[1]] ?? 1 : 1;
-  return Number(yr[1]) * 12 + month;
+/** Section headings. A heading is a short line: "Experience", "Professional Experience:", "ОПЫТ РАБОТЫ", "Трудовая деятельность". */
+const HEADINGS: [RegExp, "exp" | "edu" | "proj" | "other"][] = [
+  [/^(?:professional\s+|work\s+|relevant\s+|employment\s+|career\s+)?(?:experience|employment(?:\s+history)?|work\s+history|career(?:\s+history)?)$|^(?:опыт\s+работы|опыт|профессиональный\s+опыт|трудовая\s+деятельность|места\s+работы|карьера)$/iu, "exp"],
+  [/^(?:education|academic\s+background|образование)$/iu, "edu"],
+  [/^(?:projects|pet\s+projects|selected\s+projects|side\s+projects|проекты|пет-проекты)$/iu, "proj"],
+  [/^(?:skills|hard\s+skills|technical\s+skills|навыки|ключевые\s+навыки|languages|языки|certifications|certificates|сертификаты|summary|profile|about(?:\s+me)?|о\s+себе|contacts?|контакты|interests|интересы|courses|курсы)$/iu, "other"],
+];
+function headingOf(line: string) {
+  const t = line.replace(/^[#\s]+/, "").replace(/[\s:—–-]+$/, "").trim();
+  if (!t || t.length > 40) return null;
+  return HEADINGS.find(([re]) => re.test(t))?.[1] ?? null;
 }
+const BULLET = /^[-•*·▪●◦‣–]\s*/;
+const EDU_WORDS = /(university|университет|bachelor|master|бакалавр|магистр|college|колледж|academy|академия|institute|институт|school|школа|bsc|msc|mba|phd)/i;
 
 /** Deterministic CV parser — good enough for structured CVs; Claude handles the rest when enabled. */
-export function parseCVHeuristic(text: string): ParsedCV {
+export function parseCVHeuristic(text: string, now = new Date()): ParsedCV {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const email = text.match(/[\w.+-]+@[\w-]+\.[\w.]+/)?.[0] ?? "";
   const phone = text.match(/\+?\d[\d\s()-]{8,}\d/)?.[0] ?? "";
@@ -56,43 +56,83 @@ export function parseCVHeuristic(text: string): ParsedCV {
   const github = text.match(/(?:https?:\/\/)?(?:www\.)?github\.com\/[\w-]+/i)?.[0] ?? "";
   const english = text.match(/\b(A1|A2|B1|B2|C1|C2)\b/)?.[1] ?? (/(fluent|advanced english|свободн)/i.test(text) ? "C1" : "B1");
   const name = lines[0] && lines[0].length < 60 && !lines[0].includes("@") ? lines[0] : "";
-  const headline = lines[1] && lines[1].length < 90 && !RANGE.test(lines[1]) && !lines[1].includes("@") ? lines[1] : "";
-  const location = text.match(/(?<![\p{L}\p{N}_])(Almaty|Astana|Алматы|Астана|Shymkent|Шымкент|Tashkent|Bishkek|Karaganda|Караганда)(?![\p{L}\p{N}_])/iu)?.[0] ?? "";
+  const headline = lines[1] && lines[1].length < 90 && !hasRange(lines[1]) && !lines[1].includes("@") && !headingOf(lines[1]) ? lines[1] : "";
+  const location = text.match(/(?<![\p{L}\p{N}_])(Almaty|Astana|Алматы|Астана|Shymkent|Шымкент|Tashkent|Ташкент|Bishkek|Бишкек|Karaganda|Караганда)(?![\p{L}\p{N}_])/iu)?.[0] ?? "";
 
   let section: "exp" | "edu" | "proj" | "other" = "other";
   const facts: ParsedCV["facts"] = [];
-  let totalMonths = 0;
+  /** The fact whose details the current line belongs to, and whether the line under it was already taken as a title. */
+  type Open = { fact: ParsedCV["facts"][number]; details: string[] };
+  let open = null as Open | null;
+  const close = () => {
+    if (!open) return;
+    const detailText = open.details.join("\n");
+    open.fact.details = detailText;
+    open.fact.metrics = extractMetric(detailText);
+    open.fact.tech = extractSkills(detailText);
+    open = null;
+  };
+  const usable = (l: string | undefined) => Boolean(l) && !headingOf(l!) && !hasRange(l!) && !BULLET.test(l!) && l!.length < 120;
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const low = line.toLowerCase();
-    if (/^(experience|work experience|employment|опыт работы|опыт)(?![\p{L}\p{N}_])/u.test(low)) { section = "exp"; continue; }
-    if (/^(education|образование)(?![\p{L}\p{N}_])/u.test(low)) { section = "edu"; continue; }
-    if (/^(projects|проекты|pet projects)(?![\p{L}\p{N}_])/u.test(low)) { section = "proj"; continue; }
-    if (/^(skills|навыки|languages|языки|certifications|сертификаты|summary|about|о себе)(?![\p{L}\p{N}_])/u.test(low)) { section = "other"; if (/^(certifications|сертификаты)/.test(low)) section = "other"; continue; }
+    const h = headingOf(line);
+    if (h) { close(); section = h; continue; }
 
-    const range = line.match(RANGE);
-    if (range && (section === "exp" || section === "edu" || section === "other")) {
-      const head = line.replace(RANGE, "").replace(/[()|,·•]+\s*$/g, "").trim().replace(/[\s,|–—-]+$/, "");
-      const [title, org] = splitTitleOrg(head || lines[i - 1] || "");
-      const details: string[] = [];
-      for (let k = i + 1; k < lines.length && !RANGE.test(lines[k]) && !/^(experience|education|projects|skills|опыт|образование|проекты|навыки)(?![\p{L}\p{N}_])/iu.test(lines[k]); k++) details.push(lines[k].replace(/^[-•*·]\s*/, ""));
-      const detailText = details.join("\n");
-      const kind = section === "edu" || /(university|университет|bachelor|master|бакалавр|магистр|college)/i.test(head) ? "education" : "employment";
-      const a = toMonths(range[1]);
-      const b = toMonths(range[2]);
-      if (kind === "employment" && a && b && b >= a) totalMonths += b - a;
-      facts.push({ kind, title, org, startDate: range[1], endDate: range[2], details: detailText, metrics: extractMetric(detailText), tech: extractSkills(detailText) });
-    } else if (section === "proj" && /^[-•*·]?\s*[A-ZА-Я]/.test(line) && line.length < 140) {
-      facts.push({ kind: "project", title: line.replace(/^[-•*·]\s*/, "").split(/[:—–-]/)[0].trim(), org: "", startDate: "", endDate: "", details: line, metrics: extractMetric(line), tech: extractSkills(line) });
+    const ranges = findRanges(line);
+    if (ranges.length && section !== "proj") {
+      close();
+      let cursor = 0;
+      ranges.forEach((r, k) => {
+        // The text around this range on the same line: "Data Analyst — Kaspi.kz (Jan 2022 – now)" or "Kaspi | Analyst | 01.2022 – present".
+        const before = line.slice(cursor, r.index);
+        const after = k === ranges.length - 1 ? line.slice(r.index + r.length) : "";
+        cursor = r.index + r.length;
+        let head = `${before} ${after}`.replace(BULLET, "").replace(/[()[\]]/g, " ").replace(/\s{2,}/g, " ").trim().replace(/(?:^|[\s,])(?:с|со|from|since)$/iu, "").replace(/^[\s,|·•–—-]+|[\s,|·•–—-]+$/g, "");
+        if (!head && k === 0) {
+          // Role on its own line: above the dates (usual) or right below them.
+          if (usable(lines[i - 1]) && lines[i - 1] !== headline && i - 1 > 1) {
+            head = lines[i - 1];
+            const prev = facts[facts.length - 1];
+            if (prev && prev.details.endsWith(head)) {
+              prev.details = prev.details.slice(0, -head.length).replace(/\n$/, "");
+              prev.metrics = extractMetric(prev.details);
+              prev.tech = extractSkills(prev.details);
+            }
+          } else if (usable(lines[i + 1])) {
+            head = lines[i + 1];
+            i++;
+          }
+        }
+        const [title, org] = splitTitleOrg(head);
+        const kind = section === "edu" || EDU_WORDS.test(head) ? "education" : "employment";
+        const fact = { kind, title, org, startDate: r.start, endDate: r.end, details: "", metrics: "", tech: [] as string[] } as ParsedCV["facts"][number];
+        facts.push(fact);
+        if (k === ranges.length - 1) open = { fact, details: [] };
+      });
+      continue;
+    }
+    if (section === "proj" && /^[-•*·]?\s*[A-ZА-Я]/.test(line) && line.length < 140) {
+      close();
+      facts.push({ kind: "project", title: line.replace(BULLET, "").split(/[:—–-]/)[0].trim(), org: "", startDate: "", endDate: "", details: line, metrics: extractMetric(line), tech: extractSkills(line) });
+      continue;
+    }
+    const cur = open as Open | null; // set inside the forEach above, which TS doesn't follow
+    if (cur) {
+      if (section === "other" && !BULLET.test(line) && cur.details.length >= 8) { close(); continue; }
+      cur.details.push(line.replace(BULLET, ""));
+      // Keep the fact's text current so a title taken from this line can be removed from it (see above).
+      cur.fact.details = cur.details.join("\n");
     }
   }
+  close();
   const certs = text.match(/(?:certificate|certification|сертификат)[^\n]*/gi) ?? [];
   for (const c of certs.slice(0, 5)) facts.push({ kind: "certification", title: c.replace(/^(certificate|certification|сертификат)s?:?\s*/i, "").trim(), org: "", startDate: "", endDate: "", details: "", metrics: "", tech: [] });
 
   return {
     name, headline, location, email, phone, linkedin, github,
     englishLevel: english,
-    yearsExperience: Math.round((totalMonths / 12) * 10) / 10,
+    yearsExperience: yearsFromFacts(facts, now),
     skills: extractSkills(text),
     summary: "",
     facts,
@@ -142,13 +182,18 @@ export function extractMetric(text: string): string {
   return "";
 }
 
+/**
+ * CV → structured profile (Claude when enabled, else the heuristic). Either way the years of experience are recomputed
+ * from the parsed employment ranges (overlaps merged): dated roles are the evidence, a stated total is not.
+ */
 export async function parseCV(text: string) {
-  return aiJSON({
+  const res = await aiJSON({
     schema: ParsedCV,
-    system: "Extract a structured career profile from the CV. Copy facts exactly; do not infer skills that are not written. Dates as written. yearsExperience = total paid work experience in years (0 if none). Unknown fields = empty string.",
+    system: "Extract a structured career profile from the CV. Copy facts exactly; do not infer skills that are not written. Dates as written (e.g. \"Jan 2022\", \"2020\", \"present\"); every employment fact must carry its startDate and endDate. yearsExperience = total paid work experience in years (0 if none). Unknown fields = empty string.",
     prompt: `CV:\n"""\n${text.slice(0, 30000)}\n"""`,
     fallback: () => parseCVHeuristic(text),
   });
+  return { ...res, data: { ...res.data, yearsExperience: reliableYears(res.data.yearsExperience, res.data.facts) } };
 }
 
 /** AI mini-interview: questions that turn thin CV bullets into concrete, quantified facts. */

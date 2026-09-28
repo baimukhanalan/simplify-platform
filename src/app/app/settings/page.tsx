@@ -40,6 +40,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
       <AgentStatus
         needs={[]}
+        hereNeeds
         working={consents.autoSubmit === false ? "Автоподача выключена — агент готовит пакеты, а отправляешь ты." : "Агент действует в рамках этих согласий."}
         className="-mt-3 mb-8"
       />
@@ -63,7 +64,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                     {c.key === "autoSubmit" && (
                       <p className="mt-2 max-w-2xl text-[13px] text-ink-3">
                         Это согласие разрешает агенту отправлять заявки вообще. Какие роли он отправляет сам (порог Match), задаётся в{" "}
-                        <Link href="/app/agent#auto-apply" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">Agent → Автоотклик</Link>.
+                        <Link href="/app/agent#auto-apply" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">Agent → Автоподача</Link>.
                       </p>
                     )}
                   </li>

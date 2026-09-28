@@ -65,7 +65,7 @@ export function StarLibrary({ stories }: { stories: StoryLite[] }) {
                 <div className="flex flex-col gap-2">
                   <div className="flex flex-wrap gap-1.5">
                     {s.tags.filter((t) => THEME_LABEL[t]).map((t) => (
-                      <span key={t} className="font-mono text-[10px] uppercase tracking-[.08em] text-teal">{THEME_LABEL[t]}</span>
+                      <span key={t} className="font-mono text-[11px] uppercase tracking-[.08em] text-teal">{THEME_LABEL[t]}</span>
                     ))}
                   </div>
                   <h3 className="h-serif text-[20px]">{s.title}</h3>

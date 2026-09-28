@@ -64,9 +64,8 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
 
   return (
     <form action={formAction} onSubmit={onSubmit} className="flex flex-col gap-6" aria-describedby={state.error ? "autonomy-error" : undefined}>
-      <fieldset className="glass p-5 sm:p-6">
-        <legend className="sr-only">Агент делает сам</legend>
-        <div className="label mb-1" aria-hidden>Агент делает сам</div>
+      <fieldset aria-labelledby="self-h" className="glass p-5 sm:p-6">
+        <h2 id="self-h" className="label mb-1">Агент делает сам</h2>
         <div className="divide-y divide-line">
           {selfRows.map((r) => (
             <Switch
@@ -76,9 +75,8 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
         </div>
       </fieldset>
 
-      <fieldset id="auto-apply" className="glass scroll-mt-24 p-5 sm:p-6">
-        <legend className="sr-only">Автоотклик</legend>
-        <div className="label mb-1" aria-hidden>Автоотклик</div>
+      <fieldset id="auto-apply" aria-labelledby="auto-h" className="glass scroll-mt-24 p-5 sm:p-6">
+        <h2 id="auto-h" className="label mb-1">Автоподача</h2>
         <p className="mb-1 text-[13px] text-ink-3">
           Здесь — какие роли агент отправляет сам. Отправлять вообще ему разрешает согласие{" "}
           <Link href="/app/settings#autosubmit" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">«Автоподача заявок» в Приватности</Link>
@@ -86,7 +84,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
         </p>
         <Switch
           name="submitApplications"
-          label={`Автоотклик на все вакансии с Match от ${threshold}%`}
+          label={`Автоподача на все вакансии с Match от ${threshold}%`}
           hint={
             autoOn
               ? `Агент сам подаёт на вакансии с Match ≥ ${threshold}%. Ниже порога пакет готов, а заявка ждёт твоего Apply или Auto в Opportunities.`
@@ -98,7 +96,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
         />
         <div className={cx("flex flex-col gap-2 pb-1 pt-4 transition-opacity", !autoOn && "opacity-60")}>
           <div className="flex items-center justify-between">
-            <label htmlFor="threshold" className="label !text-[10px]">Порог Match</label>
+            <label htmlFor="threshold" className="label !text-[11px]">Порог Match</label>
             <output htmlFor="threshold" className="num text-[22px] leading-none text-head">{threshold}%</output>
           </div>
           {/* Always submitted: the threshold is kept while auto-apply is off, so switching it back on restores it. */}
@@ -114,13 +112,12 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
             aria-valuetext={`${threshold}%`}
             className="w-full accent-[#1a6e48]"
           />
-          <div className="flex justify-between font-mono text-[10px] uppercase tracking-[.06em] text-ink-3"><span>50% · больше заявок</span><span>100% · только идеальные</span></div>
+          <div className="flex justify-between font-mono text-[11px] uppercase tracking-[.06em] text-ink-3"><span>50% · больше заявок</span><span>100% · только идеальные</span></div>
         </div>
       </fieldset>
 
-      <fieldset className="glass p-5 sm:p-6">
-        <legend className="sr-only">Только с твоего разрешения</legend>
-        <div className="label mb-1" aria-hidden>Только с твоего разрешения</div>
+      <fieldset aria-labelledby="ask-h" className="glass p-5 sm:p-6">
+        <h2 id="ask-h" className="label mb-1">Только с твоего разрешения</h2>
         <div className="divide-y divide-line">
           {askRows.map((r) => (
             <Switch key={r.key} name={r.key} label={r.label} hint={r.hint} checked={v[r.key]} onChange={(x) => setV((p) => ({ ...p, [r.key]: x }))} />
@@ -129,7 +126,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
       </fieldset>
 
       <fieldset className="glass p-5 sm:p-6" aria-describedby="sensitive-help">
-        <legend className="label mb-1 float-left w-full">Деликатные вопросы</legend>
+        <legend className="mb-1 float-left w-full"><h2 className="label">Деликатные вопросы</h2></legend>
         <p id="sensitive-help" className="clear-both mb-4 pt-1 text-[13px] text-ink-3">Пол, этническая принадлежность, инвалидность, статус ветерана — добровольные вопросы в анкетах.</p>
         <div className="grid gap-2.5 sm:grid-cols-2">
           {([

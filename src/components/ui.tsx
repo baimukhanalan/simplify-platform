@@ -50,10 +50,11 @@ const tones: Record<Tone, string> = {
   rose: "bg-rose-soft text-rose border-rose/15",
   dark: "bg-cta text-white border-transparent",
 };
-export function Chip({ tone = "neutral", className, children, dot }: { tone?: Tone; className?: string; children: ReactNode; dot?: boolean }) {
+/** `wrap`: long free text (benefits, story titles) may break onto several lines instead of overflowing a narrow screen. */
+export function Chip({ tone = "neutral", className, children, dot, wrap }: { tone?: Tone; className?: string; children: ReactNode; dot?: boolean; wrap?: boolean }) {
   return (
-    <span className={cx("inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[10.5px] uppercase leading-none tracking-[.06em] whitespace-nowrap", tones[tone], className)}>
-      {dot && <span className="size-1.5 rounded-full bg-current" />}
+    <span className={cx("inline-flex max-w-full items-center gap-1.5 border px-2.5 py-1 font-mono text-[11px] uppercase tracking-[.06em]", wrap ? "rounded-[12px] leading-[1.35] whitespace-normal break-words [overflow-wrap:anywhere]" : "rounded-full leading-none whitespace-nowrap", tones[tone], className)}>
+      {dot && <span className="size-1.5 shrink-0 rounded-full bg-current" />}
       {children}
     </span>
   );
@@ -92,7 +93,7 @@ export function Ring({ value, size = 88, stroke = 7, label, className }: { value
       <div className="absolute inset-0 grid place-items-center text-center">
         <div>
           <div className="num leading-none text-head" style={{ fontSize: size * 0.3 }}>{Math.round(value)}</div>
-          {label && <div className="label mt-1 !text-[9px]">{label}</div>}
+          {label && <div className="label mt-1 !text-[11px]">{label}</div>}
         </div>
       </div>
     </div>

@@ -8,6 +8,7 @@ import { Basics, Skills, Strengths, Constraints, CvSection } from "./_components
 import { Experience } from "./_components/facts";
 import { Stories } from "./_components/stories";
 import { deriveStrengths } from "./_components/strengths";
+import { byRecency } from "../../_components/positions";
 
 export const metadata: Metadata = { title: "Career Profile" };
 
@@ -39,13 +40,13 @@ export default async function ProfilePage() {
   }
 
   const skills = j<string[]>(profile.skills, []);
-  const latestJob = facts.filter((f) => f.kind === "employment").at(0);
+  const latestJob = facts.filter((f) => f.kind === "employment").sort(byRecency).at(0);
   const currentRole = profile.headline || (latestJob ? `${latestJob.title}${latestJob.org ? ` · ${latestJob.org}` : ""}` : "");
   const strengths = deriveStrengths(facts, skills);
   const withMetrics = facts.filter((f) => (f.kind === "employment" || f.kind === "project") && f.metrics).length;
 
   const needs: Need[] = [];
-  if (!profile.cvText) needs.push({ text: "Загрузи CV — агент разберёт его сам", href: "/onboarding?step=1" });
+  if (!profile.cvText) needs.push({ text: "Загрузи CV — агент разберёт его сам", href: "#cv" });
   if (!profile.linkedin) needs.push({ text: "Добавь ссылку на LinkedIn — её требуют многие формы заявок", href: "#basics" });
   if (facts.some((f) => f.kind === "employment") && withMetrics === 0) needs.push({ text: "Добавь хотя бы один результат в цифрах", href: "#experience" });
 

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Loader2, Smartphone, X } from "lucide-react";
 import type { InvoiceView } from "@/lib/payments/kaspi";
+import { Logo } from "@/components/ui";
 
 const fmt = (n: number) => `${n.toLocaleString("ru-RU")} ₸`;
 
@@ -21,7 +22,7 @@ const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-3 focus-
  * Kaspi Pay invoice. With the mock gateway the page itself confirms or declines the payment; the decline is a
  * test-only control. The API log is a debugging aid, shown only with ?debug=1.
  */
-export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, showLog = false }: { initial: InvoiceView; goal: string; mockGateway: boolean; newInvoiceHref: string; showLog?: boolean }) {
+export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, showLog = false, showDecline = false }: { initial: InvoiceView; goal: string; mockGateway: boolean; newInvoiceHref: string; showLog?: boolean; showDecline?: boolean }) {
   const router = useRouter();
   const [inv, setInv] = useState(initial);
   const [busy, setBusy] = useState<"success" | "fail" | null>(null);
@@ -87,6 +88,12 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
     : "";
 
   return (
+    <>
+    <div className="flex items-center justify-between">
+      <Link href={paid ? "/app" : newInvoiceHref} className="inline-flex min-h-10 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green" aria-label={paid ? "Simplify — в кабинет" : "Simplify — назад к выбору плана"}><Logo /></Link>
+      {/* Nothing to cancel once the money went through. */}
+      {!paid && <Link href={newInvoiceHref} className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-3 hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Отменить</Link>}
+    </div>
     <div className="mt-10 flex flex-col gap-5 animate-rise">
       <p role="status" aria-live="polite" className="sr-only">{statusText}</p>
       <div className="flex flex-col gap-2">
@@ -147,9 +154,9 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
               <button type="button" onClick={() => pay("success")} disabled={!!busy} aria-busy={busy === "success" || undefined} className={`inline-flex h-13 items-center justify-center gap-2 rounded-full bg-cta text-[15px] font-medium text-white shadow-(--shadow-cta) transition hover:bg-[#2f2c2c] disabled:opacity-60 ${focusRing}`}>
                 {busy === "success" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Check className="size-4" aria-hidden />} Оплатить {fmt(inv.amount)}
               </button>
-              <button type="button" onClick={() => pay("fail")} disabled={!!busy} aria-busy={busy === "fail" || undefined} className={`inline-flex min-h-10 items-center justify-center gap-1.5 self-center rounded-full border border-dashed border-line px-4 font-mono text-[11px] uppercase tracking-[.06em] text-ink-3 transition-colors hover:border-rose/40 hover:text-rose disabled:opacity-60 ${focusRing}`}>
+              {showDecline && <button type="button" onClick={() => pay("fail")} disabled={!!busy} aria-busy={busy === "fail" || undefined} className={`inline-flex min-h-10 items-center justify-center gap-1.5 self-center rounded-full border border-dashed border-line px-4 font-mono text-[11px] uppercase tracking-[.06em] text-ink-3 transition-colors hover:border-rose/40 hover:text-rose disabled:opacity-60 ${focusRing}`}>
                 {busy === "fail" ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <X className="size-3.5" aria-hidden />} Тест: отклонить
-              </button>
+              </button>}
             </div>
           </>
         )}
@@ -160,5 +167,6 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
         <ul className="mt-2 flex flex-col gap-1 font-mono text-[11.5px]">{log.map((l, i) => <li key={i}>{l}</li>)}</ul>
       </details>}
     </div>
+    </>
   );
 }

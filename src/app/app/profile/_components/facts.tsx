@@ -7,6 +7,8 @@ import { saveFact, deleteFact } from "@/lib/actions/profile";
 import { OWNERSHIP_LABEL } from "@/lib/onboarding";
 import { ActionForm, FormSubmit } from "./action-form";
 import { Disclosure } from "./bits";
+import { byRecency } from "../../../_components/positions";
+import { fmtFactPeriod } from "@/lib/ru";
 
 export const KINDS = [
   { key: "employment", label: "Опыт работы", icon: Briefcase },
@@ -24,7 +26,8 @@ const ORDER = ["employment", "project", "education", "certification", "achieveme
 
 /** Experience as a calm list; each position has its editor behind "Изменить". */
 export function Experience({ facts }: { facts: Fact[] }) {
-  const sorted = [...facts].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind));
+  // Grouped by kind, newest first inside each group — the same order on every render and after edits.
+  const sorted = [...facts].sort((a, b) => ORDER.indexOf(a.kind) - ORDER.indexOf(b.kind) || byRecency(a, b));
   return (
     <section id="experience" aria-labelledby="experience-h" className="glass scroll-mt-24 p-5 sm:p-6">
       <div className="mb-2 flex flex-col gap-1">
@@ -52,7 +55,7 @@ export function Experience({ facts }: { facts: Fact[] }) {
 
 function FactRow({ fact: f }: { fact: Fact }) {
   const Icon = KINDS.find((k) => k.key === f.kind)?.icon ?? Briefcase;
-  const dates = [f.startDate, f.endDate].filter(Boolean).join(" — ");
+  const dates = fmtFactPeriod(f.startDate, f.endDate);
   const tech: string[] = j(f.tech, []);
   return (
     <div className="flex gap-3">

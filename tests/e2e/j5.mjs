@@ -54,7 +54,7 @@ const iv2 = await db.interview.findUnique({ where: { id: rec.id } });
 const deb = JSON.parse(iv2.debrief);
 check(r.result?.ok && iv2.status === "passed" && deb.followUpEmail && deb.questions?.length >= 0, "J5.debrief", "debrief saved, status passed", { res: r.result, st: iv2.status, q: deb.questions, perf: deb.performance, err: r.error?.slice(0, 200) });
 pg = await c.get(`/app/interviews/${rec.id}?tab=debrief`);
-check(pg.status === 200 && pg.text.includes("Hiring Manager"), "J5.debrief.render", "debrief tab offers next round", pg.status);
+check(pg.status === 200 && pg.text.replace(/<!-- -->/g, "").includes("Создать раунд «нанимающий менеджер»"), "J5.debrief.render", "debrief tab offers the next round in Russian (round-6 ROUND_LABEL)", pg.status);
 // next round
 r = await c.action("interview.createNextRound", [form({ id: rec.id, scheduledAt: "2026-10-05T10:00" })], { page: `/app/interviews/${rec.id}` });
 const hm = await db.interview.findFirst({ where: { opportunityId: apps[0].id, round: "hiring_manager" } });

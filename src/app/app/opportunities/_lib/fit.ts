@@ -100,8 +100,18 @@ export function risks(o: FitOpp, job: FitJob, c: FitCandidate): string[] {
   return [...new Set(out)];
 }
 
+/**
+ * Why a role is blocked, as decided by the engine (fitVerdict().kind in src/lib/engine/matching.ts): "filter" = the
+ * user's own goal settings exclude it («Не подходит тебе»), "requirement" = the user fails the posting («Не проходишь»).
+ */
+export type BlockKind = "filter" | "requirement";
+
+/** One short line for the Apply button's title / the skipped state. */
+export const blockedNote = (kind: BlockKind) => (kind === "filter" ? "Не подходит тебе — вакансия вне твоих фильтров цели" : "Ты не проходишь по требованиям — агент не подаёт");
+
 /** Eligibility as a verdict the user reads in one glance. */
-export function eligibilityVerdict(e: string) {
+export function eligibilityVerdict(e: string, kind: BlockKind | null = "requirement") {
+  if (e === "blocked" && kind === "filter") return { label: "Не подходит тебе", hint: "Вне твоих фильтров цели — агент не подаёт", tone: "rose" as const };
   if (e === "blocked") return { label: "Не проходишь", hint: "Агент на неё не подаёт", tone: "rose" as const };
   if (e === "soft") return { label: "Проходишь", hint: "Есть пробелы, но подать можно", tone: "amber" as const };
   return { label: "Проходишь", hint: "Формальных препятствий нет", tone: "green" as const };

@@ -5,10 +5,11 @@ import { requireUser } from "../auth";
 import { db, j, s, noNul } from "../db";
 import { parseCV } from "../engine/profile";
 import { logEvent } from "../engine/agent";
-import { ROLE_FAMILIES, REGIONS, SENIORITY, classifyRole, seniorityFromYears } from "../engine/taxonomy";
+import { ROLE_FAMILIES, REGIONS, SENIORITY, SENIORITY_LABEL, classifyRole, fmtMoney, seniorityFromYears } from "../engine/taxonomy";
 import { marketRange } from "../engine/market";
+import { TO_USD, fromUSD } from "../engine/fx";
 import { rateLimitUser, retryText } from "../rate-limit";
-import { confirmSeniority, syncSeniorityFromYears } from "../onboarding";
+import { confirmSeniority, syncSeniorityFromYears, syncYearsFromFacts } from "../onboarding";
 
 /** Result shape for forms driven by useActionState. */
 export type FormState = { ok?: boolean; error?: string; message?: string; at?: number } | undefined;
@@ -100,7 +101,11 @@ export async function updateConstraints(_: FormState, form: FormData): Promise<F
     update: { citizenship, country: citizenship, workAuth: s(workAuth), needsSponsorship, relocation, remotePref: oneOf(str(form, "remotePref", 10), REMOTE, "remote"), noticePeriod: str(form, "noticePeriod", 40) || "2 weeks", ...(minSalary ? { salaryExpectation: minSalary } : {}) },
     create: { userId: user.id, citizenship, workAuth: s(workAuth), needsSponsorship, relocation },
   });
-  const salary = minSalary === null ? {} : { minSalary, currency: "USD" };
+  // The field is shown in USD; the goal keeps its own currency (a ₸ goal stays in ₸, converted back from USD).
+  // A currency without an FX rate would pass through unconverted, so it falls back to USD.
+  const stored = (await db.goal.findUnique({ where: { userId: user.id }, select: { currency: true } }))?.currency?.toUpperCase() || "USD";
+  const goalCurrency = stored in TO_USD ? stored : "USD";
+  const salary = minSalary === null ? {} : goalCurrency === "USD" ? { minSalary, currency: "USD" } : { minSalary: Math.min(100_000_000, fromUSD(minSalary, goalCurrency)), currency: goalCurrency };
   await db.goal.upsert({
     where: { userId: user.id },
     update: { relocation, sponsorshipNeeded: needsSponsorship, ...salary },
@@ -233,7 +238,11 @@ export async function reparseCV(_: FormState, form: FormData): Promise<FormState
   }
   const fileName = `Вставленный текст · ${new Date().toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}`;
   await db.profile.upsert({ where: { userId: user.id }, update: { cvText: text, cvFileName: fileName }, create: { userId: user.id, cvText: text, cvFileName: fileName } });
-  await logEvent(user.id, "cv_reparsed", `CV разобран заново (${by}): новых фактов — ${fresh.length}`);
+  // Years follow the employment ranges now in the profile (overlaps merged); the goal level follows unless the user chose it.
+  const prevYears = (await db.profile.findUnique({ where: { userId: user.id }, select: { yearsExperience: true } }))?.yearsExperience ?? 0;
+  const years = await syncYearsFromFacts(user.id, parsed.yearsExperience || prevYears);
+  await syncSeniorityFromYears(user.id, years);
+  await logEvent(user.id, "cv_reparsed", `CV разобран заново (${by === "claude" ? "Claude" : "движок"}): новых фактов — ${fresh.length}`);
   refresh();
   return done(fresh.length ? `Добавлено новых позиций: ${fresh.length}. Проверь их в разделе «Опыт».` : "Нового не нашлось — всё уже есть в профиле.");
 }
@@ -269,7 +278,7 @@ export async function saveGoal(_: FormState, form: FormData): Promise<FormState>
   if (data.mode === "target" && data.dreamCompanies === "[]") return fail("Target Mode работает только по компаниям мечты — добавь хотя бы одну.");
   await db.goal.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
   await confirmSeniority(user.id, data.seniority);
-  await logEvent(user.id, "goal_updated", `Цель обновлена: ${primaryRole} · ${data.seniority}`);
+  await logEvent(user.id, "goal_updated", `Цель обновлена: ${primaryRole} · ${SENIORITY_LABEL[data.seniority] ?? data.seniority}`);
   refresh();
   // The goal page edits in a separate mode; send it back to the read view.
   if (str(form, "after", 20) === "goal") redirect("/app/goal?saved=1");
@@ -287,12 +296,12 @@ export async function applyReadinessFix(form: FormData) {
     const suggested = seniorityFromYears(profile.yearsExperience);
     await db.goal.update({ where: { userId: user.id }, data: { seniority: suggested } });
     await confirmSeniority(user.id, suggested);
-    await logEvent(user.id, "readiness_fix", `Уровень цели изменён на ${suggested}`);
+    await logEvent(user.id, "readiness_fix", `Уровень цели изменён на ${SENIORITY_LABEL[suggested] ?? suggested}`);
   } else if (fix === "salary") {
     const range = marketRange(classifyRole(goal.primaryRole), goal.seniority, j(goal.countries, []));
     if (goal.currency === "USD" && goal.minSalary > range.mid) {
       await db.goal.update({ where: { userId: user.id }, data: { minSalary: range.mid } });
-      await logEvent(user.id, "readiness_fix", `Минимальная зарплата снижена до рыночной медианы $${range.mid.toLocaleString("en-US")}`);
+      await logEvent(user.id, "readiness_fix", `Минимальная зарплата снижена до рыночной медианы ${fmtMoney(range.mid)}`);
     }
   } else if (fix === "role") {
     const role = str(form, "role", 60);

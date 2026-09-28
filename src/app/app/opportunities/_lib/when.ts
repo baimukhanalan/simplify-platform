@@ -1,6 +1,7 @@
 // Small display helpers shared by Opportunities, Applications, Inbox and Approvals. Pure: safe on server and client.
 import { ago } from "@/lib/ops";
 import { WORK_MODE_RU, plural } from "../../../_components/ru";
+import { placeRu as placeRuLib } from "@/lib/ru";
 
 const DAY = 86400000;
 const dayKey = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
@@ -44,7 +45,7 @@ const PLACE_RU: [RegExp, string][] = [
  * (no extra chip). `showMode` is false when the location already names the format.
  */
 export function placeRu(location: string, mode: string) {
-  const loc = PLACE_RU.reduce((s, [re, ru]) => s.replace(re, ru), location.trim());
+  const loc = placeRuLib(PLACE_RU.reduce((s, [re, ru]) => s.replace(re, ru), location.trim()));
   const modeRu = workModeRu(mode);
   const showMode = !loc || !loc.toLowerCase().includes(modeRu.toLowerCase());
   return { location: loc, mode: modeRu, showMode };

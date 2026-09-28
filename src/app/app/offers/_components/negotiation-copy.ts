@@ -31,9 +31,10 @@ export function negotiationEmail(o: { role: string; company: string; name: strin
 }
 
 /** Talking points = what to say (English): the market argument plus the user's own results as clean sentences. */
-export function talkingPoints(o: { role: string; low: string; high: string; strengths: string[] }): string[] {
+export function talkingPoints(o: { role: string; low: string; high: string; strengths: string[]; position?: "below" | "upper" | "top" }): string[] {
+  const where = o.position === "top" ? "and this offer is already at the top of that range" : o.position === "upper" ? "and this offer sits in the upper half of that range" : "and this offer sits below the midpoint";
   return [
-    `Comparable ${o.role} roles pay ${o.low}–${o.high}, and this offer sits below the midpoint.`,
+    `Comparable ${o.role} roles pay ${o.low}–${o.high}, ${where}.`,
     ...o.strengths.slice(0, 2).map(achievementSentence),
   ];
 }

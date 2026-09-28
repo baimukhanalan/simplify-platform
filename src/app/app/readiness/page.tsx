@@ -5,11 +5,11 @@ import { requireUser } from "@/lib/auth";
 import { ButtonLink, Empty, PageHeader, Script } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { applyReadinessFix } from "@/lib/actions/profile";
-import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
 import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { loadReadiness } from "./_components/data";
-import { goalTitle, kUsd, readinessView, fmtYears } from "./_components/model";
+import { goalMarket, goalTitle, readinessView, fmtYears } from "./_components/model";
 import { BlockersAndPlan, ParamTable, ReadinessHero } from "./_components/readiness-view";
 
 export const metadata: Metadata = { title: "Readiness" };
@@ -54,7 +54,7 @@ export default async function ReadinessPage() {
         <AgentStatus needs={needs} idle={!campaign} working={campaign ? "Агент использует это, чтобы выбирать вакансии и готовить заявки." : "Когда кампания запустится, агент начнёт с самых вероятных вакансий."} className="animate-rise" />
 
         <div className="animate-rise [animation-delay:60ms]">
-          <ReadinessHero score={view.score} verdict={r.verdict} goal={<>{goalTitle(goal.primaryRole, goal.countries)} <span className="text-ink-3">· {SENIORITY_LABEL[goal.seniority] ?? goal.seniority}</span></>} />
+          <ReadinessHero score={view.score} verdict={r.verdict} goal={<>{goalTitle(goal.primaryRole)} <span className="text-ink-3">· {SENIORITY_LABEL[goal.seniority] ?? goal.seniority}</span></>} market={goalMarket(goal.countries).line} />
         </div>
 
         <div className="animate-rise [animation-delay:120ms]"><ParamTable params={view.params} /></div>
@@ -68,7 +68,7 @@ export default async function ReadinessPage() {
             </div>
             <div className="grid gap-2 md:grid-cols-2">
               {fixSeniority && <FixForm fix="seniority" title={`Уровень: ${SENIORITY_LABEL[goal.seniority]} → ${SENIORITY_LABEL[r.suggestedSeniority]}`} note={`Под твои ${fmtYears(data.yearsExperience)} опыта`} cta="Применить" />}
-              {fixSalary && <FixForm fix="salary" title={`Минимум: ${kUsd(goal.minSalary)} → ${kUsd(range.mid)}`} note="Медиана рынка для цели" cta="Применить" />}
+              {fixSalary && <FixForm fix="salary" title={`Минимум: ${fmtMoney(goal.minSalary, goal.currency)} → ${fmtMoney(range.mid)}`} note="Медиана рынка для цели" cta="Применить" />}
               {roles.map((role) => (
                 <FixForm key={role} fix="role" role={role} title={`Добавить роль: ${role}`} note="Твои навыки уже подходят" cta={<><Plus className="size-3.5" strokeWidth={1.8} aria-hidden />Добавить</>} />
               ))}

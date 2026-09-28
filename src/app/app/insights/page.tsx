@@ -168,7 +168,7 @@ function StatsTable({ rows, weight, verdict }: { rows: SegmentStat[]; weight?: (
         <thead>
           <tr className="text-left">
             {["Сегмент", "Подано", "Ответы", "Тесты", "Интервью", "Офферы", "Конверсия", "Вес", ...(verdict ? ["Вердикт"] : [])].map((h, i) => (
-              <th key={h} scope="col" className={cx("label border-b border-line pb-2.5 !text-[9.5px] font-normal", i > 0 && "text-right", i === 0 && "pr-4")}>{h}</th>
+              <th key={h} scope="col" className={cx("label border-b border-line pb-2.5 !text-[11px] font-normal", i > 0 && "text-right", i === 0 && "pr-4")}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -207,7 +207,7 @@ function Breakdown({ title, sub, rows }: { title: string; sub: string; rows: Seg
             <thead>
               <tr>
                 {["Группа", "Подано", "Тесты", "Интервью", "Конверсия"].map((h, i) => (
-                  <th key={h} scope="col" className={cx("label border-b border-line pb-2 !text-[9.5px] font-normal", i === 0 ? "text-left" : "text-right")}>{h}</th>
+                  <th key={h} scope="col" className={cx("label border-b border-line pb-2 !text-[11px] font-normal", i === 0 ? "text-left" : "text-right")}>{h}</th>
                 ))}
               </tr>
             </thead>

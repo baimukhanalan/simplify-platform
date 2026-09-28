@@ -215,7 +215,7 @@ function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch, demo }: { c
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <span className={cx("size-2.5 rounded-full", paused ? "bg-amber" : "bg-green animate-pulse-dot")} aria-hidden />
-            <span className="label !text-head">{plan.label} · {paused ? "на паузе" : "активна"}</span>
+            <span className="label !text-head">{plan.label}</span>
           </div>
           <Chip tone={paused ? "amber" : "green"}>{paused ? "На паузе" : "Активна"}</Chip>
         </div>

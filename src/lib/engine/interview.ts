@@ -231,7 +231,22 @@ export const MOCK_QUESTIONS: Record<string, string[]> = {
 // Lookarounds instead of `\b`, which does not work next to Cyrillic ("ну", "типа" never matched).
 const FILLERS = /(?<![\p{L}\p{N}_])(um+|uh+|like|you know|basically|actually|sort of|kind of|ну|типа|как бы|короче|в общем)(?![\p{L}\p{N}_])/giu;
 
-export function scoreAnswer(question: string, answer: string, ctx: { skills: string[]; jdTerms: string[] }) {
+const HEDGES = /(?<![\p{L}\p{N}_])(i think maybe|i guess|not sure|probably|maybe|kind of|sort of|i hope|наверное|не уверен\p{L}*|может быть|вроде|как бы)(?![\p{L}\p{N}_])/giu;
+/** A typed answer shows wording, not delivery: confidence comes from hedging words only and never reads as 100. */
+export const TYPED_CONFIDENCE_CAP = 80;
+
+/**
+ * Confidence of an answer. Spoken (speech recognition): hedges and fillers. Typed (the default — the text box): hedges only,
+ * capped at TYPED_CONFIDENCE_CAP, since typing says nothing about pauses or tone.
+ */
+export function answerConfidence(answer: string, spoken = false) {
+  const hedges = answer.match(HEDGES)?.length ?? 0;
+  if (!spoken) return Math.max(20, TYPED_CONFIDENCE_CAP - hedges * 15);
+  const fillers = answer.match(FILLERS)?.length ?? 0;
+  return Math.max(20, 100 - hedges * 20 - fillers * 5);
+}
+
+export function scoreAnswer(question: string, answer: string, ctx: { skills: string[]; jdTerms: string[]; /** true when the answer came through the microphone */ spoken?: boolean }) {
   const words = answer.trim().split(/\s+/).filter(Boolean);
   const n = words.length;
   const fillers = answer.match(FILLERS)?.length ?? 0;
@@ -243,7 +258,7 @@ export function scoreAnswer(question: string, answer: string, ctx: { skills: str
   const lengthScore = n < 40 ? 40 : n <= 220 ? 100 : n <= 320 ? 70 : 45;
   const clarity = Math.max(0, 100 - fillers * 12 - (answer.match(/[^.!?]{220,}/g)?.length ?? 0) * 15);
   const structure = intent === "behavioral" || intent === "leadership" ? Math.round(starScore * 100) : /first|second|then|finally|во-первых|затем/i.test(answer) ? 85 : 60;
-  const confidence = Math.max(20, 100 - (answer.match(/(?<![\p{L}\p{N}_])(i think maybe|i guess|not sure|probably|наверное|не уверен)(?![\p{L}\p{N}_])/giu)?.length ?? 0) * 20 - fillers * 5);
+  const confidence = answerConfidence(answer, ctx.spoken);
   const content = Math.min(100, 45 + (hasNumber ? 25 : 0) + relevance * 10 + (/\bi\b|я /i.test(answer) ? 10 : 0));
   const overall = Math.round((content * 0.3 + structure * 0.2 + clarity * 0.15 + lengthScore * 0.15 + confidence * 0.1 + Math.min(100, relevance * 25) * 0.1));
   const tips: string[] = [];

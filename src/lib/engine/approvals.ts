@@ -41,7 +41,7 @@ export async function continueIfReady(opportunityId: string, autonomy: Pick<Auto
 /**
  * Answer every OTHER pending copy of a standing question (sensitive / legal / sponsorship) for this user with the same
  * answer — each approval row, each package answer — and let each affected opportunity continue (continueIfReady).
- * `question` omitted = every pending question of that kind (used when Sensitive switches to "prefer not to say").
+ * `question` omitted = every pending question of that kind (used when Sensitive switches to «Предпочитаю не указывать»).
  * Returns how many approvals were answered.
  */
 export async function answerMatchingApprovals(

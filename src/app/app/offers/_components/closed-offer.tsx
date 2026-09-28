@@ -19,7 +19,7 @@ export function ClosedOffer({ offer: o }: { offer: Offer }) {
       </div>
       <div className="flex items-center justify-between gap-5 sm:justify-end">
         <div className="flex flex-col sm:items-end">
-          <span className="label !text-[9.5px]">Оклад</span>
+          <span className="label !text-[11px]">Оклад</span>
           <span className="num text-[18px] leading-tight text-head">{c.money(c.base)}</span>
         </div>
         {accepted && (

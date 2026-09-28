@@ -1,12 +1,12 @@
 import "server-only";
 import { db, j, s } from "./db";
-import { parseCV, type ParsedCV } from "./engine/profile";
+import { parseCV, reliableYears, type ParsedCV } from "./engine/profile";
 import { assessReadiness, suggestAdjacentRoles, type Readiness, type ReadinessInput } from "./engine/readiness";
 import { scoreJob, type CandidateCtx, type MatchResult } from "./engine/matching";
 import { jobCtx } from "./engine/agent";
 import { ensureSeedJobs } from "./engine/ingest";
 import { buildPackageHeuristic, type FactLite, type ProfileLite } from "./engine/personalize";
-import { ROLE_FAMILIES, REGIONS, classifyRole, seniorityFromYears } from "./engine/taxonomy";
+import { ROLE_FAMILIES, REGIONS, SENIORITY_LABEL, classifyRole, fmtMoney, fmtMoneyRange, seniorityFromYears } from "./engine/taxonomy";
 import { toUSD } from "./engine/fx";
 
 /* ——————————————————————————— Goal level from experience ——————————————————————————— */
@@ -22,7 +22,7 @@ export async function seniorityConfirmed(userId: string) {
 export async function confirmSeniority(userId: string, seniority: string) {
   const last = await db.event.findFirst({ where: { userId, type: SENIORITY_CONFIRMED }, orderBy: { createdAt: "desc" }, select: { data: true } });
   if (last && j<{ seniority?: string }>(last.data, {}).seniority === seniority) return;
-  await db.event.create({ data: { userId, type: SENIORITY_CONFIRMED, message: `Уровень цели подтверждён: ${seniority}`, data: s({ seniority }) } });
+  await db.event.create({ data: { userId, type: SENIORITY_CONFIRMED, message: `Уровень цели подтверждён: ${SENIORITY_LABEL[seniority] ?? seniority}`, data: s({ seniority }) } });
 }
 
 /**
@@ -34,6 +34,17 @@ export async function syncSeniorityFromYears(userId: string, years: number) {
   const seniority = seniorityFromYears(years);
   await db.goal.upsert({ where: { userId }, create: { userId, seniority }, update: { seniority } });
   return seniority;
+}
+
+/**
+ * Profile years of experience = the user's employment facts (date ranges, overlaps merged). Undated roles keep `fallback`
+ * (the parse's stated total) as a floor. Called after every CV parse / re-parse. Returns the value now stored.
+ */
+export async function syncYearsFromFacts(userId: string, fallback = 0) {
+  const facts = await db.fact.findMany({ where: { userId, kind: "employment" }, select: { kind: true, startDate: true, endDate: true } });
+  const years = reliableYears(fallback, facts);
+  if (years > 0) await db.profile.updateMany({ where: { userId }, data: { yearsExperience: years } });
+  return years > 0 ? years : fallback;
 }
 
 /* ——————————————————————————— Onboarding wizard ——————————————————————————— */
@@ -245,9 +256,7 @@ function bestFamilyBySkills(skills: string[]) {
 
 const fmtSalary = (min: number | null, max: number | null, cur: string) => {
   if (!min && !max) return null;
-  const k = (n: number) => `${Math.round(n / 1000)}k`;
-  const sym = cur === "USD" ? "$" : cur === "EUR" ? "€" : cur === "GBP" ? "£" : `${cur} `;
-  return min && max ? `${sym}${k(min)}–${k(max)}` : `${sym}${k((min || max)!)}`;
+  return min && max ? fmtMoneyRange(min, max, cur) : fmtMoney((min || max)!, cur);
 };
 
 /** Anonymous Career Check: parse → readiness → best vacancy → positioning example. Nothing is invented. */

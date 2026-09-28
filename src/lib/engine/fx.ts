@@ -6,3 +6,6 @@ export const fxToUsd = (currency: string | null | undefined) => TO_USD[(currency
 
 /** Convert an amount in `currency` to whole USD (unknown currencies pass through unchanged). */
 export const toUSD = (amount: number, currency: string | null | undefined) => (amount ? Math.round(amount * fxToUsd(currency)) : 0);
+
+/** Whole units of `currency` for a USD amount (the inverse of toUSD; unknown currencies pass through unchanged). */
+export const fromUSD = (usd: number, currency: string | null | undefined) => (usd ? Math.round(usd / fxToUsd(currency)) : 0);

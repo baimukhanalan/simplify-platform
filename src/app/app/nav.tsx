@@ -89,7 +89,7 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
       </nav>
 
       <nav aria-label="Дополнительно">
-        <div className="label mb-1.5 px-3 !text-[9.5px] !text-ink-3">Ещё</div>
+        <div className="label mb-1.5 px-3 !text-[11px] !text-ink-3">Ещё</div>
         <ul className="flex flex-col">
           {[...SECONDARY, ...extra].map((it) => {
             const active = isActive(it);
@@ -108,7 +108,7 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
                   <it.icon className={cx("size-[15px]", active ? "text-green" : "text-ink-4")} strokeWidth={1.7} aria-hidden />
                   <span className="flex-1">{it.label}</span>
                   {n > 0 && (
-                    <span className={cx("num min-w-[18px] rounded-full px-1.5 py-0.5 text-center text-[10.5px] leading-none", it.badge === "approvals" ? "bg-amber-soft text-amber" : "bg-green-soft text-green")}>
+                    <span className={cx("num min-w-[18px] rounded-full px-1.5 py-0.5 text-center text-[11px] leading-none", it.badge === "approvals" ? "bg-amber-soft text-amber" : "bg-green-soft text-green")}>
                       {n}<span className="sr-only">{it.badge === "approvals" ? " ждут ответа" : " новых"}</span>
                     </span>
                   )}
@@ -125,7 +125,7 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
     <Link href="/app/agent" className="glass flex flex-col gap-1.5 !rounded-2xl p-3.5 transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-green">
       <span className="flex items-center gap-2">
         <span className={cx("size-2 rounded-full", campaign.status === "active" ? "bg-green animate-pulse-dot" : campaign.status === "paused" ? "bg-amber" : "bg-ink-4")} aria-hidden />
-        <span className="label !text-[10px] !text-head">{campaign.status === "active" ? "Агент · работает" : campaign.status === "paused" ? "Агент · на паузе" : campaign.status === "hired" ? "Работа найдена" : "Кампания завершена"}</span>
+        <span className="label !text-[11px] !text-head">{campaign.status === "active" ? "Агент · работает" : campaign.status === "paused" ? "Агент · на паузе" : campaign.status === "hired" ? "Работа найдена" : "Кампания завершена"}</span>
       </span>
       {campaign.day != null && (
         <span className="text-[12.5px] text-ink-3">День кампании <span className="num text-head">{campaign.day}</span> / {campaign.total}</span>

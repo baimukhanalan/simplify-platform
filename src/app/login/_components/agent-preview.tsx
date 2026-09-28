@@ -51,13 +51,13 @@ export function AgentPreview({ className }: { className?: string }) {
             <span className="size-2 rounded-full bg-green animate-pulse-dot" />
             <span className="label !text-head">Агент · пример работы</span>
           </div>
-          <span className="rounded-full border border-line bg-white/60 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[.08em] text-ink-3">Иллюстрация</span>
+          <span className="rounded-full border border-line bg-white/60 px-2 py-0.5 font-mono text-[11px] uppercase tracking-[.08em] text-ink-3">Иллюстрация</span>
         </div>
 
         <div className="grid grid-cols-3 gap-2">
           {[["Найдено", found], ["Подано", applied], ["Интервью", interviews]].map(([l, v]) => (
             <div key={l} className="rounded-2xl border border-stroke bg-white/55 px-3 py-2.5">
-              <div className="label !text-[9.5px]">{l}</div>
+              <div className="label !text-[11px]">{l}</div>
               <div className="num mt-1 text-[22px] leading-none text-head tabular-nums">{v}</div>
             </div>
           ))}
@@ -82,7 +82,7 @@ export function AgentPreview({ className }: { className?: string }) {
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-[9.5px] uppercase tracking-[.08em] text-teal">{LABEL[it.kind]}</span>
+                    <span className="font-mono text-[11px] uppercase tracking-[.08em] text-teal">{LABEL[it.kind]}</span>
                   </div>
                   <div className="truncate text-[13.5px] text-head">{it.role} · {it.company}</div>
                   <div className="truncate text-[11.5px] text-ink-3">{it.meta}</div>
@@ -90,7 +90,7 @@ export function AgentPreview({ className }: { className?: string }) {
                 {it.match != null && (
                   <div className="flex shrink-0 flex-col items-end">
                     <span className="num text-[18px] leading-none text-green">{it.match}%</span>
-                    <span className="label !text-[9px]">Match</span>
+                    <span className="label !text-[11px]">Match</span>
                   </div>
                 )}
               </li>

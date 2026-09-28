@@ -172,7 +172,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
       {/* Tools: still here, deliberately quiet. */}
       <details className="group rounded-[var(--radius-card)] border border-dashed border-line bg-white/30">
         <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4 text-[13.5px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
-          <span className="label !text-[10px]">Инструменты</span>
+          <span className="label !text-[11px]">Инструменты</span>
           <span>{demo ? "Вставить письмо вручную · демо-симуляция ответов" : "Вставить письмо вручную"}</span>
           <span className="ml-auto font-mono text-[11px] text-ink-3 group-open:hidden">показать</span>
           <span className="ml-auto hidden font-mono text-[11px] text-ink-3 group-open:inline">скрыть</span>
@@ -206,12 +206,20 @@ const CARD: Record<string, { icon: LucideIcon; eyebrow: string; tone: "green" | 
   unknown: { icon: Mail, eyebrow: "Письмо", tone: "neutral" },
 };
 
+/** Request-time check (server component): the round's time has passed or it is no longer upcoming. */
+function roundIsOver(iv: { scheduledAt: Date | null; status: string } | undefined) {
+  if (!iv) return false;
+  return iv.status !== "upcoming" || (iv.scheduledAt != null && iv.scheduledAt.getTime() <= Date.now());
+}
+
 function ResponseCard({ m }: { m: Msg }) {
   const meta = CARD[m.classification] ?? CARD.unknown;
   const o = m.opportunity;
   const company = o?.job.company ?? m.fromAddr;
   const iv = o?.interviews.find((i) => (m.classification === "assessment" ? i.round === "assessment" : i.round !== "assessment"));
-  const booking = m.classification === "interview" ? realUrl(bookingLink(m.body)) : null;
+  // The round is over (its time has passed or it's no longer upcoming): the next step is the debrief, not preparation.
+  const past = roundIsOver(iv);
+  const booking = m.classification === "interview" && !past ? realUrl(bookingLink(m.body)) : null;
   // One date for the round everywhere: the Interview row wins (it is what the Interview Room shows), the email's own date second.
   const deadline = roundDate(iv) ?? m.deadline;
   const big = m.classification === "interview" || m.classification === "assessment" || m.classification === "offer";
@@ -227,7 +235,7 @@ function ResponseCard({ m }: { m: Msg }) {
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <Chip tone={meta.tone} dot={big}>{meta.eyebrow}</Chip>
-            {m.simulated && <span className="font-mono text-[9.5px] uppercase tracking-[.06em] text-amber">демо</span>}
+            {m.simulated && <span className="font-mono text-[11px] uppercase tracking-[.06em] text-amber">демо</span>}
             <time dateTime={m.receivedAt.toISOString()} className="ml-auto shrink-0 text-[12px] text-ink-3">{agoRu(m.receivedAt)}</time>
           </div>
           <h2 id={titleId} className={cx(big ? "h-serif text-[22px] sm:text-[24px]" : "text-[15px] text-head")}>
@@ -262,8 +270,9 @@ function ResponseCard({ m }: { m: Msg }) {
               Записаться на интервью<ExternalLink className="size-4" aria-hidden /><span className="sr-only"> (откроется в новой вкладке)</span>
             </a>
           )}
-          {m.classification === "interview" && iv && <ButtonLink href={`/app/interviews/${iv.id}`} variant={booking ? "glass" : "primary"}>Prepare<ArrowRight className="size-4" aria-hidden /></ButtonLink>}
-          {m.classification === "assessment" && iv && <ButtonLink href={`/app/interviews/${iv.id}`}>Подготовиться<ArrowRight className="size-4" aria-hidden /></ButtonLink>}
+          {(m.classification === "interview" || m.classification === "assessment") && iv && (past
+            ? <ButtonLink href={`/app/interviews/${iv.id}?tab=debrief`} variant="glass">Как прошло?<ArrowRight className="size-4" aria-hidden /></ButtonLink>
+            : <ButtonLink href={`/app/interviews/${iv.id}`} variant={booking ? "glass" : "primary"}>Подготовиться<ArrowRight className="size-4" aria-hidden /></ButtonLink>)}
           {m.classification === "offer" && <ButtonLink href="/app/offers">Посмотреть оффер<ArrowRight className="size-4" aria-hidden /></ButtonLink>}
           {!iv && m.classification !== "offer" && o && <ButtonLink href={`/app/opportunities/${o.id}`} variant="glass">Открыть заявку</ButtonLink>}
         </div>

@@ -4,15 +4,10 @@ import { checkout } from "@/lib/actions/campaign";
 import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
 import { Chip, cx } from "@/components/ui";
 import { LegalLinks } from "../../_components/legal-page";
-import { PLAN_ORDER, type PlanKey } from "../../_components/plan-pref";
+import { PLAN_COPY as COPY, PLAN_ORDER, type PlanKey } from "../../_components/plan-pref";
 import { BackLink } from "./shared";
 import { count } from "../../_components/ru";
 import { PlanButton } from "./plan-button";
-
-const COPY = {
-  local: { note: "Казахстан и СНГ", features: ["Поиск и заявки по Казахстану и СНГ", `До ${PLANS.local.dailyLimit} заявок в день`, "CV под каждую вакансию", "Подготовка к интервью"] },
-  international: { note: "Европа, США, Великобритания, Канада, удалённо по миру", features: ["Всё из Local / CIS", `До ${PLANS.international.dailyLimit} заявок в день`, "Визовые требования учитываются в каждой заявке", "Подготовка к интервью и помощь с оффером"] },
-} as const;
 
 /**
  * Step 5. Tiers are always listed Local first, then International. `preferred` is the plan picked on the landing page

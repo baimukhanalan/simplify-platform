@@ -7,6 +7,7 @@ import { benchmarkOffer, negotiationPlan, type Aggressiveness } from "@/lib/engi
 import { fxToUsd } from "@/lib/engine/fx";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
 import { WORK_MODE_RU, count, regionsRu } from "../../../_components/ru";
+import { noticeRu } from "@/lib/ru";
 import { markHired } from "@/lib/actions/campaign";
 import { declineOffer, recordFinal, saveNegotiation } from "@/lib/actions/offer";
 import { CopyButton } from "../../interviews/_components/copy-button";
@@ -38,7 +39,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
       const m = (n: number) => kMoney(n, o.currency);
       return [s.level, {
         ...plan,
-        args: talkingPoints({ role: o.role, low: m(range.low), high: m(range.high), strengths }),
+        args: talkingPoints({ role: o.role, low: m(range.low), high: m(range.high), strengths, position: o.base < range.mid ? "below" : o.base < range.high ? "upper" : "top" }),
         callScript: callScript({ ask: m(plan.ask), walkaway: m(plan.walkaway) }),
         fallback: fallbackLevers(m(Math.max(3000, (plan.target - o.base) * 0.6))),
         email: negotiationEmail({ role: o.role, company: o.company, name, level: s.level, ask: m(plan.ask), low: m(range.low), high: m(range.high), strengths }),
@@ -62,7 +63,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-[11px] uppercase tracking-[.14em] text-[#8fc7ad]">Offer Desk</span>
           <span aria-hidden className="h-px w-8 bg-[#8fc7ad]/40" />
-          <span className="rounded-full border border-white/15 px-2.5 py-1 font-mono text-[10px] uppercase tracking-[.08em] text-white/70">
+          <span className="rounded-full border border-white/15 px-2.5 py-1 font-mono text-[11px] uppercase tracking-[.08em] text-white/70">
             {o.status === "negotiating" ? "Переговоры" : "Получен"}
           </span>
         </div>
@@ -74,7 +75,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
 
         <div className="mt-8 flex flex-col gap-6 border-t border-white/10 pt-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <span className="font-mono text-[10.5px] uppercase tracking-[.1em] text-white/50">Оклад в год</span>
+            <span className="font-mono text-[11px] uppercase tracking-[.1em] text-white/50">Оклад в год</span>
             <div className="num mt-1 text-[clamp(52px,13vw,112px)] leading-[.9] tracking-tight">{c.money(o.base)}</div>
             {o.finalBase != null && o.finalBase !== o.base && (
               <p className="mt-2 text-[14px] text-[#7fe3b6]">
@@ -83,7 +84,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
             )}
           </div>
           <div className="flex flex-col gap-1 sm:items-end sm:text-right">
-            <span className="font-mono text-[10.5px] uppercase tracking-[.1em] text-white/50">Общий доход</span>
+            <span className="font-mono text-[11px] uppercase tracking-[.1em] text-white/50">Общий доход</span>
             <span className="num text-[30px] leading-none text-white">{c.money(c.total)}</span>
             <span className="text-[12px] text-white/50">первый год</span>
           </div>
@@ -116,7 +117,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
           <div className="mt-5">
             <div className="label mb-2">Бонусы и льготы</div>
             {c.benefits.length ? (
-              <ul className="flex flex-wrap gap-1.5">{c.benefits.map((b) => <li key={b}><Chip>{b}</Chip></li>)}</ul>
+              <ul className="flex flex-wrap gap-1.5">{c.benefits.map((b) => <li key={b} className="max-w-full"><Chip wrap>{b}</Chip></li>)}</ul>
             ) : (
               <p className="text-[13.5px] text-ink-3">Не указаны — уточни у рекрутера страховку, отпуск и бюджет на обучение.</p>
             )}
@@ -127,7 +128,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
               ["Отпуск", o.vacationDays ? count(o.vacationDays, ["день", "дня", "дней"]) : "—"],
               ["Испытательный срок", o.probationMonths ? count(o.probationMonths, ["месяц", "месяца", "месяцев"]) : "—"],
               ["Релокация", o.relocation || "—"],
-              ["Срок уведомления", o.noticePeriod || "—"],
+              ["Срок уведомления", noticeRu(o.noticePeriod) || "—"],
             ] as const).map(([kk, v]) => (
               <div key={kk} className="flex min-w-0 flex-col">
                 <dt className="text-ink-3">{kk}</dt>
@@ -170,7 +171,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
 
       {/* ── Decision: one block with all three outcomes ───────── */}
       <div id={ids.decide} className="scroll-mt-24 rounded-[24px] bg-[#0c1512] px-5 py-7 text-white sm:px-8" role="group" aria-labelledby={`${ids.decide}-h`}>
-        <span className="font-mono text-[10.5px] uppercase tracking-[.12em] text-[#8fc7ad]">Решение</span>
+        <span className="font-mono text-[11px] uppercase tracking-[.12em] text-[#8fc7ad]">Решение</span>
         <h3 id={`${ids.decide}-h`} className="h-serif mt-2 text-[clamp(24px,3vw,34px)] !text-white">Принять <span className="script !text-[#7fe3b6]">оффер</span>?</h3>
         <p className="mt-2 max-w-2xl text-[14px] text-white/65">
           {negotiate
@@ -286,7 +287,7 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
           </div>
           <div>
             <div className="label mb-2.5">Если оклад не двигается</div>
-            <ul className="flex flex-wrap gap-1.5">{plan.fallback.map((f) => <li key={f}><Chip tone="teal">{f}</Chip></li>)}</ul>
+            <ul className="flex flex-wrap gap-1.5">{plan.fallback.map((f) => <li key={f} className="max-w-full"><Chip tone="teal" wrap>{f}</Chip></li>)}</ul>
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-3">
@@ -323,7 +324,7 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
 function Money({ label, value, hint, small }: { label: string; value: string; hint?: string; small?: boolean }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
-      <dt className="label !text-[10px]">{label}</dt>
+      <dt className="label !text-[11px]">{label}</dt>
       <dd className={cx("text-head", small ? "text-[15px] leading-snug" : "num truncate text-[24px] leading-none")} title={value}>{value}</dd>
       {hint && <dd className="truncate text-[12px] text-ink-3" title={hint}>{hint}</dd>}
     </div>

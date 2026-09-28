@@ -6,10 +6,15 @@ import { dismissNotification } from "@/lib/actions/notifications";
 import { isPushHiddenOn } from "@/lib/push";
 import { cx } from "@/components/ui";
 
-/** Live Copilot is a focused screen: no push moment on top of it (routes: src/lib/push.ts). */
-export function PushGate({ children }: { children: ReactNode }) {
+/**
+ * Live Copilot is a focused screen: no push moment on top of it (routes: src/lib/push.ts). `hideExact` / `hidePrefix`
+ * add screens that already show this moment themselves (the Offer Desk, Today with the offer as its next step, the
+ * push's own destination) — strings, since RegExps don't cross the server → client boundary.
+ */
+export function PushGate({ children, hideExact = [], hidePrefix = [] }: { children: ReactNode; hideExact?: string[]; hidePrefix?: string[] }) {
   const path = usePathname();
   if (isPushHiddenOn(path)) return null;
+  if (path && (hideExact.includes(path) || hidePrefix.some((p) => path === p || path.startsWith(`${p}/`)))) return null;
   return <>{children}</>;
 }
 

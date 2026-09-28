@@ -1,7 +1,15 @@
 // The plan picked on the landing page (?plan=local|international), remembered across /login → onboarding
 // in a short-lived first-party cookie so step 5 and /app/campaign can preselect it. Pure: safe on server and client.
 
+import { PLANS } from "@/lib/engine/taxonomy";
+
 export type PlanKey = "local" | "international";
+
+/** What each tier promises — one copy for the landing, onboarding step 5 and anywhere else a plan card is drawn. */
+export const PLAN_COPY: Record<PlanKey, { note: string; features: readonly string[] }> = {
+  local: { note: "Казахстан и СНГ", features: ["Поиск и заявки по Казахстану и СНГ", `До ${PLANS.local.dailyLimit} заявок в день`, "CV под каждую вакансию", "Подготовка к интервью"] },
+  international: { note: "Европа, США, Великобритания, Канада, удалённо по миру", features: ["Всё из Local / CIS", `До ${PLANS.international.dailyLimit} заявок в день`, "Визовые требования учитываются в каждой заявке", "Подготовка к интервью и помощь с оффером"] },
+};
 export const PLAN_COOKIE = "simplify_plan";
 
 export function cleanPlan(v: unknown): PlanKey | null {

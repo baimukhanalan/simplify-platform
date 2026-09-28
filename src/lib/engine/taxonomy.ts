@@ -81,14 +81,26 @@ export function cleanRoleTitle(role: string) {
 }
 
 /**
- * The goal as one title: the role only, plus «International» when the goal names a foreign market (EU, UK, US, CA, MENA).
- * "Удалённо" / WORLD is a work format, never part of the title: role "Product Manager" + where ["WORLD"] → "Product Manager".
- * Stray format/region words typed into the role ("Product Manager удалённо") are dropped.
+ * The goal as one title: the role only ("Data Analyst"). Where the search runs is not part of the title — it goes into
+ * the subtitle (goalMarket). Stray format/region words typed into the role ("Product Manager удалённо") are dropped, and
+ * an "International" typed in front of the role is dropped too.
  */
-export function goalTitle(role: string, countries: string[]) {
-  const clean = cleanRoleTitle(role);
-  const intl = countries.some((c) => NAMED_FOREIGN.has(c));
-  return intl && !/international/i.test(clean) ? `International ${clean}` : clean;
+export function goalTitle(role: string, _countries: string[] = []) {
+  void _countries;
+  const clean = cleanRoleTitle(role).replace(/^international\s+/i, "").trim();
+  return clean || cleanRoleTitle(role);
+}
+
+/**
+ * The goal's market for the subtitle under goalTitle: «Международный рынок · Европа, весь мир удалённо, Казахстан» or
+ * «Казахстан и СНГ · Казахстан». `international` = a named foreign market or WORLD remote is in the goal.
+ */
+export function goalMarket(countries: string[]) {
+  const names: Record<string, string> = { KZ: "Казахстан", CIS: "СНГ", EU: "Европа", UK: "Великобритания", US: "США", CA: "Канада", MENA: "ОАЭ и Ближний Восток", WORLD: "весь мир удалённо" };
+  const international = countries.some((c) => NAMED_FOREIGN.has(c) || c === "WORLD");
+  const list = countries.map((c) => names[c] ?? c).join(", ");
+  const label = international ? "Международный рынок" : "Казахстан и СНГ";
+  return { international, label, regions: list, line: list ? `${label} · ${list}` : label };
 }
 
 export function classifyRole(title: string): string {
@@ -219,6 +231,22 @@ export const LANGUAGE_OPTIONS: [string, string][] = [
 ];
 export const defaultLanguagesFor = (citizenship: string) => CITIZENSHIP_LANGUAGES[citizenship.toUpperCase()] ?? [];
 
-export const fmtMoney = (n: number, cur = "USD") =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n);
-export const fmtKzt = (n: number) => `${n.toLocaleString("ru-RU")} ₸`;
+/** Narrow no-break space: the thousands separator of every money amount («$52 000», «29 990 ₸»). */
+export const NNBSP = "\u202F";
+const CURRENCY_PREFIX: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
+
+/**
+ * The one money format: «$52 000», «€4 500», «29 990 ₸», «1 200 UZS». Whole units, digits grouped by a narrow no-break
+ * space, the symbol glued to the number. Employer-facing English text (emails, ATS answers) keeps its own "$52k" style.
+ */
+export function fmtMoney(n: number, cur = "USD") {
+  const v = Math.round(Math.abs(Number.isFinite(n) ? n : 0));
+  const digits = String(v).replace(/\B(?=(\d{3})+(?!\d))/g, NNBSP);
+  const sign = n < 0 && v ? "−" : "";
+  const code = (cur || "USD").toUpperCase();
+  if (CURRENCY_PREFIX[code]) return `${sign}${CURRENCY_PREFIX[code]}${digits}`;
+  return `${sign}${digits}${NNBSP}${code === "KZT" ? "₸" : code}`;
+}
+export const fmtKzt = (n: number) => fmtMoney(n, "KZT");
+/** A range in the same style: «$40 000–$60 000». */
+export const fmtMoneyRange = (lo: number, hi: number, cur = "USD") => `${fmtMoney(lo, cur)}–${fmtMoney(hi, cur)}`;

@@ -42,13 +42,13 @@ export function QuestionsTab({ id, pack, generatedBy, generatedAt, debug, ctx, s
                 <div className="flex flex-col gap-4 px-5 pb-5 sm:pl-[60px] sm:pr-6">
                   <div className="flex flex-wrap items-center gap-2">
                     <Chip><Clock className="size-3" strokeWidth={2} aria-hidden />{l.timing}</Chip>
-                    {l.story && <Chip tone="teal">История: {l.story.title}</Chip>}
+                    {l.story && <Chip tone="teal" wrap>История: {l.story.title}</Chip>}
                   </div>
                   {l.opener && <p className="border-l-2 border-green/50 pl-3 font-serif text-[18px] leading-snug text-head">{l.opener}</p>}
                   <ul className="flex flex-col gap-2">
                     {l.points.map((p, k) => (
                       <li key={k} className="flex gap-3 text-[14.5px] leading-relaxed text-ink-2">
-                        {p.k ? <span className="label mt-[5px] w-[108px] shrink-0 break-words !text-[10px] !text-teal">{p.k}</span> : <span aria-hidden className="mt-[9px] size-1.5 shrink-0 rounded-full bg-teal/60" />}
+                        {p.k ? <span className="label mt-[5px] w-[108px] shrink-0 break-words !text-[11px] !text-teal">{p.k}</span> : <span aria-hidden className="mt-[9px] size-1.5 shrink-0 rounded-full bg-teal/60" />}
                         <span>{p.v}</span>
                       </li>
                     ))}

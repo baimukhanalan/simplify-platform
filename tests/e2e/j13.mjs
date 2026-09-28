@@ -26,18 +26,23 @@ async function paidUser(label, opts) {
   const mail = `e2e-j13plan-${Date.now()}@test.local`;
   const r = await anon.action("auth.signup", [undefined, form({ name: "Тест План", email: mail, password: "Passw0rd!23", terms: "on", ref: "", next: "/onboarding?step=5&plan=local", plan: "local" })], { page: "/login" });
   check(r.redirect?.split(";")[0] === "/onboarding?plan=local", "J13.plan.signup", "signup redirects to onboarding with the plan", r.redirect);
-  // Step 5 needs a goal (else it shows «Сначала подтверди цель»): give the new user one, as steps 1-4 would.
-  await db.goal.update({ where: { userId: (await db.user.findUnique({ where: { email: mail } })).id }, data: { primaryRole: "Data Analyst", countries: JSON.stringify(["KZ"]) } });
+  // Step 5 needs a goal (else it shows «Сначала подтверди цель»): give the new user one, as steps 1-4 would. An EU goal
+  // makes International the fitting plan, so "remembered plan" and "fitting plan" can be told apart.
+  await db.goal.update({ where: { userId: (await db.user.findUnique({ where: { email: mail } })).id }, data: { primaryRole: "Data Analyst", countries: JSON.stringify(["EU"]) } });
+  // Round 6: tiers are ALWAYS listed Local first, then International (src/app/_components/plan-pref.ts PLAN_ORDER);
+  // the highlighted (glass-strong) card is the remembered plan, else the one that fits the goal regions.
   // RememberPlan (client) writes the cookie on /login; emulate it and open step 5 WITHOUT ?plan (e.g. after steps 1-4).
-  const first = (html) => html.match(/aria-labelledby="plan-(local|international)"[^>]*class="([^"]*)"/);
-  const noCookie = first((await anon.get("/onboarding?step=5")).text);
+  const cards = (html) => [...html.matchAll(/aria-labelledby="plan-(local|international)"[^>]*class="([^"]*)"/g)].map((m) => ({ k: m[1], featured: /glass-strong/.test(m[2]) }));
+  const order = (cs) => cs.map((x) => x.k).join(",");
+  const featured = (cs) => cs.filter((x) => x.featured).map((x) => x.k).join(",");
+  const noCookie = cards((await anon.get("/onboarding?step=5")).text);
   anon.cookies.simplify_plan = "local";
-  const withCookie = first((await anon.get("/onboarding?step=5")).text);
-  check(noCookie?.[1] === "international", "J13.plan.default", "without a remembered plan step 5 leads with International", noCookie?.[1]);
-  check(withCookie?.[1] === "local" && /glass-strong/.test(withCookie?.[2] ?? ""), "J13.plan.cookie", "simplify_plan=local cookie → step 5 lists Local first and highlighted", withCookie?.slice(1));
+  const withCookie = cards((await anon.get("/onboarding?step=5")).text);
+  check(order(noCookie) === "local,international" && featured(noCookie) === "international", "J13.plan.default", "without a remembered plan: Local first, the fitting plan (International for an EU goal) highlighted", noCookie);
+  check(order(withCookie) === "local,international" && featured(withCookie) === "local", "J13.plan.cookie", "simplify_plan=local cookie → Local highlighted (order unchanged)", withCookie);
   anon.cookies.simplify_plan = "gold";
-  const bogus = first((await anon.get("/onboarding?step=5")).text);
-  check(bogus?.[1] === "international", "J13.plan.bogus", "unknown cookie value is ignored", bogus?.[1]);
+  const bogus = cards((await anon.get("/onboarding?step=5")).text);
+  check(order(bogus) === "local,international" && featured(bogus) === "international", "J13.plan.bogus", "unknown cookie value is ignored (falls back to the fitting plan)", bogus);
   delete anon.cookies.simplify_plan;
 }
 

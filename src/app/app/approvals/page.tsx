@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { confirmUserSubmitted, setOpportunityStatus } from "@/lib/actions/ops";
 import { APPROVAL_KIND } from "@/lib/ops";
+import { SENSITIVE_DECLINE, SENSITIVE_DECLINE_RU, answerRu } from "@/lib/engine/autonomy";
 import { pendingQueueWhere } from "@/lib/ops-data";
 import { realUrl } from "@/lib/links";
 import { Button, ButtonLink, Card, Chip, Empty, Label, PageHeader } from "@/components/ui";
@@ -25,7 +26,7 @@ const WHY: Record<string, string> = {
   sensitive: "Пол, инвалидность, статус ветерана, судимость — добровольные вопросы. Раскрывать их или нет, решаешь только ты.",
   salary: "Цифра в анкете становится якорем на переговорах. Агент предлагает вилку, но подтверждаешь ты.",
   unknown_question: "В форме вопрос, на который в твоём профиле нет готового ответа. Нужен твой ответ.",
-  handoff: "Это живая вакансия: автоматическая отправка недоступна. Пакет готов — отправь его через форму работодателя и отметь здесь.",
+  handoff: "Эту заявку нужно отправить через сайт работодателя. Пакет готов — отправь его и отметь здесь.",
 };
 
 /**
@@ -34,11 +35,10 @@ const WHY: Record<string, string> = {
  * (typed answer below), and a wrong «нет» is worse than no application.
  */
 const QUICK: Record<string, { value: string; label: string }[]> = {
-  sensitive: [{ value: "I don't wish to answer", label: "Не хочу отвечать" }],
+  sensitive: [{ value: SENSITIVE_DECLINE, label: SENSITIVE_DECLINE_RU }],
   legal: [{ value: "Yes", label: "Да" }, { value: "No", label: "Нет" }],
   sponsorship: [{ value: "Yes", label: "Да, нужна" }],
 };
-const ANSWER_RU: Record<string, string> = { Yes: "Да", No: "Нет", "I don't wish to answer": "Не хочу отвечать" };
 /** Standing questions: one answer is applied to every identical pending copy (engine: STANDING_KINDS). */
 const STANDING = new Set(["sensitive", "legal", "sponsorship"]);
 const sameKey = (a: { kind: string; question: string }) => `${a.kind}\u0000${a.question}`;
@@ -68,9 +68,9 @@ export default async function ApprovalsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Подтверждения"
+        eyebrow="Только твои решения"
         title="Подтверждения"
-        sub="Агент делает всё сам — кроме решений, которые принадлежат только тебе: юридические декларации, чувствительные данные, спорное спонсорство, отправка живых вакансий. Здесь — только они."
+        sub="Агент делает всё сам — кроме решений, которые принадлежат только тебе: юридические декларации, чувствительные данные, спорное спонсорство, заявки, которые нужно отправить через сайт работодателя. Здесь — только они."
       />
 
       <AgentStatus
@@ -103,7 +103,7 @@ export default async function ApprovalsPage() {
                 <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
                   <div className="flex flex-col gap-1.5">
                     <h2 id={`kind-${k}-h`} className="h-serif text-[24px]">{meta.label} <span className="num text-[16px] text-ink-3">· {items.length}</span></h2>
-                    <p className="max-w-3xl text-[13.5px] text-ink-2"><span className="label mr-1.5 !text-[9.5px] !text-teal">Почему агент остановился</span>{meta.why}</p>
+                    <p className="max-w-3xl text-[13.5px] text-ink-2"><span className="label mr-1.5 !text-[11px] !text-teal">Почему агент остановился</span>{meta.why}</p>
                   </div>
                 </div>
                 <ul className="flex flex-col gap-2.5">
@@ -125,7 +125,7 @@ export default async function ApprovalsPage() {
                 <span className="min-w-0 flex-1 break-words text-ink-2 [overflow-wrap:anywhere]">
                   {r.opportunity ? <Link href={`/app/opportunities/${r.opportunity.id}`} className="text-head hover:underline">{r.opportunity.job.company}</Link> : null}
                   {r.opportunity ? " · " : ""}{r.kind === "handoff" ? "отправлено тобой через официальную форму" : r.question}
-                  {r.answer && r.kind !== "handoff" && <span className="text-ink-3"> → {ANSWER_RU[r.answer] ?? r.answer}</span>}
+                  {r.answer && r.kind !== "handoff" && <span className="text-ink-3"> → {answerRu(r.answer)}</span>}
                 </span>
                 <span className="shrink-0 text-[12px] text-ink-3">{agoRu(r.resolvedAt)}</span>
               </li>
@@ -168,8 +168,8 @@ function ApprovalItem({ a, same }: { a: Item; same: number }) {
         {a.kind !== "handoff" && (
           a.proposed ? (
             <div className="rounded-xl border border-green/15 bg-green-soft/50 px-3.5 py-2.5 text-[14px]">
-              <span className="label mr-2 !text-[9.5px] !text-green">Предложение агента</span>
-              <span className="break-words text-ink">{ANSWER_RU[a.proposed] ?? a.proposed}</span>
+              <span className="label mr-2 !text-[11px] !text-green">Предложение агента</span>
+              <span className="break-words text-ink">{answerRu(a.proposed)}</span>
             </div>
           ) : quick.length === 0 ? (
             <p className="text-[13px] italic text-ink-3">Агент не предлагает ответ — это решаешь только ты.</p>

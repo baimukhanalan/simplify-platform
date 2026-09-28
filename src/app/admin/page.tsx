@@ -167,7 +167,7 @@ export default async function AdminPage() {
                 <table className="w-full min-w-[820px] text-left text-[13.5px]">
                   <thead>
                     <tr className="border-b border-line">
-                      {["Пользователь", "План", "День", "Отправлено", "Интервью", "Ждут подтверждения", "Последний цикл", ""].map((c, i) => <th key={i} scope="col" className="label px-4 py-2.5 !text-[10px] font-normal first:pl-6">{c}</th>)}
+                      {["Пользователь", "План", "День", "Отправлено", "Интервью", "Ждут подтверждения", "Последний цикл", ""].map((c, i) => <th key={i} scope="col" className="label px-4 py-2.5 !text-[11px] font-normal first:pl-6">{c}</th>)}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-line">

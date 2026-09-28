@@ -31,19 +31,20 @@ export function SentTab({ pkg, company, submittedAt, opportunityId, debug }: { p
         </div>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
         <Card>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="h-serif text-[22px]">{cvVersionLabel(pkg.cvVersion, company)}</h2>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="h-serif min-w-0 break-words text-[22px]">{cvVersionLabel(pkg.cvVersion, company)}</h2>
             <CopyButton text={pkg.cvText} />
           </div>
-          {pkg.summary && <p className="mb-3 border-l-2 border-green/40 pl-3 text-[14px] italic text-ink-2">{pkg.summary}</p>}
+          {/* The summary opens the CV text itself — repeat it only when the CV doesn't already contain it. */}
+          {pkg.summary && !pkg.cvText.includes(pkg.summary.trim().slice(0, 80)) && <p className="mb-3 border-l-2 border-green/40 pl-3 text-[14px] italic text-ink-2">{pkg.summary}</p>}
           <pre tabIndex={0} aria-label="Текст отправленного CV" className="scroll-thin max-h-[520px] overflow-auto whitespace-pre-wrap rounded-2xl border border-line bg-white/60 p-4 font-sans text-[13.5px] leading-relaxed text-ink-2 focus-visible:outline-2 focus-visible:outline-green">{pkg.cvText}</pre>
         </Card>
         <div className="flex flex-col gap-4">
           <Card>
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="h-serif text-[22px]">Сопроводительное письмо</h2>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="h-serif min-w-0 break-words text-[22px]">Сопроводительное письмо</h2>
               {pkg.coverLetter && <CopyButton text={pkg.coverLetter} />}
             </div>
             {pkg.coverLetter ? <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{pkg.coverLetter}</p> : <p className="text-[14px] text-ink-3">Сопроводительное письмо не требовалось.</p>}

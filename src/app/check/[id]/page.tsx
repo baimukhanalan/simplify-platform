@@ -5,6 +5,8 @@ import { db, j } from "@/lib/db";
 import type { CheckResult } from "@/lib/onboarding";
 import { Card, Label, H, Script, Chip, Ring, Progress, ButtonLink, Divider, cx } from "@/components/ui";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { fitVerdict } from "@/lib/engine/matching";
+import { placeRu } from "@/lib/ru";
 import { SiteHeader } from "../../_components/site-header";
 import { WORK_MODE_RU, count, yearsRu } from "../../_components/ru";
 
@@ -30,6 +32,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
   const r = row ? j<CheckResult | null>(row.result, null) : null;
   if (!r || r.v !== 1) notFound();
   const v = VERDICT[r.readiness.verdict];
+  const jobFit = r.job ? fitVerdict({ eligibility: r.job.eligibility, match: r.job.match, blockers: r.job.blockers, pInterview: r.job.pInterview }) : null;
 
   return (
     <div className="min-h-dvh overflow-x-clip">
@@ -134,7 +137,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                   <div className="text-[19px] font-medium text-head">{r.job.title}</div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px] text-ink-3">
                     <span className="text-ink-2">{r.job.company}</span>
-                    {r.job.location && <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" />{r.job.location}</span>}
+                    {r.job.location && <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" aria-hidden />{placeRu(r.job.location)}</span>}
                     <span>{WORK_MODE_RU[r.job.remote] ?? r.job.remote}</span>
                     {r.job.salary && <span className="num">{r.job.salary}</span>}
                   </div>
@@ -142,8 +145,13 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                 <div className="flex items-center gap-4">
                   <Ring value={r.job.match} size={76} stroke={6} label="Match" />
                   <div className="flex flex-col gap-1.5">
-                    <Chip tone={ELIG[r.job.eligibility].tone} dot>{ELIG[r.job.eligibility].label}</Chip>
-                    <span className="num text-[12px] text-ink-3">Interview probability ≈ {Math.round(r.job.pInterview * 100)}%</span>
+                    {/* A blocked role gets the verdict and its reason, never a "≈ 0%" probability. */}
+                    <Chip tone={ELIG[r.job.eligibility].tone} dot>{jobFit?.headline ?? ELIG[r.job.eligibility].label}</Chip>
+                    {jobFit?.blocked ? (
+                      <span className="max-w-[16rem] text-[12px] leading-snug text-ink-3">{jobFit.reason}</span>
+                    ) : (
+                      <span className="num text-[12px] text-ink-3">Interview probability ≈ {Math.round(r.job.pInterview * 100)}%</span>
+                    )}
                   </div>
                 </div>
               </div>

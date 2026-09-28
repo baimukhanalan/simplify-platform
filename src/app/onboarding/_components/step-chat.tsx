@@ -8,6 +8,7 @@ import { cx } from "@/components/ui";
 import { useActionForm } from "../../_components/use-action-form";
 import { BackLink, FormAlert } from "./shared";
 import { yearsRu } from "../../_components/ru";
+import { fmtFactPeriod } from "@/lib/ru";
 
 type Position = { id: string; kind: string; title: string; org: string; startDate: string; endDate: string };
 
@@ -130,7 +131,7 @@ export function StepChat({ name, years, skills, skillCount, positions, turns }: 
         <form action={completeStep} className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4">
           <input type="hidden" name="step" value={2} />
           {!allDone && <span className="text-[12.5px] text-ink-3 sm:text-right">Можно закончить позже — ответы сохраняются сразу</span>}
-          <SubmitButton pendingText="Сохраняем…" variant={allDone ? "primary" : "glass"} className="w-full sm:w-auto">{allDone ? "К цели →" : "Дальше без ответов"}</SubmitButton>
+          <SubmitButton pendingText="Сохраняем…" variant={allDone ? "primary" : "glass"} className="w-full sm:w-auto">{allDone ? "К цели →" : answeredCount > 0 ? "Дальше" : "Дальше без ответов"}</SubmitButton>
         </form>
       </div>
     </div>
@@ -206,7 +207,7 @@ function Composer({ turn, initial, busy, error, onSend, onCancel, autoFocus }: {
               >
                 {picked && <Check className="size-3.5" strokeWidth={2.4} aria-hidden />}
                 {optionLabel(o.label)}
-                {suggested && <span className="font-mono text-[9.5px] uppercase tracking-wide opacity-70">· из профиля</span>}
+                {suggested && <span className="font-mono text-[11px] uppercase tracking-wide opacity-70">· из профиля</span>}
               </button>
             );
           })}
@@ -265,17 +266,17 @@ function PositionRow({ p }: { p: Position }) {
   if (mode === "gone") return null;
   // A successful save (a new state object since editing began) closes the editor.
   const editing = mode === "edit" && !(state?.ok && state !== editBase);
-  const dates = [p.startDate, p.endDate].filter(Boolean).join(" – ");
+  const dates = fmtFactPeriod(p.startDate, p.endDate);
 
   if (editing) {
     return (
       <li className="rounded-2xl border border-line bg-white p-3">
         <form action={formAction} onSubmit={onSubmit} className="grid gap-2 sm:grid-cols-2">
           <input type="hidden" name="id" value={p.id} />
-          <label className="flex flex-col gap-1"><span className="label !text-[10px]">Должность</span><input name="title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className="field !py-2 !text-[14px]" /></label>
-          <label className="flex flex-col gap-1"><span className="label !text-[10px]">Компания</span><input name="org" value={org} onChange={(e) => setOrg(e.target.value)} maxLength={200} className="field !py-2 !text-[14px]" /></label>
-          <label className="flex flex-col gap-1"><span className="label !text-[10px]">С</span><input name="startDate" defaultValue={p.startDate} maxLength={40} className="field !py-2 !text-[14px]" /></label>
-          <label className="flex flex-col gap-1"><span className="label !text-[10px]">По</span><input name="endDate" defaultValue={p.endDate} maxLength={40} className="field !py-2 !text-[14px]" /></label>
+          <label className="flex flex-col gap-1"><span className="label !text-[11px]">Должность</span><input name="title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} className="field !py-2 !text-[14px]" /></label>
+          <label className="flex flex-col gap-1"><span className="label !text-[11px]">Компания</span><input name="org" value={org} onChange={(e) => setOrg(e.target.value)} maxLength={200} className="field !py-2 !text-[14px]" /></label>
+          <label className="flex flex-col gap-1"><span className="label !text-[11px]">С</span><input name="startDate" defaultValue={p.startDate} maxLength={40} className="field !py-2 !text-[14px]" /></label>
+          <label className="flex flex-col gap-1"><span className="label !text-[11px]">По</span><input name="endDate" defaultValue={p.endDate} maxLength={40} className="field !py-2 !text-[14px]" /></label>
           <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
             <button type="submit" disabled={saving} className="inline-flex h-10 items-center gap-2 rounded-full bg-cta px-4 text-[13px] font-medium text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
               {saving && <span className="size-3 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />}Сохранить

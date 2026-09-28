@@ -1,6 +1,6 @@
 // Pure: turns the engine's readiness checks into the six parameters, blockers and the agent's plan.
 import type { Readiness, ReadinessCheck } from "@/lib/engine/readiness";
-import { REGIONS, SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { REGIONS, SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
 import { marketDemandScore } from "@/lib/engine/market";
 import { REGION_RU, plural } from "../../../_components/ru";
 
@@ -27,15 +27,14 @@ export type Param = { key: string; label: string; score: number; level: Level; n
 export const LEVEL_LABEL: Record<Level, string> = { strong: "Сильно", mid: "Средне", weak: "Слабо" };
 const level = (n: number): Level => (n >= 75 ? "strong" : n >= 50 ? "mid" : "weak");
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
-export const kUsd = (n: number) => `$${Math.round(n / 1000)}k`;
 const LOCAL = new Set(["KZ", "CIS"]);
 
 export function isInternational(countries: string[]) {
   return countries.some((c) => !LOCAL.has(c));
 }
 
-/** The goal as one line — one definition for every screen (src/lib/engine/taxonomy.ts). */
-export { goalTitle } from "@/lib/engine/taxonomy";
+/** The goal title (role only) and its market subtitle — one definition for every screen (src/lib/engine/taxonomy.ts). */
+export { goalMarket, goalTitle } from "@/lib/engine/taxonomy";
 
 export function readinessView(d: ReadinessData) {
   const r = d.readiness;
@@ -51,16 +50,16 @@ export function readinessView(d: ReadinessData) {
   const demand = clamp(marketDemandScore(d.jobsForRole));
   const visaMarkets = d.goal.countries.filter((x) => !LOCAL.has(x) && x !== "WORLD");
   const visaLimited = d.needsSponsorship && visaMarkets.length > 0;
-  // Needing a visa for named markets caps eligibility even when remote roles keep the engine's geo check green.
-  const eligibility = Math.min(visaLimited ? 65 : 100, clamp(c("geo").score * 0.6 + c("language").score * 0.4));
+  // «Право на работу за рубежом»: score and note come from one engine rule (internationalEligibility, readiness.ts).
+  const eligibility = clamp(r.eligibility.score);
 
   const params: Param[] = [
     { key: "skills", label: "Навыки", score: skills, level: level(skills), note: d.missingSkills.length && skills < 75 ? `Не хватает: ${d.missingSkills.join(", ")}` : "Навыки закрывают требования роли" },
     { key: "experience", label: "Опыт под цель", score: experience, level: level(experience), note: `${fmtYears(d.yearsExperience)} опыта · цель ${SENIORITY_LABEL[d.goal.seniority] ?? d.goal.seniority}` },
     { key: "cv", label: "Качество CV", score: cv, level: level(cv), note: d.withMetrics ? `${d.withMetrics} ${plural(d.withMetrics, ["достижение", "достижения", "достижений"])} с цифрами` : "Нет достижений в цифрах" },
     { key: "interview", label: "Готовность к интервью", score: interview, level: level(interview), note: r.interview.note },
-    { key: "demand", label: "Спрос на рынке", score: demand, level: level(demand), note: `${d.jobsForRole} ${plural(d.jobsForRole, ["открытая вакансия", "открытые вакансии", "открытых вакансий"])} по роли · рынок ${kUsd(d.range.low)}–${kUsd(d.range.high)}` },
-    { key: "eligibility", label: "Право на работу за рубежом", score: eligibility, level: level(eligibility), note: intl ? `${d.needsSponsorship ? "Для части рынков нужна рабочая виза" : "Есть право на работу в целевых странах"} · английский ${d.englishLevel}` : `Цель — местный рынок · английский ${d.englishLevel}` },
+    { key: "demand", label: "Спрос на рынке", score: demand, level: level(demand), note: `${d.jobsForRole} ${plural(d.jobsForRole, ["открытая вакансия", "открытые вакансии", "открытых вакансий"])} по роли · рынок ${fmtMoney(d.range.low)}–${fmtMoney(d.range.high)}` },
+    { key: "eligibility", label: "Право на работу за рубежом", score: eligibility, level: level(eligibility), note: r.eligibility.note },
   ];
 
   const blockers: string[] = [];
@@ -76,7 +75,7 @@ export function readinessView(d: ReadinessData) {
   if (!d.hasLinkedin) blockers.push("Нет LinkedIn — многие формы заявок его требуют.");
   if (skills < 60 && d.missingSkills.length) blockers.push(`Не хватает ключевых навыков под роль: ${d.missingSkills.join(", ")}.`);
   if (c("seniority").status === "bad") blockers.push(`Уровень цели (${SENIORITY_LABEL[d.goal.seniority] ?? d.goal.seniority}) выше твоего опыта — ${fmtYears(d.yearsExperience)}.`);
-  if (c("salary").score < 50) blockers.push(`Минимальная зарплата выше рынка для этого уровня (медиана ${kUsd(d.range.mid)}).`);
+  if (c("salary").score < 50) blockers.push(`Минимальная зарплата выше рынка для этого уровня (медиана ${fmtMoney(d.range.mid)}).`);
   if (intl && c("language").score < 75) blockers.push("Английский ниже B2 — для международных ролей этого мало.");
   const fewJobs = d.jobsForRole < 5;
   if (fewJobs) blockers.push("По этой роли сейчас мало открытых вакансий.");

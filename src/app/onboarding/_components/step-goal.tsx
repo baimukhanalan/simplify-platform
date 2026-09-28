@@ -3,13 +3,27 @@ import { useId, useState, type ReactNode } from "react";
 import { Sparkles } from "lucide-react";
 import { saveGoal, type FormState } from "@/lib/actions/onboarding";
 import { marketRange } from "@/lib/engine/market";
+import { fxToUsd, toUSD } from "@/lib/engine/fx";
 import { classifyRole, SENIORITY, SENIORITY_LABEL } from "@/lib/engine/taxonomy";
 import { cx } from "@/components/ui";
 import { useActionForm } from "../../_components/use-action-form";
-import { goalTitle } from "../../app/readiness/_components/model";
+import { goalMarket, goalTitle } from "../../app/readiness/_components/model";
 import { BackLink, FieldErr, FormAlert } from "./shared";
 
-type Goal = { primaryRole: string; seniority: string; minSalary: number; countries: string[]; workModes: string[]; relocation: boolean; industries: string[] };
+type Goal = { primaryRole: string; seniority: string; minSalary: number; currency?: string; countries: string[]; workModes: string[]; relocation: boolean; industries: string[] };
+
+/** Kazakhstan / CIS without an international region → the salary is asked in ₸ per month. */
+const LOCAL_REGIONS = ["KZ", "CIS"];
+const localOnly = (countries: string[]) => countries.some((c) => LOCAL_REGIONS.includes(c)) && countries.every((c) => LOCAL_REGIONS.includes(c) || c === "WORLD");
+const KZT_PER_USD = 1 / fxToUsd("KZT");
+const roundTo = (n: number, step: number) => Math.round(n / step) * step;
+/** Annual USD → ₸ per month (rounded to 10 000 ₸). */
+const usdYearToKztMonth = (usd: number) => roundTo((usd * KZT_PER_USD) / 12, 10000);
+const kztMonthToUsdYear = (kzt: number) => toUSD(kzt * 12, "KZT");
+const KZT_PRESETS = [400000, 600000, 800000, 1200000];
+const USD_PRESETS = [30000, 50000, 80000, 120000];
+const fmtKzt = (n: number) => `${n.toLocaleString("ru-RU")} ₸`;
+const fmtUsd = (n: number) => `$${n.toLocaleString("en-US")}`;
 
 export const REGION_CHIPS: [string, string][] = [
   ["EU", "Европа"], ["US", "США"], ["UK", "Великобритания"], ["CA", "Канада"], ["WORLD", "Удалённо"], ["KZ", "Казахстан"], ["CIS", "СНГ"], ["MENA", "Ближний Восток"],
@@ -21,22 +35,33 @@ export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggest
   const [role, setRole] = useState(initial.primaryRole);
   const [seniority, setSeniority] = useState(initial.seniority);
   const [countries, setCountries] = useState<string[]>(initial.countries.length ? initial.countries : ["WORLD"]);
-  const [salary, setSalary] = useState(initial.minSalary ? String(initial.minSalary) : "");
+  const kzt = localOnly(countries);
+  // Whatever the stored goal's currency, start from its USD value and show it in the unit this form asks in.
+  const initialUsd = toUSD(initial.minSalary, initial.currency);
+  const [salaryIn, setSalaryIn] = useState<{ v: string; kzt: boolean }>(() => {
+    const k = localOnly(initial.countries.length ? initial.countries : ["WORLD"]);
+    return { v: initialUsd ? String(k ? usdYearToKztMonth(initialUsd) : initialUsd) : "", kzt: k };
+  });
+  // Switching between Kazakhstan and international converts the typed amount instead of silently reinterpreting it.
+  const salary = salaryIn.kzt === kzt ? salaryIn.v : salaryIn.v ? String(kzt ? usdYearToKztMonth(Number(salaryIn.v)) : kztMonthToUsdYear(Number(salaryIn.v))) : "";
+  const setSalary = (v: string) => setSalaryIn({ v, kzt });
   const id = useId();
   const f = state?.fields ?? {};
   const range = marketRange(classifyRole(role), seniority, countries);
-  const sal = Number(salary || 0);
+  const entered = Number(salary || 0);
+  /** Annual USD — what the market range and the engines compare against. */
+  const sal = kzt ? kztMonthToUsdYear(entered) : entered;
   const toggleCountry = (k: string) => setCountries((c) => (c.includes(k) ? c.filter((x) => x !== k) : [...c, k]));
-  const where = countries.map((c) => REGION_CHIPS.find(([k]) => k === c)?.[1] ?? c).join(", ");
 
   return (
     <form action={formAction} onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {/* Live read-out of the goal */}
       <section aria-live="polite" className="glass-strong flex flex-col gap-2 p-5 sm:p-7">
         <span className="label">Цель</span>
-        <div className="h-serif text-[clamp(28px,4vw,42px)]">{role.trim() ? goalTitle(role.trim(), countries) : <span className="text-ink-4">Роль не указана</span>}</div>
+        <div className="h-serif text-[clamp(28px,4vw,42px)]">{role.trim() ? goalTitle(role.trim()) : <span className="text-ink-4">Роль не указана</span>}</div>
+        {countries.length > 0 && <div className="text-[14px] text-ink-2">{goalMarket(countries).line}</div>}
         <div className="font-mono text-[11.5px] uppercase tracking-[.06em] text-teal">
-          {[SENIORITY_LABEL[seniority], where, sal ? `от $${sal.toLocaleString("en-US")}` : ""].filter(Boolean).join(" · ")}
+          {[SENIORITY_LABEL[seniority], entered ? (kzt ? `от ${fmtKzt(entered)} в месяц` : `от ${fmtUsd(entered)} в год`) : ""].filter(Boolean).join(" · ")}
         </div>
         {note && <p className="mt-1 flex items-start gap-2 text-[13px] text-ink-3"><Sparkles className="mt-0.5 size-3.5 shrink-0 text-green" aria-hidden />{note}</p>}
       </section>
@@ -90,10 +115,23 @@ export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggest
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
-            <label htmlFor={`${id}-sal`} className="label">Минимальная зарплата, USD в год</label>
-            <input id={`${id}-sal`} name="minSalary" value={salary} onChange={(e) => setSalary(e.target.value.replace(/\D/g, "").slice(0, 7))} inputMode="numeric" placeholder={String(range.mid)} className="field num" aria-describedby={`${id}-mkt`} />
+            <label htmlFor={`${id}-sal`} className="label">{kzt ? "Минимальная зарплата, ₸ в месяц" : "Минимальная зарплата, USD в год"}</label>
+            <input id={`${id}-sal`} value={entered ? entered.toLocaleString(kzt ? "ru-RU" : "en-US") : ""} onChange={(e) => setSalary(e.target.value.replace(/\D/g, "").slice(0, 8))} inputMode="numeric" placeholder={kzt ? usdYearToKztMonth(range.mid).toLocaleString("ru-RU") : range.mid.toLocaleString("en-US")} className="field num" aria-describedby={`${id}-mkt`} />
+            {/*
+              The save action stores minSalary as USD / year, so ₸ are converted here. salaryCurrency + salaryLocal carry the
+              original annual ₸ amount for the action to keep the goal in KZT once it reads them.
+            */}
+            <input type="hidden" name="minSalary" value={sal || ""} />
+            {kzt && entered > 0 && <><input type="hidden" name="salaryCurrency" value="KZT" /><input type="hidden" name="salaryLocal" value={entered * 12} /></>}
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Быстрый выбор зарплаты">
+              {(kzt ? KZT_PRESETS : USD_PRESETS).map((n) => (
+                <button key={n} type="button" onClick={() => setSalary(String(n))} aria-pressed={entered === n}
+                  className={cx("num inline-flex min-h-10 items-center rounded-full border px-3 text-[12.5px] transition-colors focus-visible:outline-2 focus-visible:outline-green", entered === n ? "border-green/40 bg-green-soft text-green" : "border-line bg-white/60 text-ink-2 hover:border-teal/40 hover:text-head")}
+                >{kzt ? fmtKzt(n) : fmtUsd(n)}+</button>
+              ))}
+            </div>
             <span id={`${id}-mkt`} className="text-[12px] text-ink-3">
-              Рынок для цели: <span className="num">${Math.round(range.low / 1000)}k–${Math.round(range.high / 1000)}k</span>
+              Рынок для цели: <span className="num">{kzt ? `${fmtKzt(usdYearToKztMonth(range.low))}–${fmtKzt(usdYearToKztMonth(range.high))} в месяц` : `$${Math.round(range.low / 1000)}k–$${Math.round(range.high / 1000)}k в год`}</span>
               {sal > range.high && <span className="text-amber"> · выше рынка — вакансий будет мало</span>}
               {sal > 0 && sal <= range.mid && <span className="text-green"> · реалистично</span>}
             </span>

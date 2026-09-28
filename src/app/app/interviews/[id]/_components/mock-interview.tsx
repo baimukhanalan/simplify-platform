@@ -65,6 +65,9 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
   // Mirror of the draft so async handlers read the text that arrived after speech.stop() resolved.
   const draftRef = useRef("");
   const setDraft = (v: string | ((d: string) => string)) => setDraftState((d) => (draftRef.current = typeof v === "function" ? v(d) : v));
+  // True once any part of the current answer came from the microphone: scoreAnswer then treats it as speech
+  // (transcripts carry no punctuation or paragraphing to judge).
+  const spokenRef = useRef(false);
   const [interim, setInterim] = useState("");
   const [current, setCurrent] = useState<Current | null>(null);
   const [lang, setLang] = useState("en-US");
@@ -75,7 +78,10 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
   const supported = useSpeechSupported();
   const speech = useSpeech({
     lang,
-    onFinal: (t) => setDraft((d) => (d ? `${d.trimEnd()} ${t}` : t)),
+    onFinal: (t) => {
+      spokenRef.current = true;
+      setDraft((d) => (d ? `${d.trimEnd()} ${t}` : t));
+    },
     onInterim: setInterim,
   });
 
@@ -87,6 +93,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
     setIdx(0);
     setTurns([]);
     setDraft("");
+    spokenRef.current = false;
     setCurrent(null);
     setSaved("idle");
     requestAnimationFrame(() => answerRef.current?.focus());
@@ -96,7 +103,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
     if (speech.listening) await speech.stop();
     const text = draftRef.current.trim();
     if (!text) return;
-    const score = scoreAnswer(question, text, { skills: ctx.skills, jdTerms: jdTerms.length ? jdTerms : ctx.skills });
+    const score = scoreAnswer(question, text, { skills: ctx.skills, jdTerms: jdTerms.length ? jdTerms : ctx.skills, spoken: spokenRef.current });
     setCurrent({ score, missing: missingPoints(question, text, score, ctx), better: suggestion(question, ctx) });
   };
 
@@ -105,6 +112,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
     const nextTurns = [...turns, { question, answer: skip ? "" : draftRef.current.trim(), score: skip ? null : current?.score ?? null }];
     setTurns(nextTurns);
     setDraft("");
+    spokenRef.current = false;
     setInterim("");
     setCurrent(null);
     if (idx + 1 >= questions.length) {
@@ -173,7 +181,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-5">
           {DIMS.map((d) => (
             <div key={d.key} className="flex flex-col gap-1.5">
-              <span className="label !text-[10px]">{d.label}</span>
+              <span className="label !text-[11px]">{d.label}</span>
               <span className="num text-[20px] text-head">{fb.dims[d.key]}</span>
               <Progress value={fb.dims[d.key]} tone={fb.dims[d.key] >= 70 ? "green" : fb.dims[d.key] >= 50 ? "teal" : "amber"} />
             </div>

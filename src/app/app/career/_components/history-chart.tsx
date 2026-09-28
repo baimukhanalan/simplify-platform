@@ -56,7 +56,7 @@ export function HistoryChart({ points }: { points: { at: Date; score: number; ma
           </span>
         </div>
       </div>
-      <div className="ml-[36px] flex justify-between font-mono text-[10.5px] tracking-[.04em] text-ink-3" aria-hidden>
+      <div className="ml-[36px] flex justify-between font-mono text-[11px] tracking-[.04em] text-ink-3" aria-hidden>
         <span>{fmt(points[0].at)}</span>
         {points.length > 2 && <span>{fmt(points[Math.floor(points.length / 2)].at)}</span>}
         <span>{label(last)}</span>

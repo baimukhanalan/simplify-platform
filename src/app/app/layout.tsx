@@ -11,12 +11,14 @@ const DAY = 86400000;
 
 async function shellData(userId: string) {
   const since = new Date(Date.now() - 3 * DAY);
-  const [approvals, responses, interviews, offers, campaign, moments] = await Promise.all([
+  const [approvals, responses, interviews, offers, openOffers, campaign, moments] = await Promise.all([
     pendingQueueCount(userId), // questions + handoffs: everything on the «Подтверждения» screen
     db.inboxMessage.count({ where: { userId, receivedAt: { gte: since }, classification: { in: ["interview", "assessment", "offer"] } } }),
     db.interview.count({ where: { userId, status: "upcoming" } }),
     // Offers join the primary nav only once one exists; declined ones don't count.
     db.offer.count({ where: { userId, status: { not: "declined" } } }),
+    // Same filter as Today's «Следующий шаг» offer (loadToday): when it's there, Today doesn't repeat it as a push.
+    db.offer.count({ where: { userId, status: { in: ["received", "negotiating"] } } }),
     currentCampaign(userId),
     unreadMoments(userId),
   ]);
@@ -27,12 +29,12 @@ async function shellData(userId: string) {
     const day = ["active", "paused"].includes(campaign.status) ? Math.min(total, Math.max(1, Math.floor((Date.now() - start) / DAY) + 1)) : null;
     clock = { status: campaign.status, day, total };
   }
-  return { counts: { approvals, responses, interviews, offers }, clock, moments };
+  return { counts: { approvals, responses, interviews, offers }, clock, moments, todayShowsOffer: openOffers > 0 && Boolean(campaign) };
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const { counts, clock, moments } = await shellData(user.id);
+  const { counts, clock, moments, todayShowsOffer } = await shellData(user.id);
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
       <Nav counts={counts} role={user.role} campaign={clock} userName={user.name} />
@@ -48,7 +50,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </form>
         </div>
         <div className="mx-auto w-full max-w-[1180px]">
-          {moments.top && <PushMoment m={moments.top} more={moments.more} />}
+          {moments.top && <PushMoment m={moments.top} more={moments.more} todayShowsOffer={todayShowsOffer} />}
           {children}
         </div>
       </main>

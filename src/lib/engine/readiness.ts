@@ -1,4 +1,4 @@
-import { ROLE_FAMILIES, SENIORITY_LABEL, classifyRole, seniorityFromYears, seniorityIndex, REGIONS } from "./taxonomy";
+import { ROLE_FAMILIES, SENIORITY_LABEL, classifyRole, fmtMoney, fmtMoneyRange, seniorityFromYears, seniorityIndex, REGIONS } from "./taxonomy";
 import { marketRange } from "./market";
 import { interviewReadiness, type InterviewReadiness } from "./interview-readiness";
 import { count, fmtYearsRu } from "../ru";
@@ -13,7 +13,43 @@ export type ReadinessInput = {
 };
 
 export type ReadinessCheck = { key: string; label: string; score: number; weight: number; note: string; status: "ok" | "warn" | "bad" };
-export type Readiness = { score: number; verdict: "ready" | "stretch" | "unrealistic"; probability: "high" | "medium" | "low" | "very_low"; checks: ReadinessCheck[]; suggestions: string[]; suggestedSeniority: string; suggestedRoles: string[]; interview: InterviewReadiness };
+export type Eligibility = {
+  /** 0–100; capped at 65 whenever a named foreign market needs a visa. */
+  score: number;
+  /** The one line shown with the score — built from the same rule, so a strong score never comes with a visa warning. */
+  note: string;
+  /** The goal includes a named foreign market (EU, UK, US, CA, MENA) or worldwide remote. */
+  international: boolean;
+  /** Named foreign markets in the goal without a right to work there. */
+  visaMarkets: string[];
+  visaLimited: boolean;
+};
+export type Readiness = { score: number; verdict: "ready" | "stretch" | "unrealistic"; probability: "high" | "medium" | "low" | "very_low"; checks: ReadinessCheck[]; suggestions: string[]; suggestedSeniority: string; suggestedRoles: string[]; interview: InterviewReadiness; eligibility: Eligibility };
+
+const NAMED_FOREIGN = ["EU", "UK", "US", "CA", "MENA"];
+const VISA_CAP = 65;
+
+/**
+ * «Право на работу за рубежом»: score and note from one rule. KZ/CIS need no visa (EAEU / visa-free for a KZ citizen);
+ * worldwide remote needs none either; a named foreign market needs the right to work there, else the score is capped
+ * and the note names the markets. English weighs in for any international goal.
+ */
+export function internationalEligibility(i: { countries: string[]; workAuth: string[]; englishLevel: string; geoScore: number; langScore: number }): Eligibility {
+  const auth = new Set(i.workAuth);
+  const international = i.countries.some((c) => NAMED_FOREIGN.includes(c) || c === "WORLD");
+  const visaMarkets = i.countries.filter((c) => NAMED_FOREIGN.includes(c) && !(REGIONS[c]?.countries ?? [c]).some((x) => auth.has(x)));
+  const visaLimited = visaMarkets.length > 0;
+  const english = `английский ${i.englishLevel}`;
+  if (!international) return { score: Math.round(i.geoScore), note: `Цель — Казахстан и СНГ, виза не нужна · ${english}`, international, visaMarkets, visaLimited: false };
+  const raw = Math.round(i.geoScore * 0.6 + i.langScore * 0.4);
+  if (visaLimited) {
+    const names = visaMarkets.map((c) => REGIONS[c]?.label ?? c).join(", ");
+    return { score: Math.min(VISA_CAP, raw), note: `Нужна рабочая виза: ${names} · ${english}`, international, visaMarkets, visaLimited };
+  }
+  const covered = i.countries.filter((c) => NAMED_FOREIGN.includes(c)).map((c) => REGIONS[c]?.label ?? c);
+  const where = [covered.length ? `есть право на работу (${covered.join(", ")})` : "", i.countries.includes("WORLD") ? "удалённые роли без привязки к стране" : ""].filter(Boolean).join(", ");
+  return { score: raw, note: `Виза не нужна: ${where} · ${english}`, international, visaMarkets, visaLimited };
+}
 
 const EN = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 } as Record<string, number>;
 
@@ -64,8 +100,8 @@ export function assessReadiness(input: ReadinessInput): Readiness {
   // Salary realism
   const range = marketRange(family, goal.seniority, goal.countries);
   const salScore = !goal.minSalary ? 80 : goal.minSalary <= range.mid ? 100 : goal.minSalary <= range.high ? 60 : 20;
-  push({ key: "salary", label: "Зарплатные ожидания", score: salScore, weight: 1, note: `Рынок ≈ $${Math.round(range.low / 1000)}k–$${Math.round(range.high / 1000)}k` });
-  if (salScore < 50) suggestions.push(`Ожидание $${Math.round(goal.minSalary / 1000)}k выше рынка для ${SENIORITY_LABEL[goal.seniority] ?? goal.seniority}. Снизь минимум до ~$${Math.round(range.mid / 1000)}k или подними уровень.`);
+  push({ key: "salary", label: "Зарплатные ожидания", score: salScore, weight: 1, note: `Рынок ≈ ${fmtMoneyRange(range.low, range.high)}` });
+  if (salScore < 50) suggestions.push(`Ожидание ${fmtMoney(goal.minSalary)} выше рынка для ${SENIORITY_LABEL[goal.seniority] ?? goal.seniority}. Снизь минимум до ~${fmtMoney(range.mid)} или подними уровень.`);
 
   // Geography & authorization
   const authCountries = new Set(profile.workAuth);
@@ -92,7 +128,8 @@ export function assessReadiness(input: ReadinessInput): Readiness {
   const probability = hardFail ? "very_low" : score >= 80 ? "high" : score >= 65 ? "medium" : "low";
   const suggestedRoles = suggestAdjacentRoles(family, profile.skills);
   if (goal.dreamCompanies.length && score < 70) suggestions.push("Для Target Mode по компаниям мечты сначала подними Readiness до 70+.");
-  return { score, verdict, probability, checks, suggestions, suggestedSeniority: gap > 0 ? actual : goal.seniority, suggestedRoles, interview };
+  const eligibility = internationalEligibility({ countries: goal.countries, workAuth: profile.workAuth, englishLevel: profile.englishLevel, geoScore, langScore });
+  return { score, verdict, probability, checks, suggestions, suggestedSeniority: gap > 0 ? actual : goal.seniority, suggestedRoles, interview, eligibility };
 }
 
 export function suggestAdjacentRoles(family: string, skills: string[]): string[] {

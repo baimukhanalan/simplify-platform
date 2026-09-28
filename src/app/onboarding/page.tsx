@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ONBOARDING_STEPS, LAST_STEP, STEP, completedSteps, resumeStep, buildChatTurns } from "@/lib/onboarding";
@@ -14,6 +15,7 @@ import { PLAN_COOKIE, cleanPlan, fitPlan } from "../_components/plan-pref";
 import { RememberPlan } from "../_components/remember-plan";
 import { INTENT_USED_COOKIE, intentFromParams, intentToGoal } from "../_components/campaign-intent";
 import { loadReadiness } from "../app/readiness/_components/data";
+import { byRecency } from "../_components/positions";
 import { StepRail } from "./_components/step-rail";
 import { IntentSync } from "./_components/intent-sync";
 import { StepSources } from "./_components/step-sources";
@@ -23,6 +25,8 @@ import { StepReadiness } from "./_components/step-readiness";
 import { StepPlan } from "./_components/step-plan";
 
 export const metadata: Metadata = { title: "Запуск кампании" };
+
+const KIND_ORDER = ["employment", "project", "education"];
 
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUser();
@@ -47,6 +51,11 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
   // Someone who already has a goal and comes from the first screen with new answers lands on the Goal step to confirm them.
   const explicit = Number.isInteger(raw) && raw >= 1 ? Math.min(raw, LAST_STEP) : null;
   const step = explicit ?? (intent && !goalEmpty ? STEP.goal : resumeStep(done, { hasCv: Boolean(profile?.cvText) }));
+  // A campaign is already running: onboarding is done. Profile steps go to the Profile, the goal to the Goal page
+  // (unless new first-screen answers wait to be confirmed there), readiness and plan to Today.
+  if (campaign && !(intent && step === STEP.goal)) {
+    redirect(!explicit ? "/app" : step === STEP.sources ? "/app/profile#cv" : step === STEP.chat ? "/app/profile" : step === STEP.goal ? "/app/goal" : "/app");
+  }
   const meta = ONBOARDING_STEPS[step - 1];
   const skills = j<string[]>(profile?.skills, []);
   const years = profile?.yearsExperience ?? 0;
@@ -62,7 +71,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     );
   } else if (step === STEP.chat) {
     const turns = buildChatTurns({ profile: profile ? { citizenship: profile.citizenship, englishLevel: profile.englishLevel } : null, goal: goal ? { countries: goal.countries } : null, facts, miniAnswers: answers });
-    const positions = facts.filter((f) => f.kind === "employment" || f.kind === "project" || f.kind === "education").map((f) => ({ id: f.id, kind: f.kind, title: f.title, org: f.org, startDate: f.startDate, endDate: f.endDate }));
+    const positions = facts.filter((f) => f.kind === "employment" || f.kind === "project" || f.kind === "education").sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || byRecency(a, b)).map((f) => ({ id: f.id, kind: f.kind, title: f.title, org: f.org, startDate: f.startDate, endDate: f.endDate }));
     body = <StepChat name={user.name.split(" ")[0] ?? user.name} years={years} skills={skills.slice(0, 12)} skillCount={skills.length} positions={positions} turns={turns} />;
   } else if (step === STEP.goal) {
     const override = intent && !goalEmpty ? intentToGoal(intent) : null;
@@ -75,6 +84,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
           primaryRole: role || (family !== "other" ? ROLE_FAMILIES[family].label : profile?.headline ?? ""),
           seniority: goal?.primaryRole ? goal.seniority : seniorityFromYears(years),
           minSalary: override ? override.minSalary : goal?.minSalary ?? 0,
+          currency: override ? override.currency : goal?.currency ?? "USD",
           countries: override?.countries ?? j<string[]>(goal?.countries, []),
           workModes: override?.workModes ?? j<string[]>(goal?.workModes, ["remote"]),
           relocation: override?.relocation ?? goal?.relocation ?? false,

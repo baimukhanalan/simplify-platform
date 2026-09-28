@@ -14,10 +14,25 @@ export type Need = { text: string; href?: string };
  * says so instead: «Здесь ничего не нужно · ждут тебя: оффер, 1 вопрос →». `skip` drops kinds this screen already covers.
  * `here` is optional work waiting on this very screen that the user may act on but doesn't have to (e.g. «3 вакансии
  * ждут твоего решения — ниже»): with it the line never claims «Здесь ничего не нужно» or "Nothing needed".
+ * `hereNeeds`: this screen itself asks for a decision (a job with Apply / Auto / Skip, consent switches). The line then
+ * never says «Здесь ничего не нужно»: only «Ждут тебя: 4 вопроса →» when something waits elsewhere; with nothing
+ * elsewhere and no `working` context it renders nothing — the screen's own controls speak for themselves.
  */
-export async function AgentStatus({ needs, working, idle = false, skip = [], here, className }: { needs: Need[]; working?: string; idle?: boolean; skip?: GlobalNeedKind[]; here?: string; className?: string }) {
+export async function AgentStatus({ needs, working, idle = false, skip = [], here, hereNeeds = false, className }: { needs: Need[]; working?: string; idle?: boolean; skip?: GlobalNeedKind[]; here?: string; hereNeeds?: boolean; className?: string }) {
   const userId = needs.length ? null : await currentUserId();
   const elsewhere = userId ? (await globalNeeds(userId)).filter((n) => !skip.includes(n.kind)) : [];
+  if (!needs.length && hereNeeds && !here && !elsewhere.length && !working) return null;
+  if (!needs.length && hereNeeds && !here && elsewhere.length) {
+    return (
+      <div role="status" className={cx("flex items-start gap-3 rounded-2xl border border-amber/20 bg-amber-soft/40 px-4 py-3 text-[14px] text-ink-2", className)}>
+        <span className="mt-1.5 size-2 shrink-0 rounded-full bg-amber" aria-hidden />
+        <p className="min-w-0">
+          <span className="text-ink-3">Ждут тебя: </span>
+          <ElsewhereLinks items={elsewhere} />
+        </p>
+      </div>
+    );
+  }
   if (!needs.length && here) {
     return (
       <div role="status" className={cx("flex items-start gap-3 rounded-2xl border border-green/15 bg-green-soft/50 px-4 py-3 text-[14px] text-ink-2", className)}>

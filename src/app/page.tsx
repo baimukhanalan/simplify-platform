@@ -6,7 +6,7 @@ import { j } from "@/lib/db";
 import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
 import { SiteHeader } from "./_components/site-header";
 import { IntentFlow } from "./_components/intent-flow";
-import { PLAN_ORDER, fitPlan } from "./_components/plan-pref";
+import { PLAN_COPY, PLAN_ORDER, fitPlan } from "./_components/plan-pref";
 import { count } from "./_components/ru";
 
 const HOW = [
@@ -14,11 +14,6 @@ const HOW = [
   { n: "02", title: "Simplify работает", text: "Каждый день находит вакансии, адаптирует CV и подаёт заявки за тебя." },
   { n: "03", title: "Ты приходишь на интервью", text: "Агент спрашивает тебя только там, где без тебя нельзя, и готовит к интервью." },
 ];
-
-const PLAN_COPY = {
-  local: { note: "Казахстан и СНГ", features: ["Поиск и заявки по Казахстану и СНГ", "CV под каждую вакансию", "Подготовка к интервью"] },
-  international: { note: "Европа, США, Великобритания, удалённо по миру", features: ["Всё из Local / CIS", "Международные рынки и визовые требования", "Помощь с оффером"] },
-} as const;
 
 export default async function Home({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const [user, sp] = await Promise.all([currentUser(), searchParams]);

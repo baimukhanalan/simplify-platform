@@ -13,7 +13,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/app" className="inline-flex min-h-10 items-center rounded focus-visible:outline-2 focus-visible:outline-green"><Logo /></Link>
           <Chip tone="dark" className="hidden sm:inline-flex">Operations</Chip>
           <span className="flex-1" />
-          <Link href="/app" className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] text-ink-2 hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-green">
+          <Link href="/app" className="flex h-10 items-center gap-1.5 rounded-full px-3 text-[13px] text-ink-2 hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-green">
             <ArrowLeft className="size-3.5" strokeWidth={1.7} /><span className="hidden sm:inline">В приложение</span><span className="sm:hidden">Назад</span>
           </Link>
           <span className="hidden text-[13px] text-ink-3 md:inline">{user.name}</span>

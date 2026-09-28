@@ -57,7 +57,7 @@ export function NegotiationTabs({ tabs, initial }: { tabs: StyleTab[]; initial: 
               )}
             >
               <span className="text-[12.5px] font-medium leading-tight sm:text-[13.5px]">{t.label}</span>
-              <span className={cx("font-mono text-[9.5px] uppercase tracking-[.06em] leading-tight", on ? "text-white/60" : "text-ink-4")}>{t.hint}</span>
+              <span className={cx("font-mono text-[11px] uppercase tracking-[.06em] leading-tight", on ? "text-white/60" : "text-ink-4")}>{t.hint}</span>
             </button>
           );
         })}

@@ -4,12 +4,12 @@ import { interviewReadiness } from "./interview-readiness";
 
 const EN: Record<string, number> = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 };
 
-export function careerScore(i: { role: string; skills: string[]; yearsExperience: number; englishLevel: string; workAuth: string[]; relocation: boolean; stories: number; mockScores?: number[]; /** @deprecated pass mockScores */ mockAvg?: number | null; currentSalary: number; demandJobs: number; regions: string[] }) {
+export function careerScore(i: { role: string; skills: string[]; yearsExperience: number; englishLevel: string; workAuth: string[]; relocation: boolean; stories: number; mockScores?: number[]; /** @deprecated pass mockScores */ mockAvg?: number | null; currentSalary: number; demandJobs: number; regions: string[]; /** The goal's level — the one market level everywhere; years only when there is no goal. */ seniority?: string }) {
   const family = classifyRole(i.role);
   const fam = ROLE_FAMILIES[family] ?? ROLE_FAMILIES.other;
   const have = new Set(i.skills.map((s) => s.toLowerCase()));
   const coverage = fam.skills.length ? fam.skills.filter((s) => have.has(s.toLowerCase())).length / Math.min(5, fam.skills.length) : 0.5;
-  const seniority = seniorityFromYears(i.yearsExperience);
+  const seniority = i.seniority || seniorityFromYears(i.yearsExperience);
   const range = marketRange(family, seniority, i.regions.length ? i.regions : ["WORLD"]);
   const marketValue = Math.round((range.mid * (0.9 + 0.2 * Math.min(1, coverage))) / 1000) * 1000;
   const components = {
@@ -25,7 +25,7 @@ export function careerScore(i: { role: string; skills: string[]; yearsExperience
   };
   const score = Math.round(Object.values(components).reduce((a, b) => a + b, 0) / 6);
   const gap = i.currentSalary ? marketValue - i.currentSalary : 0;
-  return { score, components, marketValue, range, gap, underpaid: i.currentSalary > 0 && gap / marketValue > 0.15 };
+  return { score, components, marketValue, range, gap, seniority, underpaid: i.currentSalary > 0 && gap / marketValue > 0.15 };
 }
 
 /**

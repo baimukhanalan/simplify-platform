@@ -121,7 +121,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
                     <div className="w-full max-w-5 rounded-t-md bg-teal/45" style={{ height: `${(m.count / maxBar) * 100}%`, minHeight: m.count ? 4 : 0 }} />
                     <div className="w-full max-w-5 rounded-t-md bg-green" style={{ height: `${(paySeries[i].count / maxBar) * 100}%`, minHeight: paySeries[i].count ? 4 : 0 }} />
                   </div>
-                  <span className="label !text-[9.5px]">{m.label}</span>
+                  <span className="label !text-[11px]">{m.label}</span>
                 </div>
               ))}
             </div>
@@ -131,9 +131,9 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
             <div className="mb-4 flex items-center gap-2"><ShieldCheck className="size-4 text-green" strokeWidth={1.7} /><Label>Результаты приведённых пользователей</Label></div>
             {stats.campaigns >= K_ANON ? (
               <dl className="grid grid-cols-3 gap-3">
-                <div><dt className="label !text-[10px]">Кампании</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.campaigns}</dd></div>
-                <div><dt className="label !text-[10px]">С интервью</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.withInterview}</dd><dd className="text-[12px] text-ink-3">{Math.round((stats.withInterview / stats.campaigns) * 100)}%</dd></div>
-                <div><dt className="label !text-[10px]">С оффером</dt><dd className="num mt-1 text-[28px] leading-none text-green">{stats.hired}</dd></div>
+                <div><dt className="label !text-[11px]">Кампании</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.campaigns}</dd></div>
+                <div><dt className="label !text-[11px]">С интервью</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.withInterview}</dd><dd className="text-[12px] text-ink-3">{Math.round((stats.withInterview / stats.campaigns) * 100)}%</dd></div>
+                <div><dt className="label !text-[11px]">С оффером</dt><dd className="num mt-1 text-[28px] leading-none text-green">{stats.hired}</dd></div>
               </dl>
             ) : (
               <p className="flex gap-2 text-[14px] text-ink-2">
@@ -158,7 +158,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
               <table className="w-full min-w-[720px] text-left text-[13.5px]">
                 <thead>
                   <tr className="border-b border-line">
-                    {["Партнёр", "Код", "Аудитория", "Регистрации", "Оплаты", "Выручка", "Выплата партнёру"].map((c) => <th key={c} scope="col" className="label px-5 py-2.5 !text-[10px] font-normal first:pl-6">{c}</th>)}
+                    {["Партнёр", "Код", "Аудитория", "Регистрации", "Оплаты", "Выручка", "Выплата партнёру"].map((c) => <th key={c} scope="col" className="label px-5 py-2.5 !text-[11px] font-normal first:pl-6">{c}</th>)}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">

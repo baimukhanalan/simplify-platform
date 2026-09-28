@@ -71,7 +71,7 @@ if (e2) { await other.action("ops.resolveApproval", [form({ id: e2.id, decision:
 // 5. Handoff: live (non-demo) vacancy
 const base = await db.opportunity.findFirst({ where: { campaignId: camp.id, status: "qualified" }, include: { job: true } });
 const { id: _i, opportunities: _o, ...jobData } = base.job;
-const live = await db.job.create({ data: { ...jobData, source: "remotive", externalId: "e2e-live-" + Date.now(), dedupeKey: "e2e-live-" + Date.now(), company: "LiveCo", url: "https://example.com/apply" } });
+const live = await db.job.create({ data: { ...jobData, source: "remotive", externalId: "e2e-live-" + Date.now(), dedupeKey: "e2e-live-" + Date.now(), company: "LiveCo", url: "https://jobs.lever.co/liveco/e2e-apply" } });
 const lopp = await db.opportunity.create({ data: { campaignId: camp.id, jobId: live.id, match: 90, eligibility: "eligible", status: "qualified", pInterview: 0.2, priority: 0.2, segment: base.segment } });
 r = await c.action("opportunities.decideOpportunity", [{}, form({ id: lopp.id, decision: "apply" })], { page: "/app/opportunities" });
 console.log("  apply on live vacancy ->", JSON.stringify(r.result));
@@ -81,7 +81,7 @@ let ho = await db.approval.findFirst({ where: { opportunityId: lopp.id, kind: "h
 if (!ho) { await c.action("opportunities.decideOpportunity", [{}, form({ id: lopp.id, decision: "apply" })], { page: "/app/opportunities" }); ho = await db.approval.findFirst({ where: { opportunityId: lopp.id, kind: "handoff", status: "pending" } }); }
 check(!!ho, "J4.handoff.created", "live vacancy creates a handoff item", (await byId(lopp.id)).status);
 pg = await c.get("/app/approvals");
-check(pg.status === 200 && pg.text.includes("LiveCo") && pg.text.includes("https://example.com/apply"), "J4.handoff.render", "handoff card renders with the official form link");
+check(pg.status === 200 && pg.text.includes("LiveCo") && pg.text.includes("https://jobs.lever.co/liveco/e2e-apply"), "J4.handoff.render", "handoff card renders with the official form link (a real host: demo *.example / example.com links are never rendered — round 6)");
 if (ho) {
   r = await resolve(ho.id, "approve");
   check((await db.approval.findUnique({ where: { id: ho.id } })).status === "pending", "J4.handoff.noresolve", "resolveApproval refuses handoff items");

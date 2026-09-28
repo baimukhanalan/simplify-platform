@@ -45,7 +45,7 @@ export function PasteEmail({ sample }: { sample: { company: string; title: strin
     <div className="flex flex-col gap-4">
       {sample && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="label mr-1 !text-[9.5px]">Пример для {sample.company}:</span>
+          <span className="label mr-1 !text-[11px]">Пример для {sample.company}:</span>
           {examples(sample.company, sample.title).map((e) => (
             <button key={e.key} type="button" onClick={() => fill(e)} className="inline-flex min-h-10 items-center rounded-full border border-line bg-white/70 px-3.5 text-[12.5px] text-head transition-colors hover:border-green hover:text-green focus-visible:outline-2 focus-visible:outline-green">
               {e.label}
@@ -82,7 +82,7 @@ export function PasteEmail({ sample }: { sample: { company: string; title: strin
         {r && meta && (
           <div className="flex animate-rise flex-col gap-3 rounded-2xl border border-stroke bg-white/75 p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="label !text-[9.5px]">Результат</span>
+              <span className="label !text-[11px]">Результат</span>
               <Chip tone={meta.tone} dot>{meta.label}</Chip>
               <span className="num text-[13px] text-ink-2">уверенность {Math.round(r.confidence * 100)}%</span>
             </div>
