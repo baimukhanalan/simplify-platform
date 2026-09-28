@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
 import { db, j, s, noNul } from "../db";
 import { parseCV } from "../engine/profile";
+import { count } from "../ru";
 import { marketRange } from "../engine/market";
 import { REGIONS, SENIORITY, classifyRole, extractSkills, seniorityFromYears } from "../engine/taxonomy";
 import { buildCareerCheck, chatTurnsFor, intlAuthRegions, markStepDone, readinessForUser, LAST_STEP, STEP } from "../onboarding";
@@ -12,7 +13,7 @@ import { cleanIntent, intentToGoal } from "../../app/_components/campaign-intent
 
 export type FormState = { error?: string; ok?: boolean; message?: string; fields?: Record<string, string> } | undefined;
 
-const str = (form: FormData, key: string, max = 500) => String(form.get(key) ?? "").trim().slice(0, max);
+const str = (form: FormData, key: string, max = 500) => noNul(String(form.get(key) ?? "")).trim().slice(0, max);
 const list = (form: FormData, key: string, max = 20) =>
   Array.from(new Set(form.getAll(key).flatMap((v) => String(v).split(",")).map((v) => v.trim()).filter(Boolean))).slice(0, max);
 const intOf = (v: string) => {
@@ -54,7 +55,7 @@ export async function saveSources(_: FormState, form: FormData): Promise<FormSta
   const cvText = noNul(String(form.get("cvText") ?? "")).slice(0, 30000);
   const cvFileName = str(form, "cvFileName", 200);
   const links = { linkedin: str(form, "linkedin", 200), github: str(form, "github", 200), portfolio: str(form, "portfolio", 200) };
-  const certificates = String(form.get("certificates") ?? "").split(/\r?\n/).map((l) => l.replace(/^[-•*·]\s*/, "").trim().slice(0, 200)).filter((l) => l.length >= 2).slice(0, 15);
+  const certificates = noNul(String(form.get("certificates") ?? "")).split(/\r?\n/).map((l) => l.replace(/^[-•*·]\s*/, "").trim().slice(0, 200)).filter((l) => l.length >= 2).slice(0, 15);
   const noCv = form.get("noCv") === "1";
   const prev = user.profile;
   const fields: Record<string, string> = {};
@@ -115,7 +116,7 @@ export async function saveSources(_: FormState, form: FormData): Promise<FormSta
     if (add.length) await db.fact.createMany({ data: add.map((title) => ({ userId: user.id, kind: "certification", title, source: "user", verified: true })) });
   }
   await db.event.create({
-    data: { userId: user.id, type: fresh ? "cv_parsed" : "profile_sources", message: fresh ? `CV разобран: ${factCount} позиций, ${skillCount} навыков` : "Ссылки профиля обновлены", data: s({ facts: factCount, skills: skillCount }) },
+    data: { userId: user.id, type: fresh ? "cv_parsed" : "profile_sources", message: fresh ? `CV разобран: ${count(factCount, ["запись", "записи", "записей"])} опыта, ${count(skillCount, ["навык", "навыка", "навыков"])}` : "Ссылки профиля обновлены", data: s({ facts: factCount, skills: skillCount }) },
   });
   await markStepDone(user.id, STEP.sources);
   revalidatePath("/onboarding");
@@ -275,7 +276,7 @@ export async function applyAdjustment(form: FormData) {
     const modes = Array.from(new Set([...j<string[]>(g.workModes, []), "remote"]));
     await db.goal.update({ where: { userId: user.id }, data: { workModes: s(modes) } });
   } else if (kind === "role") {
-    const role = String(form.get("role") ?? "").trim().slice(0, 100);
+    const role = noNul(String(form.get("role") ?? "")).trim().slice(0, 100);
     const extra = j<string[]>(g.extraRoles, []);
     if (role && !extra.includes(role) && role !== g.primaryRole) await db.goal.update({ where: { userId: user.id }, data: { extraRoles: s([...extra, role].slice(0, 6)) } });
   }

@@ -14,8 +14,8 @@ const { SignJWT } = await import(require.resolve("jose"));
 const { encodeReply } = require("next/dist/compiled/react-server-dom-webpack/client.node.js");
 export const BASE = (process.env.BASE ?? "http://localhost:3300").replace(/\/$/, "");
 export const ENV_TEXT = fs.readFileSync(APP + ".env", "utf8");
-/** notFound() under a loading.tsx boundary streams with HTTP 200: treat the fallback marker as a 404 too. */
-export const isNotFound = (r) => r.status === 404 || /NEXT_HTTP_ERROR_FALLBACK;404/.test(r.text ?? "");
+/** notFound() must answer with a real HTTP 404 (the /app loading.tsx that streamed it as 200 was removed). */
+export const isNotFound = (r) => r.status === 404;
 
 const manifest = JSON.parse(fs.readFileSync(APP + ".next/server/server-reference-manifest.json", "utf8")).node;
 export const ACTIONS = {};

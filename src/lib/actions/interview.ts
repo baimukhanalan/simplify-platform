@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
-import { db, j, s } from "../db";
+import { db, j, s, noNul } from "../db";
 import { aiJSON, aiText } from "../ai";
 import { buildPack } from "../engine/interview-ai";
 import { createInterview, loadCandidate, logEvent } from "../engine/agent";
@@ -90,7 +90,7 @@ export async function saveMockSession(p: MockPayload): Promise<{ ok: boolean; id
   const user = await requireUser();
   const iv = await db.interview.findFirst({ where: { id: String(p.interviewId), userId: user.id }, select: { id: true, opportunityId: true } });
   if (!iv || !PERSONA_KEYS.includes(p.persona) || !Array.isArray(p.transcript)) return { ok: false };
-  const transcript = p.transcript.slice(0, 40).map((t) => ({ role: t.role === "interviewer" ? "interviewer" : "candidate", text: String(t.text ?? "").slice(0, 4000) }));
+  const transcript = p.transcript.slice(0, 40).map((t) => ({ role: t.role === "interviewer" ? "interviewer" : "candidate", text: noNul(String(t.text ?? "")).slice(0, 4000) }));
   const feedback = s(p.feedback ?? {});
   if (feedback.length > 60000) return { ok: false };
   const m = await db.mockSession.create({ data: { interviewId: iv.id, persona: p.persona, transcript: s(transcript), feedback } });
@@ -129,10 +129,10 @@ export type DebriefState = { error?: string; ok?: boolean } | undefined;
 export async function saveDebrief(_: DebriefState, form: FormData): Promise<DebriefState> {
   const user = await requireUser();
   const iv = await ownInterview(user.id, String(form.get("id")));
-  const transcript = String(form.get("transcript") ?? "").replace(/\s+/g, " ").trim().slice(0, 6000);
+  const transcript = noNul(String(form.get("transcript") ?? "")).replace(/\s+/g, " ").trim().slice(0, 6000);
   const outcome = (["done", "passed", "failed"] as const).find((o) => o === form.get("outcome"));
-  if (transcript.split(" ").length < 8) return { error: "Расскажите чуть подробнее — хотя бы 2–3 предложения: какие были вопросы и что было сложно." };
-  if (!outcome) return { error: "Выберите статус раунда." };
+  if (transcript.split(" ").length < 8) return { error: "Расскажи чуть подробнее — хотя бы 2–3 предложения: какие были вопросы и что было сложно." };
+  if (!outcome) return { error: "Выбери статус раунда." };
   const rl = await rateLimitUser("debrief", user.id, 10, HOUR, { eventTypes: ["debrief"] });
   if (!rl.ok) return { error: retryText(rl.retryAfter) };
   const job = iv.opportunity.job;
@@ -169,9 +169,9 @@ export async function saveDebrief(_: DebriefState, form: FormData): Promise<Debr
       ? "Раунд не пройден. Вопросы сохранены — агент учтёт их в следующих Interview Room и скорректирует сегменты."
       : outcome === "passed"
         ? next
-          ? `Следующий раунд — ${ROUND_LABEL[next]}. Создайте Interview Room и пройдите Mock Interview.`
-          : "Final пройден — ожидайте оффер. Offer Desk уже готов: benchmark и Negotiation Assistant."
-        : `Отправьте thank-you письмо сегодня.${answerBy ? ` Если ответа не будет до ${new Date(answerBy).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" })}, отправьте вежливый follow-up.` : " Если ответа нет 5 рабочих дней — вежливый follow-up."}`;
+          ? `Следующий раунд — ${ROUND_LABEL[next]}. Создай Interview Room и пройди Mock Interview.`
+          : "Final пройден — жди оффер. Offer Desk уже готов: benchmark и Negotiation Assistant."
+        : `Отправь thank-you письмо сегодня.${answerBy ? ` Если ответа не будет до ${new Date(answerBy).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" })}, отправь вежливый follow-up.` : " Если ответа нет 5 рабочих дней — вежливый follow-up."}`;
 
   const debrief: Debrief = {
     questions,

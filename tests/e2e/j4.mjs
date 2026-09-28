@@ -48,6 +48,12 @@ if (withProposal) {
 } else console.log("  (no approval with a proposed answer in this run)");
 
 // 4. Reject -> vacancy skipped + other approvals on it rejected
+// Standing answers (approve/edit above) now close every identical pending question, so the queue can be empty here.
+// Seed non-standing questions (unknown_question) on two untouched roles so reject / blank-edit / foreign checks still run.
+if (!(await db.approval.count({ where: { userId: c.user.id, status: "pending", kind: { not: "handoff" } } }))) {
+  const spare = await db.opportunity.findMany({ where: { campaignId: camp.id, status: "qualified", decision: "" }, take: 2 });
+  for (const [i, o] of spare.entries()) await db.approval.create({ data: { userId: c.user.id, opportunityId: o.id, kind: "unknown_question", question: `E2E custom question ${i}`, proposed: "" } });
+}
 const rej = await db.approval.findFirst({ where: { userId: c.user.id, status: "pending", kind: { not: "handoff" } }, include: { opportunity: true } });
 r = await resolve(rej.id, "reject");
 const ro = await byId(rej.opportunityId);

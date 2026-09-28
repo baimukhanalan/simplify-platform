@@ -24,7 +24,7 @@ function geoKey(o: OppLite) {
   return j<string[]>(o.job.countries, [])[0] ?? "—";
 }
 function geoLabel(k: string) {
-  if (k === "remote") return "Remote";
+  if (k === "remote") return "Удалённо";
   const region = Object.entries(REGIONS).find(([key, r]) => key !== "WORLD" && r.countries.includes(k));
   return region ? `${k} · ${region[1].label}` : k;
 }
@@ -45,7 +45,7 @@ export default async function InsightsPage() {
     return (
       <>
         <PageHeader eyebrow="Feedback Loop" title="Стратегия" />
-        <Empty title="Нет данных для обучения" sub="Feedback Loop учится на реальных исходах заявок. Запустите кампанию — выводы появятся после первых ~20 отправленных заявок." action={<ButtonLink href="/app/campaign">Start your campaign</ButtonLink>} />
+        <Empty title="Нет данных для обучения" sub="Feedback Loop учится на реальных исходах заявок. Запусти кампанию — выводы появятся после первых ~20 отправленных заявок." action={<ButtonLink href="/app/campaign">Start your campaign</ButtonLink>} />
       </>
     );
   }

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { aiJSON } from "../ai";
 import { ROLE_FAMILIES, extractSkills } from "./taxonomy";
+import { yearsForEmployer } from "../ops";
 
 export type FactLite = { id: string; kind: string; title: string; org: string; startDate: string; endDate: string; details: string; metrics: string; tech: string[]; verified: boolean };
 export type ProfileLite = {
@@ -49,7 +50,7 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
   const edu = facts.filter((f) => f.kind === "education");
   const certs = facts.filter((f) => f.kind === "certification");
 
-  const yrs = p.yearsExperience >= 1 ? `${p.yearsExperience % 1 === 0 ? p.yearsExperience : p.yearsExperience.toFixed(1)} years` : "hands-on project";
+  const yrs = yearsForEmployer(p.yearsExperience) ?? "hands-on project"; // "3+ years", never "3.4 years"
   const topMetric = work.concat(projects).find((f) => f.metrics)?.metrics;
   const topClause = topMetric ? achievementClause(topMetric) : null;
   const recent = topMetric ? (topClause ? ` Recently ${topClause}.` : ` Recent result: ${lcFirstWord(tidyAchievement(topMetric))}.`) : "";
@@ -263,7 +264,7 @@ export function screeningAnswers(p: ProfileLite, facts: FactLite[], job: JobLite
   out.push({ q: "What are your salary expectations?", a: p.salaryExpectation ? `$${Math.round(p.salaryExpectation / 1000)}k–$${Math.round((p.salaryExpectation * 1.15) / 1000)}k base, open to discussing the full package` : "Open to a market-rate offer; happy to discuss the full package", category: "rule", status: "filled", kind: "salary" });
   if (job.remote !== "remote") out.push({ q: "Are you willing to relocate?", a: p.relocation ? "Yes" : "No", category: "rule", status: "filled" });
   out.push({ q: "When can you start / what is your notice period?", a: p.noticePeriod || "2 weeks", category: "rule", status: "filled" });
-  out.push({ q: `Why do you want to work at ${job.company}?`, a: `The ${job.title} role maps directly onto my verified experience (${p.skills.slice(0, 3).join(", ")}), and ${job.company}'s ${job.industry || "product"} focus is where I want to grow.`, category: "auto", status: "filled" });
+  out.push({ q: `Why do you want to work at ${job.company}?`, a: `The ${job.title} role maps directly onto my experience (${p.skills.slice(0, 3).join(", ")}), and ${job.company}'s ${job.industry || "product"} focus is where I want to grow.`, category: "auto", status: "filled" });
   // Sensitive / legal — never answered by the agent alone.
   out.push({ q: "Voluntary self-identification (gender, veteran status, disability)", a: "", category: "approval", status: "pending", kind: "sensitive" });
   if (/\b(US|CA|GB)\b/.test(jobCountries.join(" "))) out.push({ q: "Do you consent to a background check if you receive an offer?", a: "", category: "approval", status: "pending", kind: "legal" });
@@ -290,7 +291,7 @@ export async function buildPackage(p: ProfileLite, facts: FactLite[], job: JobLi
   const { data, by } = await aiJSON({
     schema: PackageSchema,
     system: "Create a tailored application package: a plain-text CV variant (same sections as the draft), a 3-5 sentence professional summary, a cover letter under 220 words, skills reordered by relevance (subset of the candidate's skills only), and up to 3 project titles to feature. Reposition the profile toward the job's language.",
-    prompt: `JOB: ${job.title} at ${job.company}\n${job.description.slice(0, 6000)}\n\nVERIFIED PROFILE:\n${JSON.stringify({ ...p, facts }, null, 1).slice(0, 20000)}\n\nDRAFT CV:\n${base.cvText}`,
+    prompt: `JOB: ${job.title} at ${job.company}\n${job.description.slice(0, 6000)}\n\nCANDIDATE PROFILE:\n${JSON.stringify({ ...p, facts }, null, 1).slice(0, 20000)}\n\nDRAFT CV:\n${base.cvText}`,
     fallback: () => ({ summary: base.summary, cvText: base.cvText, coverLetter: base.coverLetter, skillsOrder: base.skillsOrder, projects: base.projects }),
   });
   const skillsOrder = data.skillsOrder.filter((s) => p.skills.some((k) => k.toLowerCase() === s.toLowerCase()));

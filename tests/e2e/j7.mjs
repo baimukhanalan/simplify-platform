@@ -66,8 +66,11 @@ const lastTick = async (userId) => (await db.event.findFirst({ where: { userId, 
   const autoRole = await db.opportunity.findFirst({ where: { campaignId: camp.id, status: "qualified" }, orderBy: { match: "desc" } });
   await c.action("opportunities.decideOpportunity", [{}, form({ id: autoRole.id, decision: "auto" })], { page: "/app/opportunities" });
   // answer anything the role would ask (sponsorship etc.) so only the Submit switch decides
-  // (prepareOpportunity is a preview now and routes no questions — a cycle prepares the Auto role for real)
+  // (prepareOpportunity is a preview now and routes no questions — a cycle prepares the Auto role for real;
+  //  the payment tick already spent today's budget, so start a new day first or the role stays "qualified")
+  await newDay(camp.id);
   await run(c);
+  check((await db.opportunity.findUnique({ where: { id: autoRole.id } })).status !== "qualified", "J7.submit.off.prepared", "Auto role is prepared by the next cycle", autoRole.status);
   for (const ap of await db.approval.findMany({ where: { opportunityId: autoRole.id, status: "pending" } })) await c.action("ops.resolveApproval", [form({ id: ap.id, decision: "edit", answer: "Yes" })], { page: "/app/approvals" });
   await newDay(camp.id);
   const before = await db.opportunity.count({ where: { campaignId: camp.id, status: "submitted" } });
@@ -208,10 +211,14 @@ const lastTick = async (userId) => (await db.event.findFirst({ where: { userId, 
   await c.action("campaign.setCampaignStatus", [form({ status: "active" })], { page: "/app/agent" });
   check((await db.campaign.findUnique({ where: { id: camp.id } })).status === "active", "J7.resume", "resume persists");
   await c.action("campaign.updateCampaignSettings", [form({ dailyLimit: "99", autoSubmit: "on" })], { page: "/app/agent" });
-  check((await db.campaign.findUnique({ where: { id: camp.id } })).dailyLimit === 25, "J7.limit.clamp", "daily limit clamped to 25");
-  await c.action("campaign.updateCampaignSettings", [form({ dailyLimit: "abc" })], { page: "/app/agent" });
+  // The ceiling is the plan's daily limit (PLANS[plan].dailyLimit: local 6, international 10), not a global 25.
+  const planMax = { local: 6, international: 10 }[camp.plan];
+  check((await db.campaign.findUnique({ where: { id: camp.id } })).dailyLimit === planMax, "J7.limit.clamp", `daily limit clamped to the ${camp.plan} plan maximum (${planMax})`, (await db.campaign.findUnique({ where: { id: camp.id } })).dailyLimit);
+  await c.action("campaign.updateCampaignSettings", [form({ dailyLimit: "3", autoSubmit: "on" })], { page: "/app/agent" });
+  check((await db.campaign.findUnique({ where: { id: camp.id } })).dailyLimit === 3, "J7.limit.set", "daily limit below the plan max is saved", (await db.campaign.findUnique({ where: { id: camp.id } })).dailyLimit);
+  await c.action("campaign.updateCampaignSettings", [form({ dailyLimit: "abc", autoSubmit: "on" })], { page: "/app/agent" });
   const cm = await db.campaign.findUnique({ where: { id: camp.id } });
-  check(cm.dailyLimit === 25, "J7.limit.nan", "non-numeric limit keeps previous", cm.dailyLimit);
+  check(cm.dailyLimit === 3, "J7.limit.nan", "non-numeric limit keeps previous", cm.dailyLimit);
   // Run now on the same day right after activation: does it do anything?
   await run(c);
   console.log("  same-day Run now tick:", await lastTick(c.user.id));

@@ -1,4 +1,5 @@
-// Demo-only tools (simulated employer replies, manual agent runs) are available to the public demo
+// Demo-only tools (simulated employer replies; the manual "run agent now" button is only shown there too,
+// though the action itself stays available to every user, rate-limited) are available to the public demo
 // account, to staff, and to everyone when SIMPLIFY_DEMO_TOOLS=1 (local development by default).
 export const DEMO_EMAILS = new Set(["demo@simplify.kz"]);
 

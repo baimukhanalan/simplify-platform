@@ -3,7 +3,8 @@ import { Chip, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { setOpportunityStatus } from "@/lib/actions/ops";
 import { PIPELINE } from "@/lib/engine/taxonomy";
-import { ELIGIBILITY, LANE, statusLabel, statusTone } from "@/lib/ops";
+import { ELIGIBILITY, LANE, statusTone } from "@/lib/ops";
+import { statusRu } from "../../../_components/ru";
 
 export function EligibilityChip({ value }: { value: string }) {
   const m = ELIGIBILITY[value] ?? ELIGIBILITY.eligible;
@@ -17,7 +18,7 @@ export function LaneChip({ value }: { value: string }) {
 }
 
 export function StatusChip({ value }: { value: string }) {
-  return <Chip tone={statusTone(value)}>{statusLabel(value)}</Chip>;
+  return <Chip tone={statusTone(value)}>{statusRu(value)}</Chip>;
 }
 
 /** "SQL ✓ Python ✓ US authorization ✕" — top reasons, misses first-class so gaps are not hidden. */
@@ -79,7 +80,7 @@ export function StatusMover({ id, current, label = "Переместить", ari
                   aria-current={p.key === current ? "true" : undefined}
                   className="inline-flex min-h-10 items-center rounded-full border border-line px-3 text-[12.5px] text-ink-2 transition-colors hover:border-green hover:bg-green-soft hover:text-green focus-visible:outline-2 focus-visible:outline-green disabled:border-transparent disabled:bg-cta disabled:text-white"
                 >
-                  {p.label}
+                  {statusRu(p.key)}
                 </button>
               ))}
             </div>

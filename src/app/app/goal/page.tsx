@@ -6,16 +6,14 @@ import { ButtonLink, Chip, PageHeader, Script } from "@/components/ui";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
 import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
+import { CAMPAIGN_MODE_RU, WORK_MODE_RU, regionRu } from "../../_components/ru";
 import { goalTitle } from "../readiness/_components/model";
 import { Facts } from "../profile/_components/editable";
 import { GoalForm, type GoalValues } from "./_components/goal-form";
 
 export const metadata: Metadata = { title: "Моя цель" };
 
-const REGION_LABEL: Record<string, string> = { EU: "Europe", US: "US", UK: "UK", CA: "Canada", WORLD: "Remote worldwide", KZ: "Kazakhstan", CIS: "СНГ", MENA: "MENA" };
-const MODE_LABEL: Record<string, string> = { remote: "Remote", hybrid: "Hybrid", onsite: "Onsite" };
 const SIZE_LABEL: Record<string, string> = { any: "Любой", startup: "Стартап", scaleup: "Scale-up", corporate: "Корпорация" };
-const CAMPAIGN_MODE: Record<string, string> = { autonomous: "Autonomous", target: "Target Mode", mass: "Mass hiring" };
 
 function money(n: number, cur: string) {
   if (!n) return "";
@@ -67,7 +65,7 @@ export default async function GoalPage({ searchParams }: { searchParams: Promise
     );
   }
 
-  const regions = initial.countries.map((c) => REGION_LABEL[c] ?? c).join(", ");
+  const regions = [...new Set(initial.countries.map(regionRu))].join(", ");
   const needs: Need[] = campaign ? [] : [{ text: "Запусти кампанию — и агент начнёт искать под эту цель", href: "/onboarding?step=5" }];
 
   return (
@@ -94,14 +92,14 @@ export default async function GoalPage({ searchParams }: { searchParams: Promise
       <AgentStatus needs={needs} idle={campaign?.status === "paused"} working={campaign?.status === "paused" ? "Кампания на паузе — цель сохранена и ждёт." : "Агент ищет вакансии под эту цель каждый день."} className="mb-5 animate-rise [animation-delay:60ms]" />
 
       <section aria-labelledby="prefs-h" className="glass p-5 animate-rise [animation-delay:100ms] sm:p-7">
-        <h2 id="prefs-h" className="h-serif mb-5 text-[clamp(21px,2.2vw,26px)]">Preferences</h2>
+        <h2 id="prefs-h" className="h-serif mb-5 text-[clamp(21px,2.2vw,26px)]">Предпочтения</h2>
         <Facts cols={3} rows={[
-          ["Salary", money(initial.minSalary, initial.currency) || "Не важно"],
-          ["Location", regions],
-          ["Format", initial.workModes.map((m) => MODE_LABEL[m] ?? m).join(", ")],
-          ["Industries", initial.industries.join(", ") || "Любые"],
-          ["Company size", SIZE_LABEL[initial.companySize] ?? initial.companySize],
-          ["Relocation", initial.relocation ? "Готов(а) к переезду" : "Без переезда"],
+          ["Зарплата", money(initial.minSalary, initial.currency) || "Не важно"],
+          ["Регионы", regions || "—"],
+          ["Формат", initial.workModes.map((m) => WORK_MODE_RU[m] ?? m).join(", ")],
+          ["Индустрии", initial.industries.join(", ") || "Любые"],
+          ["Размер компании", SIZE_LABEL[initial.companySize] ?? initial.companySize],
+          ["Переезд", initial.relocation ? "Переезд возможен" : "Без переезда"],
         ]} />
         {(initial.dreamCompanies.length > 0 || initial.blockedCompanies.length > 0) && (
           <div className="mt-6 grid gap-4 border-t border-line pt-5 sm:grid-cols-2">
@@ -109,7 +107,7 @@ export default async function GoalPage({ searchParams }: { searchParams: Promise
             {initial.blockedCompanies.length > 0 && <MiniList label="Не подавать в" items={initial.blockedCompanies} />}
           </div>
         )}
-        <p className="mt-6 border-t border-line pt-4 text-[12.5px] text-ink-3">Режим кампании: {CAMPAIGN_MODE[initial.mode] ?? initial.mode}</p>
+        <p className="mt-6 border-t border-line pt-4 text-[12.5px] text-ink-3">Режим кампании: {CAMPAIGN_MODE_RU[initial.mode] ?? initial.mode}</p>
       </section>
     </>
   );

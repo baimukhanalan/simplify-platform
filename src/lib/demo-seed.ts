@@ -2,8 +2,73 @@
 import { db, s } from "./db";
 import { hashPassword } from "./auth-hash";
 import { parseCVHeuristic } from "./engine/profile";
-import { runTick, simulateResponses, createInterview, logEvent, notify } from "./engine/agent";
+import { runTick, simulateResponses, createInterview, ingestEmail, logEvent, notify, NOTIFY_TITLE, SENSITIVE_DECLINE } from "./engine/agent";
+import { patchPackageAnswer } from "./engine/approvals";
+import { renormalizeDemoJobs } from "./engine/ingest";
 import { PLANS } from "./engine/taxonomy";
+import { loadCareer } from "./career";
+import { assessReadinessFor } from "./payments/readiness-snapshot";
+import { startOfToday } from "./time";
+
+const HOUR = 3600000;
+const DAY = 24 * HOUR;
+
+function rng(seed: number) {
+  let x = seed;
+  return () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648);
+}
+
+/**
+ * The engine stamps everything with the real clock. The seed replays 9 campaign days, so after each step every row that
+ * step wrote (since `mark`) is moved to the simulated moment `at`, keeping the rows' order and spacing. Dates that
+ * point forward from their row (an interview scheduled "in 3 days") move by the same amount.
+ */
+async function shiftSince(userId: string, campaignId: string, mark: Date, at: number) {
+  const delta = at - mark.getTime();
+  if (Math.abs(delta) < 1000) return;
+  const mv = (d: Date) => new Date(d.getTime() + delta);
+  const since = { gte: mark };
+  const opps = await db.opportunity.findMany({ where: { campaignId, OR: [{ createdAt: since }, { updatedAt: since }, { submittedAt: since }] }, select: { id: true, createdAt: true, updatedAt: true, submittedAt: true } });
+  for (const o of opps) {
+    await db.opportunity.update({ where: { id: o.id }, data: {
+      ...(o.createdAt >= mark ? { createdAt: mv(o.createdAt) } : {}),
+      updatedAt: o.updatedAt >= mark ? mv(o.updatedAt) : o.updatedAt,
+      ...(o.submittedAt && o.submittedAt >= mark ? { submittedAt: mv(o.submittedAt) } : {}),
+    } });
+  }
+  for (const r of await db.applicationPackage.findMany({ where: { opportunity: { campaignId }, createdAt: since }, select: { id: true, createdAt: true } })) await db.applicationPackage.update({ where: { id: r.id }, data: { createdAt: mv(r.createdAt) } });
+  for (const r of await db.event.findMany({ where: { userId, createdAt: since }, select: { id: true, createdAt: true } })) await db.event.update({ where: { id: r.id }, data: { createdAt: mv(r.createdAt) } });
+  for (const r of await db.approval.findMany({ where: { userId, OR: [{ createdAt: since }, { resolvedAt: since }] }, select: { id: true, createdAt: true, resolvedAt: true } })) {
+    await db.approval.update({ where: { id: r.id }, data: { ...(r.createdAt >= mark ? { createdAt: mv(r.createdAt) } : {}), ...(r.resolvedAt && r.resolvedAt >= mark ? { resolvedAt: mv(r.resolvedAt) } : {}) } });
+  }
+  for (const r of await db.approval.findMany({ where: { userId, status: { not: "pending" }, resolvedAt: null }, select: { id: true } })) await db.approval.update({ where: { id: r.id }, data: { resolvedAt: new Date(at) } });
+  for (const r of await db.inboxMessage.findMany({ where: { userId, receivedAt: since }, select: { id: true, receivedAt: true } })) await db.inboxMessage.update({ where: { id: r.id }, data: { receivedAt: mv(r.receivedAt) } });
+  for (const r of await db.interview.findMany({ where: { userId, createdAt: since }, select: { id: true, createdAt: true, scheduledAt: true } })) {
+    await db.interview.update({ where: { id: r.id }, data: { createdAt: mv(r.createdAt), ...(r.scheduledAt ? { scheduledAt: mv(r.scheduledAt) } : {}) } });
+  }
+  for (const r of await db.notification.findMany({ where: { userId, createdAt: since }, select: { id: true, createdAt: true } })) await db.notification.update({ where: { id: r.id }, data: { createdAt: mv(r.createdAt) } });
+  for (const r of await db.offer.findMany({ where: { userId, createdAt: since }, select: { id: true, createdAt: true } })) await db.offer.update({ where: { id: r.id }, data: { createdAt: mv(r.createdAt) } });
+  const c = await db.campaign.findUnique({ where: { id: campaignId }, select: { lastRunAt: true } });
+  if (c?.lastRunAt && c.lastRunAt >= mark) await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: mv(c.lastRunAt) } });
+}
+
+/** Rows whose owner no longer exists (left behind by manual DB edits): they break /admin and the demo counts. */
+async function removeOrphans() {
+  const users = (await db.user.findMany({ select: { id: true } })).map((u) => u.id);
+  const notUser = { userId: { notIn: users } };
+  const orphanInterviews = (await db.interview.findMany({ where: notUser, select: { id: true } })).map((x) => x.id);
+  if (orphanInterviews.length) await db.mockSession.deleteMany({ where: { interviewId: { in: orphanInterviews } } });
+  const byUser = [db.notification, db.careerSnapshot, db.offer, db.interview, db.inboxMessage, db.approval, db.event, db.story, db.miniInterviewAnswer, db.fact, db.goal, db.profile] as const;
+  let n = 0;
+  for (const m of byUser) n += (await (m as unknown as { deleteMany: (a: object) => Promise<{ count: number }> }).deleteMany({ where: notUser })).count;
+  // Payments keep their row when a user deletes the account (userId → null): only rows pointing at a missing user, and the
+  // seed's own earlier demo payments, go.
+  n += (await db.payment.deleteMany({ where: { OR: [{ AND: [{ userId: { not: null } }, notUser] }, { userId: null, externalId: { startsWith: "KSP-DEMO-" } }] } })).count;
+  n += (await db.campaign.deleteMany({ where: notUser })).count;
+  const campaigns = (await db.campaign.findMany({ select: { id: true } })).map((c) => c.id);
+  n += (await db.opportunity.deleteMany({ where: { campaignId: { notIn: campaigns } } })).count;
+  if (n) log(`Removed ${n} orphan rows`);
+}
 
 const CV = `Aruzhan Sadykova
 Data Analyst
@@ -40,6 +105,8 @@ const log = (...a: unknown[]) => { if (process.env.SEED_VERBOSE !== "0") console
 export async function seedDemo(opts: { staff: boolean; staffPassword?: string } = { staff: true }) {
   log("Resetting demo data…");
   await db.user.deleteMany({ where: { email: { in: opts.staff ? ["demo@simplify.kz", "admin@simplify.kz", "partner@amaskills.kz"] : ["demo@simplify.kz"] } } });
+  await removeOrphans();
+  log(`Demo jobs re-normalized: ${await renormalizeDemoJobs()}`);
 
   const pw = await hashPassword("simplify2026");
   const staffPw = await hashPassword(opts.staffPassword ?? "simplify2026");
@@ -83,43 +150,99 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
   }
   await db.miniInterviewAnswer.create({ data: { userId: user.id, question: "Сколько человек было в команде в «Data Analyst»?", answer: "6 человек: 3 аналитика, 2 продакта, дизайнер." } });
 
-  const now = Date.now();
+  // ——— The campaign: 9 days so far (started 8 Almaty days ago), the plan's daily limit, one agent cycle per day ———
   const plan = PLANS.international;
-  const campaign = await db.campaign.create({ data: { userId: user.id, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: "autonomous", readiness: 78, dailyLimit: 14, startedAt: new Date(now - 9 * 86400000), endsAt: new Date(now + 51 * 86400000) } });
-  await db.payment.create({ data: { userId: user.id, campaignId: campaign.id, amount: plan.priceKzt, provider: "kaspi_mock", status: "paid", plan: plan.key, externalId: `KSP-DEMO-${campaign.id.slice(-8)}`, paidAt: new Date(now - 9 * 86400000), partnerCode: "AMASKILLS", partnerCut: Math.round(plan.priceKzt * 0.15), createdAt: new Date(now - 9 * 86400000) } });
-  await logEvent(user.id, "campaign_started", "Career Campaign «International» запущена на 60 дней");
+  const DAYS = 9;
+  const today0 = startOfToday().getTime();
+  const dayStart = (k: number) => today0 - (DAYS - 1 - k) * DAY; // k = 0 … DAYS-1 (today)
+  const realNow = Date.now();
+  // Cycle time of day k: 09:30 Almaty (+ a few minutes per day); today never later than "a few minutes ago".
+  const cycleAt = (k: number) => Math.max(dayStart(k) + 60000, Math.min(dayStart(k) + 9.5 * HOUR + k * 7 * 60000, realNow - 5 * 60000));
+  const startedAt = new Date(cycleAt(0) - 20 * 60000);
+  const campaign = await db.campaign.create({ data: { userId: user.id, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: "autonomous", readiness: await assessReadinessFor(user.id), dailyLimit: plan.dailyLimit, autoSubmit: true, startedAt, endsAt: new Date(startedAt.getTime() + plan.days * DAY), createdAt: startedAt } });
+  await db.payment.create({ data: { userId: user.id, campaignId: campaign.id, amount: plan.priceKzt, provider: "kaspi_mock", status: "paid", plan: plan.key, externalId: `KSP-DEMO-${campaign.id.slice(-8)}`, paidAt: startedAt, partnerCode: "AMASKILLS", partnerCut: 0 /* test-gateway payment: attribution only, no share owed */, createdAt: startedAt } });
+  const started = new Date();
+  await logEvent(user.id, "campaign_started", `Career Campaign «${plan.label}» запущена на ${plan.days} дней`);
+  await shiftSince(user.id, campaign.id, started, startedAt.getTime());
 
-  // Several agent cycles + simulated employer replies to populate pipeline, inbox and insights.
-  for (let i = 0; i < 5; i++) {
+  // Deterministic "employer" behaviour, so every reseed tells the same story.
+  const rand = rng(20260928);
+  for (let k = 0; k < DAYS; k++) {
+    const at = cycleAt(k);
+    // Only vacancies already published by that day can be found that day.
+    const unpublished = (await db.job.findMany({ where: { source: "demo", active: true, postedAt: { gt: new Date(at) } }, select: { id: true } })).map((x) => x.id);
+    if (unpublished.length) await db.job.updateMany({ where: { id: { in: unpublished } }, data: { active: false } });
+    let mark = new Date();
     const r = await runTick(campaign.id);
-    log("tick", i, r);
-    await db.opportunity.updateMany({ where: { campaignId: campaign.id, submittedAt: { not: null } }, data: { submittedAt: new Date(now - (8 - i * 2) * 86400000) } });
-    // Resolve pending demo approvals so the pipeline keeps moving (user confirmed sensitive answers).
-    const pend = await db.approval.findMany({ where: { userId: user.id, status: "pending", kind: { not: "handoff" } }, take: 40 });
-    for (const a of pend.slice(0, Math.floor(pend.length * 0.8))) await db.approval.update({ where: { id: a.id }, data: { status: "approved", answer: a.proposed || "Decline to self-identify", resolvedAt: new Date() } });
-    const ready = await db.opportunity.findMany({ where: { campaignId: campaign.id, status: "prepared", approvals: { none: { status: "pending" } }, job: { source: "demo" } } });
-    for (const o of ready) await db.opportunity.update({ where: { id: o.id }, data: { status: "submitted", submittedAt: new Date(now - (7 - i * 2) * 86400000) } });
-    log("simulated", await simulateResponses(user.id));
+    await shiftSince(user.id, campaign.id, mark, at);
+    if (unpublished.length) await db.job.updateMany({ where: { id: { in: unpublished } }, data: { active: true } });
+    log(`day ${k + 1}`, r);
+
+    // The user answers most open questions a couple of hours later; the next day's cycle sends those roles.
+    mark = new Date();
+    const pend = await db.approval.findMany({ where: { userId: user.id, status: "pending", kind: { not: "handoff" } }, orderBy: { createdAt: "asc" } });
+    for (const a of pend.slice(0, Math.ceil(pend.length * 0.8))) {
+      const answer = a.proposed || (a.kind === "sensitive" ? SENSITIVE_DECLINE : "Yes");
+      await db.approval.update({ where: { id: a.id }, data: { status: "approved", answer } });
+      if (a.opportunityId) await patchPackageAnswer(a.opportunityId, a.question, answer, "approved");
+    }
+    await shiftSince(user.id, campaign.id, mark, Math.min(at + 2 * HOUR, realNow - 2 * 60000));
+
+    // Employers answer applications sent 1–3 days earlier (confirmations, assessments, interviews, rejections);
+    // most applications get two chances to hear back, many never do — as in real life.
+    mark = new Date();
+    const replied = await simulateResponses(user.id, { rand, submittedBefore: new Date(at - DAY), submittedAfter: new Date(at - 3 * DAY) });
+    await shiftSince(user.id, campaign.id, mark, Math.min(at + 5 * HOUR, realNow - 60000));
+    log("  replies", replied);
   }
 
-  // Guarantee the brief's storyline: a recruiter interview, an assessment and an offer.
-  const pool = await db.opportunity.findMany({ where: { campaignId: campaign.id, status: { in: ["submitted", "pending"] }, job: { source: "demo" } }, orderBy: { match: "desc" }, include: { job: true } });
-  if (pool[0] && !(await db.interview.count({ where: { userId: user.id, round: "recruiter" } }))) {
-    await db.opportunity.update({ where: { id: pool[0].id }, data: { status: "recruiter" } });
-    await createInterview(user.id, pool[0].id, "recruiter", new Date(now + 2 * 86400000));
-    await notify(user.id, "interview", "Ты получил интервью", `${pool[0].job.company} · ${pool[0].job.title}`, "/app/interviews");
+  // ——— The brief's storyline: an upcoming recruiter interview and an offer ———
+  const pool = await db.opportunity.findMany({
+    where: { campaignId: campaign.id, status: { in: ["submitted", "pending"] }, job: { source: "demo" }, submittedAt: { lt: new Date(realNow - 3 * DAY) } },
+    orderBy: [{ match: "desc" }, { submittedAt: "asc" }],
+    include: { job: true },
+  });
+  const inviteOpp = (await db.interview.count({ where: { userId: user.id, round: { not: "assessment" }, status: "upcoming", scheduledAt: { gt: new Date(realNow) } } })) ? null : pool[0];
+  if (inviteOpp) {
+    const mark = new Date();
+    const domain = `${inviteOpp.job.company.toLowerCase().replace(/[^a-z]/g, "")}.example`;
+    await ingestEmail(user.id, { from: `talent@${domain}`, subject: `Interview invitation — ${inviteOpp.job.title} at ${inviteOpp.job.company}`, body: `Hi,\n\nWe reviewed your application and would like to invite you to a 30-minute call with our recruiter to learn more about your background. Please pick a time here: calendly.com/${domain}/intro\n\nBest regards,\n${inviteOpp.job.company}`, simulated: true, opportunityId: inviteOpp.id });
+    await shiftSince(user.id, campaign.id, mark, realNow - 3 * HOUR);
+    await db.interview.updateMany({ where: { opportunityId: inviteOpp.id, round: { not: "assessment" } }, data: { scheduledAt: new Date(realNow + 2 * DAY) } });
   }
-  const offerOpp = pool[1];
+  const assessOpp = (await db.interview.count({ where: { userId: user.id, round: "assessment" } })) ? null : pool.find((o) => o.id !== inviteOpp?.id);
+  if (assessOpp) {
+    const mark = new Date();
+    const domain = `${assessOpp.job.company.toLowerCase().replace(/[^a-z]/g, "")}.example`;
+    await ingestEmail(user.id, { from: `talent@${domain}`, subject: `${assessOpp.job.company} — online assessment`, body: `Hi,\n\nThanks for your interest in ${assessOpp.job.title}. As a next step, please complete this online assessment on TestGorilla within 5 days.\n\nGood luck!\n${assessOpp.job.company} Recruiting`, simulated: true, opportunityId: assessOpp.id });
+    await shiftSince(user.id, campaign.id, mark, realNow - DAY - 2 * HOUR);
+    await db.interview.updateMany({ where: { opportunityId: assessOpp.id, round: "assessment" }, data: { scheduledAt: new Date(realNow + 4 * DAY) } });
+  }
+  const offerOpp = pool.find((o) => o.id !== assessOpp?.id && o.id !== inviteOpp?.id && o.submittedAt && o.submittedAt.getTime() < realNow - 5 * DAY) ?? pool.find((o) => o.id !== inviteOpp?.id && o.id !== assessOpp?.id);
   if (offerOpp) {
+    const mark = new Date();
     await db.opportunity.update({ where: { id: offerOpp.id }, data: { status: "offer" } });
-    const iv = await createInterview(user.id, offerOpp.id, "final", new Date(now - 2 * 86400000));
+    const iv = await createInterview(user.id, offerOpp.id, "final", new Date(realNow - 2 * DAY));
     await db.interview.update({ where: { id: iv.id }, data: { status: "passed", debrief: s({ questions: ["Walk me through your segmentation project", "SQL window functions"], hard: "Stakeholder conflict question", nextSteps: "Offer expected this week", salaryDiscussed: true, score: 78 }) } });
+    await shiftSince(user.id, campaign.id, mark, realNow - 5 * DAY); // the final was set up 5 days ago…
+    await db.interview.update({ where: { id: iv.id }, data: { scheduledAt: new Date(realNow - 2 * DAY) } }); // …and held 2 days ago
+    const mark2 = new Date();
     await db.offer.create({ data: { userId: user.id, opportunityId: offerOpp.id, company: offerOpp.job.company, role: offerOpp.job.title, base: 52000, currency: "USD", bonus: 3000, equity: "", benefits: s(["Health insurance", "Learning budget $1,000", "Home office stipend"]), vacationDays: 24, probationMonths: 3, remote: "remote", noticePeriod: "2 weeks" } });
-    await notify(user.id, "offer", "YOU GOT THE OFFER", `${offerOpp.job.company} · ${offerOpp.job.title}`, "/app/offers");
     await db.inboxMessage.create({ data: { userId: user.id, opportunityId: offerOpp.id, fromAddr: `talent@${offerOpp.job.company.toLowerCase().replace(/[^a-z]/g, "")}.example`, subject: `Offer — ${offerOpp.job.title}`, body: `We are pleased to extend you an offer for the ${offerOpp.job.title} position with a base salary of $52,000.`, classification: "offer", confidence: 0.96, simulated: true } });
+    await notify(user.id, "offer", NOTIFY_TITLE.offer, `${offerOpp.job.company} · ${offerOpp.job.title}`, "/app/offers");
+    await logEvent(user.id, "inbox", `${offerOpp.job.company}: письмо распознано как «offer» → offer`, offerOpp.id);
+    await shiftSince(user.id, campaign.id, mark2, realNow - 90 * 60000);
   }
 
-  for (let m = 5; m >= 0; m--) await db.careerSnapshot.create({ data: { userId: user.id, marketValue: 58000 + (5 - m) * 1400, score: 70 + (5 - m), components: s({}), createdAt: new Date(now - m * 30 * 86400000) } });
+  // Simulated rounds whose date has passed are waiting for the employer's answer, not "upcoming".
+  await db.interview.updateMany({ where: { userId: user.id, status: "upcoming", scheduledAt: { lt: new Date(realNow) } }, data: { status: "done" } });
+
+  // ——— Career history: monthly snapshots; today's row is the live Career Score (same numbers as the Career header) ———
+  const live = await loadCareer(user.id);
+  for (let m = 5; m >= 1; m--) {
+    await db.careerSnapshot.create({ data: { userId: user.id, score: Math.max(0, live.score - m), marketValue: Math.max(0, live.marketValue - m * 1500), components: s({}), createdAt: new Date(realNow - m * 30 * DAY) } });
+  }
+  await db.careerSnapshot.create({ data: { userId: user.id, score: live.score, marketValue: live.marketValue, components: s(live.components) } });
 
   const counts = await db.opportunity.groupBy({ by: ["status"], where: { campaignId: campaign.id }, _count: true });
   log(counts.map((c) => `${c.status}:${c._count}`).join("  "));

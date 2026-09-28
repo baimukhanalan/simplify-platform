@@ -121,17 +121,17 @@ export async function parseCV(text: string) {
   });
 }
 
-/** AI mini-interview: questions that turn thin CV bullets into verified, quantified facts. */
+/** AI mini-interview: questions that turn thin CV bullets into concrete, quantified facts. */
 export function miniInterviewQuestions(fact: { kind: string; title: string; org: string; details: string; metrics: string; teamSize: number | null; ownership: string; tech: string }) {
   const qs: string[] = [];
   const where = fact.org ? `${fact.title} (${fact.org})` : fact.title;
   if (fact.kind === "employment" || fact.kind === "project") {
-    qs.push(`Что конкретно ты делал(а) в «${where}»? Опиши 2–3 ключевые задачи.`);
+    qs.push(`Какие задачи были у тебя в «${where}»? Опиши 2–3 ключевые.`);
     if (!fact.metrics) qs.push(`Был ли измеримый результат в «${where}»? Какие метрики изменились (было → стало)?`);
-    if (fact.tech === "[]" || !fact.tech) qs.push(`Какие технологии и инструменты ты реально использовал(а) в «${where}»?`);
+    if (fact.tech === "[]" || !fact.tech) qs.push(`Какие технологии и инструменты были в работе в «${where}»?`);
     if (fact.teamSize == null) qs.push(`Сколько человек было в команде в «${where}»?`);
-    if (!fact.ownership) qs.push(`В «${where}» ты сам(а) принимал(а) решения или исполнял(а) поставленные задачи?`);
-    qs.push(`Какую самую сложную проблему ты решил(а) в «${where}»?`);
+    if (!fact.ownership) qs.push(`Какой была твоя роль в «${where}»: решения за тобой или задачи ставили другие?`);
+    qs.push(`Какая проблема в «${where}» была самой сложной и как она решилась?`);
   }
   if (fact.kind === "education") qs.push(`Есть ли в «${where}» дипломный проект или курсовые, релевантные целевой роли?`);
   return qs;

@@ -1,6 +1,7 @@
 // Pure: turns the engine's readiness checks into the six parameters, blockers and the agent's plan.
 import type { Readiness, ReadinessCheck } from "@/lib/engine/readiness";
 import { REGIONS, SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { REGION_RU } from "../../../_components/ru";
 
 export type ReadinessData = {
   readiness: Readiness;
@@ -27,7 +28,6 @@ const level = (n: number): Level => (n >= 75 ? "strong" : n >= 50 ? "mid" : "wea
 const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 export const kUsd = (n: number) => `$${Math.round(n / 1000)}k`;
 const LOCAL = new Set(["KZ", "CIS"]);
-const REGION_EN: Record<string, string> = { EU: "Europe", UK: "UK", CA: "Canada", MENA: "MENA" };
 
 export function isInternational(countries: string[]) {
   return countries.some((c) => !LOCAL.has(c));
@@ -46,7 +46,8 @@ export function readinessView(d: ReadinessData) {
   const skills = c("skills").score;
   const experience = clamp((c("experience").score + c("seniority").score) / 2);
   const cv = clamp(c("cv").score * 0.75 + c("portfolio").score * 0.25);
-  const interview = clamp(20 + d.stories * 20 + d.mocks * 10);
+  // Same score as Career Score's interview component (src/lib/engine/interview-readiness.ts).
+  const interview = r.interview.score;
   const demandRaw = d.jobsForRole >= 40 ? 90 : d.jobsForRole >= 15 ? 75 : d.jobsForRole >= 5 ? 55 : d.jobsForRole > 0 ? 40 : 25;
   const demand = clamp(demandRaw * 0.6 + c("salary").score * 0.4);
   const visaMarkets = d.goal.countries.filter((x) => !LOCAL.has(x) && x !== "WORLD");
@@ -58,7 +59,7 @@ export function readinessView(d: ReadinessData) {
     { key: "skills", label: "Skills", score: skills, level: level(skills), note: d.missingSkills.length && skills < 75 ? `Не хватает: ${d.missingSkills.join(", ")}` : "Навыки закрывают требования роли" },
     { key: "experience", label: "Experience", score: experience, level: level(experience), note: `${fmtYears(d.yearsExperience)} опыта · цель ${SENIORITY_LABEL[d.goal.seniority] ?? d.goal.seniority}` },
     { key: "cv", label: "CV quality", score: cv, level: level(cv), note: d.withMetrics ? `${d.withMetrics} ${plural(d.withMetrics, "достижение", "достижения", "достижений")} с цифрами` : "Нет достижений в цифрах" },
-    { key: "interview", label: "Interview readiness", score: interview, level: level(interview), note: `${d.stories} ${plural(d.stories, "история", "истории", "историй")} для интервью · ${d.mocks} ${plural(d.mocks, "тренировка", "тренировки", "тренировок")}` },
+    { key: "interview", label: "Interview readiness", score: interview, level: level(interview), note: r.interview.note },
     { key: "demand", label: "Market demand", score: demand, level: level(demand), note: `${d.jobsForRole} ${plural(d.jobsForRole, "открытая вакансия", "открытые вакансии", "открытых вакансий")} по роли · рынок ${kUsd(d.range.low)}–${kUsd(d.range.high)}` },
     { key: "eligibility", label: "International eligibility", score: eligibility, level: level(eligibility), note: intl ? `${d.needsSponsorship ? "Для части рынков нужна рабочая виза" : "Есть право на работу в целевых странах"} · English ${d.englishLevel}` : `Цель — местный рынок · English ${d.englishLevel}` },
   ];
@@ -67,7 +68,7 @@ export function readinessView(d: ReadinessData) {
   const actions: string[] = [];
   const targetsUS = d.goal.countries.includes("US");
   const targetsEU = d.goal.countries.includes("EU");
-  const regionNames = visaMarkets.filter((x) => x !== "US").map((x) => REGION_EN[x] ?? REGIONS[x]?.label ?? x).join(", ");
+  const regionNames = visaMarkets.filter((x) => x !== "US").map((x) => REGION_RU[x] ?? REGIONS[x]?.label ?? x).join(", ");
 
   if (d.needsSponsorship && targetsUS) blockers.push("Нужна спонсорская виза — это сильно ограничивает роли в США.");
   else if (visaLimited && regionNames) blockers.push(`Без права на работу часть вакансий (${regionNames}) недоступна — нужна рабочая виза.`);

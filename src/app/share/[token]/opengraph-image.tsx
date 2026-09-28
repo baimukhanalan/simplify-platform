@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { notFound } from "next/navigation";
 import { headline, loadShare } from "./data";
 import { plural } from "@/app/app/hired/_lib/journey";
 
@@ -9,6 +10,7 @@ export const contentType = "image/png";
 export default async function Image({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const d = await loadShare(token);
+  if (!d) notFound();
   const title = d ? headline(d).replace(/:\s*HIRED\.\s*/, " · ").replace(/:\s*HIRED\.$/, "") : "Новая работа вместе с Simplify";
   // Role/company are clamped in loadShare; long (e.g. Kazakh) titles still get a smaller size to stay inside the card.
   // Default next/og font (Geist) covers Cyrillic incl. Kazakh letters, so names/roles render without transliteration.

@@ -7,7 +7,8 @@ export function relDays(d: Date | null | undefined, now = Date.now()) {
   if (days === 0) return "сегодня";
   if (days === 1) return "завтра";
   if (days === -1) return "вчера";
-  return days > 0 ? `через ${days} дн.` : `${-days} дн. назад`;
+  // Non-breaking spaces: "через 3 дн." never breaks between the number and its unit.
+  return days > 0 ? `через\u00a0${days}\u00a0дн.` : `${-days}\u00a0дн. назад`;
 }
 
 /** Request-time clock for server components (kept out of render bodies for the purity lint). */

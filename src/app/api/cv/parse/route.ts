@@ -11,7 +11,7 @@ const fail = (error: string, status: number) => Response.json({ error }, { statu
 /** POST multipart `file` (PDF or .txt, ≤ 5 MB) → `{ text, pages, fileName }`. Used by Career Check and onboarding. */
 export async function POST(req: Request) {
   const rl = await rateLimit("cv-parse", 20, 60 * 60 * 1000);
-  if (!rl.ok) return fail("Слишком много загрузок — попробуйте позже", 429);
+  if (!rl.ok) return fail("Слишком много загрузок — попробуй позже", 429);
   let form: FormData;
   try {
     form = await req.formData();
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     if (isPdf) {
       if (!(buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46)) return fail("Файл не похож на PDF", 415);
       const pdf = await getDocumentProxy(buf);
-      if (pdf.numPages > 20) return fail("CV длиннее 20 страниц — сократите файл", 413);
+      if (pdf.numPages > 20) return fail("CV длиннее 20 страниц — сократи файл", 413);
       const out = await extractText(pdf, { mergePages: false });
       pages = out.totalPages;
       text = out.text.join("\n\n");
@@ -43,10 +43,10 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     console.error("[cv/parse]", err instanceof Error ? err.message : err);
-    return fail("Не удалось прочитать файл. Попробуйте другой PDF или вставьте текст вручную.", 422);
+    return fail("Не удалось прочитать файл. Попробуй другой PDF или вставь текст вручную.", 422);
   }
 
   text = text.replace(/\u0000/g, "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim().slice(0, MAX_CHARS);
-  if (text.length < 40) return fail("В файле почти нет текста — возможно, это скан. Вставьте текст CV вручную.", 422);
+  if (text.length < 40) return fail("В файле почти нет текста — возможно, это скан. Вставь текст CV вручную.", 422);
   return Response.json({ text, pages, fileName: name.slice(0, 200) });
 }

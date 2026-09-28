@@ -67,7 +67,7 @@ export function Notifier() {
   }
   if (permission === "denied") {
     return (
-      <span className="inline-flex h-9 items-center gap-1.5 px-2 text-[12px] text-ink-4" title="Уведомления заблокированы в настройках браузера">
+      <span className="inline-flex h-9 items-center gap-1.5 px-2 text-[12px] text-ink-3" title="Уведомления заблокированы в настройках браузера">
         <BellOff className="size-4" strokeWidth={1.7} aria-hidden />
         <span className="sr-only">Уведомления заблокированы в настройках браузера</span>
       </span>

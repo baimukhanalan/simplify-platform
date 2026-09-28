@@ -5,11 +5,11 @@ export type WhereKey = "europe" | "us" | "remote" | "kz" | "relocation";
 export type Intent = { role: string; where: WhereKey[]; salary: number };
 
 export const WHERE_OPTIONS: { key: WhereKey; label: string; hint: string }[] = [
-  { key: "europe", label: "Europe", hint: "EU" },
-  { key: "us", label: "US", hint: "США" },
-  { key: "remote", label: "Remote", hint: "из любой точки" },
-  { key: "kz", label: "Kazakhstan", hint: "KZ" },
-  { key: "relocation", label: "Relocation", hint: "готов(а) к переезду" },
+  { key: "europe", label: "Европа", hint: "EU" },
+  { key: "us", label: "США", hint: "US" },
+  { key: "remote", label: "Удалённо", hint: "из любой точки" },
+  { key: "kz", label: "Казахстан", hint: "KZ" },
+  { key: "relocation", label: "Переезд", hint: "переезд возможен" },
 ];
 
 export const ROLE_SUGGESTIONS = ["Product Manager", "Data Analyst", "Software Engineer", "Product Designer", "Marketing Manager", "QA Engineer"];
@@ -17,6 +17,8 @@ export const SALARY_PRESETS = [40000, 70000, 100000, 150000];
 
 const WHERE_KEYS = new Set<string>(WHERE_OPTIONS.map((o) => o.key));
 export const STORAGE_KEY = "simplify:intent";
+/** Set (path /onboarding) once the first-screen answers were written into the Goal. */
+export const INTENT_USED_COOKIE = "simplify_intent_used";
 
 export const fmtUsd = (n: number) => `$${n.toLocaleString("en-US")}`;
 

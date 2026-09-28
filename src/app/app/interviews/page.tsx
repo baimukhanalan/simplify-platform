@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, CalendarClock, ClipboardCheck, MessageSquareText } from "lucide-react";
+import { ArrowRight, CalendarClock, ClipboardCheck, MessageSquareText, TriangleAlert } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
@@ -33,12 +33,15 @@ export default async function InterviewsPage() {
   const rest = future.filter((i) => i !== next);
   const reached = (r: string) => new Set(all.filter((i) => i.round === r).map((i) => i.opportunityId)).size;
   const offers = await db.offer.count({ where: { userId: user.id } });
+  // Two live calls within an hour of each other: one of them has to move.
+  const calls = future.filter((i) => i.round !== "assessment" && i.scheduledAt);
+  const conflicts = calls.flatMap((a, k) => calls.slice(k + 1).filter((b) => Math.abs(b.scheduledAt!.getTime() - a.scheduledAt!.getTime()) < 3600000).map((b) => [a, b] as const));
 
   return (
     <>
       <PageHeader
         eyebrow="Интервью"
-        title={<>Твои <Script>interviews</Script></>}
+        title={<>Твои <Script>интервью</Script></>}
         sub="Каждое приглашение — отдельная комната подготовки: brief о компании, вероятные вопросы, Mock Interview и разбор после звонка."
       />
 
@@ -64,6 +67,20 @@ export default async function InterviewsPage() {
               <ArrowRight className="size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />
             </Link>
           ))}
+
+          {conflicts.length > 0 && (
+            <div role="alert" className="flex animate-rise flex-col gap-1.5 rounded-2xl border border-amber/25 bg-amber-soft px-4 py-3.5 text-[14px] text-ink-2">
+              {conflicts.map(([a, b]) => (
+                <p key={`${a.id}-${b.id}`} className="flex items-start gap-2.5">
+                  <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber" strokeWidth={1.8} aria-hidden />
+                  <span>
+                    <span className="font-medium text-head">Интервью пересекаются:</span> {a.opportunity.job.company} и {b.opportunity.job.company} — {day(a.scheduledAt!)}, <span className="num">{time(a.scheduledAt!)}</span>
+                    {time(a.scheduledAt!) !== time(b.scheduledAt!) && <> и <span className="num">{time(b.scheduledAt!)}</span></>}. Попроси одного из работодателей перенести звонок.
+                  </span>
+                </p>
+              ))}
+            </div>
+          )}
 
           {next ? <NextUp iv={next} now={now} /> : null}
 
@@ -138,7 +155,7 @@ function NextUp({ iv, now }: { iv: Row; now: number }) {
             <p className="text-[16px] text-white/75">{iv.opportunity.job.title}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-white/10 px-3 py-1 font-mono text-[11px] uppercase tracking-[.06em] text-[#7fe3b6]">{isAssessment ? "Assessment" : ROUND_LABEL[iv.round] ?? iv.round}</span>
+            <span className="rounded-full bg-white/10 px-3 py-1 font-mono text-[11px] uppercase tracking-[.06em] text-[#7fe3b6]">{isAssessment ? "Тест" : ROUND_LABEL[iv.round] ?? iv.round}</span>
             {at && (
               <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/85">
                 <CalendarClock className="size-3.5" strokeWidth={1.7} aria-hidden />
@@ -150,9 +167,10 @@ function NextUp({ iv, now }: { iv: Row; now: number }) {
         </div>
         <div className="flex flex-col gap-4 lg:items-end">
           {big && (
-            <p className="flex items-baseline gap-2 lg:justify-end" aria-label={`${isAssessment ? "Осталось" : "Через"} ${big.n} ${big.u}`}>
-              <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/50">{isAssessment ? "осталось" : "через"}</span>
-              <span className="num text-[clamp(44px,6vw,72px)] leading-none">{big.n}</span>
+            // Real spaces between the parts (flex gap is visual only), so copied/read text is «через 2 дн.», not «через2дн.».
+            <p className="flex items-baseline gap-2 lg:justify-end">
+              <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/50">{isAssessment ? "осталось" : "через"}</span>{" "}
+              <span className="num text-[clamp(44px,6vw,72px)] leading-none">{big.n}</span>{"\u00a0"}
               <span className="text-[18px] text-white/70">{big.u}</span>
             </p>
           )}
@@ -181,7 +199,7 @@ function UpcomingCard({ iv, now }: { iv: Row; now: number }) {
           </Link>
           <span className="truncate text-[13.5px] text-ink-3">{iv.opportunity.job.title}</span>
         </div>
-        <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{isAssessment ? "Assessment" : ROUND_LABEL[iv.round] ?? iv.round}</Chip>
+        <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{isAssessment ? "Тест" : ROUND_LABEL[iv.round] ?? iv.round}</Chip>
       </div>
       <div className="flex items-end justify-between gap-3">
         <div className="flex items-center gap-2 text-[13.5px] text-ink-2">

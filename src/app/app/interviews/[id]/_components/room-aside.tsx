@@ -4,10 +4,12 @@ import { ButtonLink, Card, Label, Ring, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { setCopilotAllowed } from "@/lib/actions/interview";
 import { ROUND_LABEL } from "@/lib/rounds";
+import type { roomReadiness } from "@/lib/engine/interview-readiness";
 
 type Props = {
   iv: { id: string; round: string; status: string; scheduledAt: Date | null; copilotAllowed: boolean; opportunityId: string };
-  readiness: { label: string; value: number; w: number; hint?: string }[];
+  /** Readiness for this one interview (not the general Interview readiness of Career Score). */
+  readiness: ReturnType<typeof roomReadiness>;
   pkg: { cvVersion: string; cover: boolean; answers: number } | null;
   now: number;
 };
@@ -15,11 +17,11 @@ type Props = {
 const DURATION: Record<string, string> = { assessment: "≈ 60 мин", recruiter: "30 мин", hiring_manager: "45–60 мин", technical: "60 мин", final: "45–60 мин" };
 
 export function RoomAside({ iv, readiness, pkg, now }: Props) {
-  const score = Math.round(readiness.reduce((a, p) => a + p.value * p.w, 0));
+  const { score, title } = readiness;
   const at = iv.scheduledAt;
   const ms = at ? at.getTime() - now : null;
   const countdown =
-    ms == null ? null : ms <= 0 ? null : ms < 3600000 ? `${Math.max(1, Math.round(ms / 60000))} мин` : ms < 86400000 ? `${Math.round(ms / 3600000)} ч` : `${Math.round(ms / 86400000)} дн.`;
+    ms == null ? null : ms <= 0 ? null : ms < 3600000 ? `${Math.max(1, Math.round(ms / 60000))}\u00a0мин` : ms < 86400000 ? `${Math.round(ms / 3600000)}\u00a0ч` : `${Math.round(ms / 86400000)}\u00a0дн.`;
   const isAssessment = iv.round === "assessment";
   const live = iv.status === "upcoming" && !isAssessment;
 
@@ -54,12 +56,12 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
         <div className="flex items-center gap-4">
           <Ring value={score} size={76} stroke={6} />
           <div className="flex flex-col gap-0.5">
-            <Label>Готовность</Label>
+            <Label>{title}</Label>
             <p className="text-[13px] text-ink-3">{score >= 75 ? "Хорошая форма для раунда" : score >= 55 ? "Почти на уровне — пройди Mock" : "Начни с Brief и Mock Interview"}</p>
           </div>
         </div>
         <ul className="mt-4 flex flex-col gap-2">
-          {readiness.map((p) => (
+          {readiness.parts.map((p) => (
             <li key={p.label} className="flex items-baseline justify-between gap-3 text-[13px]">
               <span className="text-ink-3">{p.label}{p.hint && <span className="text-ink-4"> · {p.hint}</span>}</span>
               <span className={cx("num", p.value >= 70 ? "text-green" : "text-head")}>{Math.round(p.value)}</span>
@@ -100,7 +102,7 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
         {pkg ? (
           <dl className="grid grid-cols-3 gap-2 text-center">
             {[
-              ["CV", pkg.cvVersion.split("-")[0]],
+              ["CV", "да"],
               ["Cover", pkg.cover ? "да" : "—"],
               ["Ответы", String(pkg.answers)],
             ].map(([k, v]) => (

@@ -25,3 +25,28 @@ export function shortDate(d: Date | null | undefined) {
 
 /** Ends a sentence: adds a period unless the text already ends with one. */
 export const endSentence = (s: string) => (/[.!?…]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`);
+
+/** Exception-queue copy, one wording everywhere: questions wait for an answer, handoffs wait to be sent. */
+export const questionsWaiting = (n: number) => `${n} ${plural(n, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа`;
+export const handoffsWaiting = (n: number) => `${n} ${plural(n, ["заявка ждёт", "заявки ждут", "заявок ждут"])} отправки`;
+
+/** Region keys (salary model / goal) in Russian, one naming everywhere: Европа, США, Казахстан, «Удалённо». */
+export const REGION_RU: Record<string, string> = {
+  KZ: "Казахстан", CIS: "СНГ", EU: "Европа", UK: "Великобритания", US: "США", CA: "Канада", MENA: "Ближний Восток", WORLD: "Удалённо", REMOTE: "Удалённо",
+};
+export const regionRu = (k: string) => REGION_RU[k.toUpperCase()] ?? k;
+export const regionsRu = (ks: string[]) => [...new Set(ks.map(regionRu))].join(", ");
+
+/** Work format, one naming everywhere. */
+export const WORK_MODE_RU: Record<string, string> = { remote: "Удалённо", hybrid: "Гибрид", onsite: "Офис", any: "Любой формат" };
+
+/** Campaign mode (Goal). */
+export const CAMPAIGN_MODE_RU: Record<string, string> = { autonomous: "Автономный", target: "Точечный — компании мечты", mass: "Массовый найм" };
+
+/** Application status in Russian — chips, inbox, timelines. Unknown keys fall back to the key itself. */
+export const STATUS_RU: Record<string, string> = {
+  found: "Найдена", qualified: "Подходит", prepared: "Пакет готов", submitted: "Отправлено", pending: "Ждём ответа",
+  assessment: "Тестовое задание", recruiter: "Скрининг с рекрутером", hiring_manager: "Интервью с менеджером", technical: "Техническое интервью",
+  final: "Финальное интервью", offer: "Оффер", hired: "HIRED", rejected: "Отказ", skipped: "Пропущено", blocked: "Недоступно",
+};
+export const statusRu = (s: string) => STATUS_RU[s] ?? s;

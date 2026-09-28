@@ -27,7 +27,7 @@ const Bullets = ({ items, tone }: { items: string[]; tone?: "teal" | "green" }) 
       {ru.length > 0 && <BulletList items={ru} tone={tone} />}
       {en.length > 0 && (
         <div className="flex flex-col gap-2">
-          {ru.length > 0 && <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-ink-4">Цитата из вакансии</span>}
+          {ru.length > 0 && <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-ink-3">Цитата из вакансии</span>}
           <BulletList items={en} tone={tone} en />
         </div>
       )}

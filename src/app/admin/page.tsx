@@ -6,6 +6,7 @@ import { SubmitButton } from "@/components/client";
 import { adminRunTick } from "@/lib/actions/admin";
 import { APPLIED_OR_LATER, fmtKzt } from "@/lib/engine/taxonomy";
 import { reachedInterview } from "@/lib/engine/insights";
+import { countsAsRevenue } from "@/lib/payments/kaspi";
 import { IngestPanel } from "./_components/ingest-panel";
 
 export const metadata = { title: "Operations" };
@@ -58,7 +59,7 @@ export default async function AdminPage() {
       orderBy: { createdAt: "desc" },
     }),
     db.job.groupBy({ by: ["source", "active"], _count: { _all: true } }),
-    db.payment.findMany({ where: { status: "paid" }, select: { amount: true, partnerCut: true } }),
+    db.payment.findMany({ where: { status: "paid" }, select: { amount: true, partnerCut: true, provider: true, status: true, meta: true } }),
     db.interview.findMany({ where: { round: { not: "assessment" } }, select: { userId: true } }),
   ]);
 
@@ -81,8 +82,10 @@ export default async function AdminPage() {
   const medianTtfi = ttfi.length ? ttfi[Math.floor(ttfi.length / 2)] : null;
   const usersWithIv = new Set(qualifiedIvs.map((i) => i.userId)).size;
   const usersInCampaigns = new Set(campaigns.map((c) => c.userId)).size;
-  const revenue = payments.reduce((a, p) => a + p.amount, 0);
-  const payouts = payments.reduce((a, p) => a + p.partnerCut, 0);
+  // Real, kept money only: no test-gateway payments, none being refunded in full (see countsAsRevenue).
+  const realPayments = payments.filter(countsAsRevenue);
+  const revenue = realPayments.reduce((a, p) => a + p.amount, 0);
+  const payouts = realPayments.reduce((a, p) => a + p.partnerCut, 0);
   const northStar = pct(campaignsWithIv.length, campaigns.length);
 
   const funnel = [

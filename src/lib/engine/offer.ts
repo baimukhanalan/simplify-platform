@@ -17,7 +17,7 @@ export function negotiationPlan(o: { company: string; role: string; base: number
   const money = (n: number) => `${o.currency === "USD" ? "$" : ""}${Math.round(n / 1000)}k${o.currency !== "USD" ? ` ${o.currency}` : ""}`;
   const args = [
     `Market data: comparable ${o.role} roles pay ${money(o.range.low)}–${money(o.range.high)}; the offer sits below the midpoint.`,
-    ...o.strengths.slice(0, 2).map((s) => `Verified impact: ${s}`),
+    ...o.strengths.slice(0, 2).map((s) => `Impact: ${s}`),
     "Enthusiasm first — make it clear you want to join; negotiation is about fit, not leverage.",
   ];
   const email = `Hi,\n\nThank you so much for the offer for the ${o.role} position — I'm genuinely excited about joining ${o.company}.\n\nBased on my experience with ${o.strengths[0] ?? "the core of this role"} and the scope we discussed, I was hoping we could explore a base closer to ${money(ask)}. Market data for comparable roles puts the range at ${money(o.range.low)}–${money(o.range.high)}.\n\nIf base flexibility is limited, I'd be glad to discuss a signing bonus or an earlier compensation review.\n\nLooking forward to finding something that works for both of us.\n\nBest regards,\n${o.name}`;

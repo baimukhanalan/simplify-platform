@@ -15,7 +15,7 @@ export async function saveAutonomy(_prev: AutonomyState, form: FormData): Promis
   for (const { key } of AUTONOMY_LABELS) next[key] = form.get(key) === "on";
 
   const sensitive = String(form.get("sensitive") ?? "");
-  if (sensitive !== "ask" && sensitive !== "decline") return { error: "Выберите, как агент отвечает на чувствительные вопросы." };
+  if (sensitive !== "ask" && sensitive !== "decline") return { error: "Выбери, как агент отвечает на чувствительные вопросы." };
   next.sensitive = sensitive;
 
   // One control, two fields (the same ones the Opportunities switch writes): the switch is submitApplications,

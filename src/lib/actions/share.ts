@@ -56,5 +56,5 @@ async function issue(userId: string, campaignId: string): Promise<ShareResult> {
       // unique collision — astronomically unlikely, retry with a new token
     }
   }
-  return { ok: false, error: "Не удалось создать ссылку. Попробуйте ещё раз." };
+  return { ok: false, error: "Не удалось создать ссылку. Попробуй ещё раз." };
 }

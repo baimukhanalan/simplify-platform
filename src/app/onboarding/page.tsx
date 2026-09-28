@@ -12,7 +12,7 @@ import { currentCampaign, runningCampaign } from "@/lib/ops-data";
 import { SiteHeader } from "../_components/site-header";
 import { PLAN_COOKIE, cleanPlan } from "../_components/plan-pref";
 import { RememberPlan } from "../_components/remember-plan";
-import { intentFromParams, intentToGoal } from "../_components/campaign-intent";
+import { INTENT_USED_COOKIE, intentFromParams, intentToGoal } from "../_components/campaign-intent";
 import { loadReadiness } from "../app/readiness/_components/data";
 import { StepRail } from "./_components/step-rail";
 import { IntentSync } from "./_components/intent-sync";
@@ -80,7 +80,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
           relocation: override?.relocation ?? goal?.relocation ?? false,
           industries: j<string[]>(goal?.industries, []),
         }}
-        note={override ? "Обновил цель по твоим новым ответам — проверь и сохрани." : !done.has(STEP.goal) && !goalEmpty ? "Заполнил по твоим ответам на первом экране. Проверь — и дальше." : undefined}
+        note={override ? "Обновил цель по твоим новым ответам — проверь и сохрани." : !done.has(STEP.goal) && !goalEmpty && jar.get(INTENT_USED_COOKIE) ? "Заполнил по твоим ответам на первом экране. Проверь — и дальше." : undefined}
         years={years}
         suggestedSeniority={seniorityFromYears(years)}
         roleSuggestions={suggestions}

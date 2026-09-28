@@ -5,7 +5,8 @@ import { requireUser } from "../auth";
 import { db, s } from "../db";
 import { APPLIED_OR_LATER } from "../engine/taxonomy";
 import { readAutonomy } from "../engine/autonomy";
-import { logEvent, prepare, submit } from "../engine/agent";
+import { QUEUE_MATCH, duplicateOf, logEvent, prepare, submit } from "../engine/agent";
+import { count } from "../ru";
 
 export type DecisionState = {
   ok?: boolean;
@@ -25,7 +26,7 @@ function refresh(id: string) {
 }
 
 /** Status a vacancy returns to when the user un-skips it (mirrors the engine's discovery rule). */
-const restoredStatus = (match: number) => (match >= 55 ? "qualified" : "found");
+const restoredStatus = (match: number) => (match >= QUEUE_MATCH ? "qualified" : "found");
 
 /**
  * Apply  — the user confirmed: decision=apply, then prepare + submit right now through the engine.
@@ -41,7 +42,7 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
   if (!DECISIONS.has(decision)) return { error: "Неизвестное действие." };
   const opp = await db.opportunity.findFirst({
     where: { id, campaign: { userId: user.id } },
-    include: { job: { select: { company: true, title: true, source: true, url: true } }, campaign: { select: { status: true, autoSubmit: true } } },
+    include: { job: { select: { company: true, title: true, location: true, source: true, url: true } }, campaign: { select: { status: true, autoSubmit: true } } },
   });
   if (!opp) return { error: "Вакансия не найдена." };
   const applied = APPLIED_OR_LATER.includes(opp.status);
@@ -67,6 +68,9 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
 
   if (applied) return { ok: true, message: "Заявка уже отправлена.", href: `/app/applications/${id}`, hrefLabel: "Открыть заявку" };
   if (opp.eligibility === "blocked") return { error: "У вакансии hard blocker — агент не подаёт на неё, чтобы не тратить заявку." };
+  // One application per role in a campaign: the same company + title from another location is already prepared or sent.
+  const dup = await duplicateOf(opp);
+  if (dup) return { error: `На эту роль в ${opp.job.company} уже есть заявка${dup.job.location ? ` (${dup.job.location})` : ""} — второй раз агент не подаёт.`, href: `/app/opportunities/${dup.id}`, hrefLabel: "Открыть" };
   // A previously skipped role comes back into the queue when the user changes their mind.
   const revived = opp.status === "skipped" || opp.status === "found" ? "qualified" : opp.status;
 
@@ -91,30 +95,36 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
       if (r.reason === "handoff") return { ok: true, message: "Пакет готов. Живая вакансия — отправка через официальную форму.", href: `/app/opportunities/${id}`, hrefLabel: "Открыть" };
     }
     refresh(id);
-    if (pending) return { ok: true, message: `Агент подаст сам, как только ты ответишь на ${pending === 1 ? "1 вопрос" : `${pending} вопроса`}.`, href: "/app/approvals", hrefLabel: "Ответить" };
+    if (pending) return { ok: true, message: `Агент подаст сам, как только ты ответишь на ${count(pending, ["вопрос", "вопроса", "вопросов"])}.`, href: "/app/approvals", hrefLabel: "Ответить" };
     return { ok: true, message: opp.campaign.status === "active" ? "Агент подаст сам в ближайшем цикле." : "Отмечено. Агент подаст, когда кампания снова будет активна." };
   }
 
   // decision === "apply": the user explicitly confirmed this role.
   await db.opportunity.update({ where: { id }, data: { decision: "apply", status: revived } });
-  await logEvent(user.id, "decision", `Apply: ты подтвердил(а) заявку — ${who}`, id, { decision: "apply" });
+  await logEvent(user.id, "decision", `Apply: заявка подтверждена тобой — ${who}`, id, { decision: "apply" });
   try {
     const hasPkg = await db.applicationPackage.findUnique({ where: { opportunityId: id }, select: { id: true } });
-    if (!hasPkg || revived !== "prepared") await prepare(id);
+    if (!hasPkg || revived !== "prepared") {
+      const p = await prepare(id);
+      if (p.duplicate) {
+        refresh(id);
+        return { error: `На эту роль в ${opp.job.company} уже есть заявка — второй раз агент не подаёт.` };
+      }
+    }
     const pending = await db.approval.count({ where: { opportunityId: id, status: "pending", kind: { not: "handoff" } } });
     if (pending) {
       refresh(id);
-      return { ok: true, message: `Пакет готов. ${pending === 1 ? "1 вопрос ждёт" : `${pending} вопроса ждут`} твоего ответа — после этого заявка уйдёт.`, href: "/app/approvals", hrefLabel: "Ответить" };
+      return { ok: true, message: `Пакет готов. ${count(pending, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа — после этого заявка уйдёт.`, href: "/app/approvals", hrefLabel: "Ответить" };
     }
     const r = await submit(id);
     refresh(id);
     if (r.ok) return { ok: true, message: "Заявка отправлена.", href: `/app/applications/${id}`, hrefLabel: "Открыть заявку" };
-    if (r.reason === "handoff") return { ok: true, message: "Пакет готов. Это живая вакансия — отправьте его через официальную форму.", href: `/app/opportunities/${id}`, hrefLabel: "Как отправить" };
+    if (r.reason === "handoff") return { ok: true, message: "Пакет готов. Это живая вакансия — отправь его через официальную форму.", href: `/app/opportunities/${id}`, hrefLabel: "Как отправить" };
     return { ok: true, message: "Пакет готов, отправка ждёт.", href: `/app/opportunities/${id}`, hrefLabel: "Открыть" };
   } catch (e) {
     console.error("apply failed", e);
     refresh(id);
-    return { error: "Не удалось подготовить заявку. Попробуйте ещё раз." };
+    return { error: "Не удалось подготовить заявку. Попробуй ещё раз." };
   }
 }
 
@@ -141,7 +151,7 @@ export async function setAutoApply(enabled: boolean): Promise<{ ok: boolean; ena
   // Server actions are callable with any payload: only a real boolean changes anything.
   if (typeof enabled !== "boolean") return { ok: false, enabled: current.submitApplications, min };
   await db.user.update({ where: { id: user.id }, data: { autonomy: s({ ...raw, submitApplications: enabled, autoApplyMinMatch: min }) } });
-  await logEvent(user.id, "autonomy", enabled ? `Auto-apply включён: Match ≥ ${min}%` : "Auto-apply выключен: агент подаёт только на отмеченные вами вакансии");
+  await logEvent(user.id, "autonomy", enabled ? `Auto-apply включён: Match ≥ ${min}%` : "Auto-apply выключен: агент подаёт только на вакансии, отмеченные тобой");
   revalidatePath("/app", "layout");
   return { ok: true, enabled, min };
 }

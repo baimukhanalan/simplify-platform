@@ -147,7 +147,7 @@ export function DebriefTab({ iv, debrief }: Props) {
               <CopyButton text={debrief.followUpEmail} label="Копировать" />
             </div>
             <pre tabIndex={0} aria-label="Текст thank-you письма" className="scroll-thin max-h-72 overflow-auto whitespace-pre-wrap rounded-2xl border border-line bg-white/60 p-4 font-sans text-[13.5px] leading-relaxed text-ink-2 focus-visible:outline-2 focus-visible:outline-green">{debrief.followUpEmail}</pre>
-            <p className="text-[12px] text-ink-4">Отправь со своей почты в течение 24 часов.</p>
+            <p className="text-[12px] text-ink-3">Отправь со своей почты в течение 24 часов.</p>
           </Card>
         )}
       </div>

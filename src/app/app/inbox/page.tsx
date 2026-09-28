@@ -6,12 +6,12 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { simulateEmployers } from "@/lib/actions/campaign";
 import { demoToolsEnabled } from "@/lib/demo";
-import { INBOX_CLASS, ago, fmtDate, fmtDateTime, statusLabel } from "@/lib/ops";
+import { INBOX_CLASS, ago, fmtDate, fmtDateTime } from "@/lib/ops";
 import { ButtonLink, Chip, Empty, PageHeader, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { PasteEmail } from "./_components/paste-email";
 import { AgentStatus, type Need } from "../../_components/agent-status";
-import { plural } from "../../_components/ru";
+import { plural, statusRu } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Responses" };
 
@@ -19,11 +19,11 @@ type SP = Record<string, string | string[] | undefined>;
 
 const FILTERS = [
   { key: "", label: "Все" },
-  { key: "interview", label: "Interview" },
-  { key: "assessment", label: "Assessment" },
-  { key: "offer", label: "Offer" },
-  { key: "rejection", label: "Declined" },
-  { key: "confirmation", label: "Received" },
+  { key: "interview", label: "Интервью" },
+  { key: "assessment", label: "Тестовые" },
+  { key: "offer", label: "Офферы" },
+  { key: "rejection", label: "Отказы" },
+  { key: "confirmation", label: "Получено" },
 ] as const;
 
 const load = (userId: string, cls: string) =>
@@ -54,7 +54,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
   const cls = typeof sp.c === "string" && INBOX_CLASS[sp.c] ? sp.c : "";
   const user = await requireUser();
 
-  const [messages, counts, sampleOpp] = await Promise.all([
+  const [messages, counts, sampleOpp, upcoming] = await Promise.all([
     load(user.id, cls),
     db.inboxMessage.groupBy({ by: ["classification"], where: { userId: user.id }, _count: true }),
     db.opportunity.findFirst({
@@ -62,28 +62,36 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
       orderBy: { status: "desc" },
       select: { job: { select: { company: true, title: true } } },
     }),
+    db.interview.findMany({
+      where: { userId: user.id, status: "upcoming" },
+      orderBy: { scheduledAt: "asc" },
+      select: { id: true, round: true, scheduledAt: true, opportunity: { select: { job: { select: { company: true } } } } },
+    }),
   ]);
   const count = (k: string) => (k ? counts.find((c) => c.classification === k)?._count ?? 0 : counts.reduce((a, c) => a + c._count, 0));
   const total = count("");
   const demo = demoToolsEnabled(user);
 
-  // What in the mail still needs the user: an offer awaiting a decision, an interview/assessment still ahead.
+  // What in the mail still needs the user: offers awaiting a decision, then every interview/assessment still ahead.
   const needs: Need[] = [];
   for (const m of messages) {
-    if (needs.length >= 3) break;
     const o = m.opportunity;
-    if (!o) continue;
-    if (m.classification === "offer" && o.status === "offer") needs.push({ text: `Оффер от ${o.job.company} ждёт твоего решения`, href: "/app/offers" });
-    else if (m.classification === "interview" || m.classification === "assessment") {
-      const iv = o.interviews.find((i) => (m.classification === "assessment" ? i.round === "assessment" : i.round !== "assessment") && i.status === "upcoming");
-      if (iv) needs.push({ text: `${m.classification === "assessment" ? "Assessment" : "Интервью"} — ${o.job.company}: подготовься`, href: `/app/interviews/${iv.id}` });
-    }
+    if (o && m.classification === "offer" && o.status === "offer") needs.push({ text: `Оффер от ${o.job.company} ждёт твоего решения`, href: "/app/offers" });
+  }
+  for (const iv of upcoming) {
+    const company = iv.opportunity.job.company;
+    const when = iv.scheduledAt ? (iv.round === "assessment" ? ` · до ${fmtDate(iv.scheduledAt)}` : ` · ${fmtDateTime(iv.scheduledAt)}`) : "";
+    needs.push({ text: `${iv.round === "assessment" ? "Тестовое задание" : "Интервью"} — ${company}${when}: подготовься`, href: `/app/interviews/${iv.id}` });
   }
   const uniqueNeeds = needs.filter((n, i) => needs.findIndex((x) => x.text === n.text) === i);
 
   // Confirmations are reassurance, not news: fold them into one line unless explicitly filtered.
-  const main = cls ? messages : messages.filter((m) => m.classification !== "confirmation");
+  // Declines read the same every time: two or more collapse into one group (one row per application).
+  const rejections = cls ? [] : messages.filter((m) => m.classification === "rejection");
+  const groupRejections = rejections.length > 1;
+  const main = cls ? messages : messages.filter((m) => m.classification !== "confirmation" && !(groupRejections && m.classification === "rejection"));
   const folded = cls ? [] : messages.filter((m) => m.classification === "confirmation");
+  const declined = groupRejections ? rejections.filter((m, i) => !m.opportunityId || rejections.findIndex((x) => x.opportunityId === m.opportunityId) === i) : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -126,6 +134,27 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
       ) : (
         <ul className="flex flex-col gap-3">
           {main.map((m) => <li key={m.id}><ResponseCard m={m} /></li>)}
+          {declined.length > 0 && (
+            <li>
+              <details className="group glass !rounded-2xl !bg-white/45">
+                <summary className="flex min-h-10 cursor-pointer list-none items-center gap-3 px-5 py-4 text-[14px] text-ink-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+                  <span className="grid size-8 shrink-0 place-items-center rounded-full bg-rose-soft text-rose"><MailX className="size-4" strokeWidth={1.7} aria-hidden /></span>
+                  <span className="flex-1"><span className="num text-head">{declined.length}</span> {plural(declined.length, ["отказ", "отказа", "отказов"])}. Simplify сам поменял статусы и учтёт их при выборе следующих вакансий.</span>
+                  <span className="shrink-0 text-[12.5px] text-teal"><span className="group-open:hidden">Показать</span><span className="hidden group-open:inline">Скрыть</span></span>
+                </summary>
+                <ul className="flex flex-col divide-y divide-line border-t border-line px-5">
+                  {declined.map((m) => (
+                    <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3 text-[13.5px]">
+                      <span className="font-medium text-head">{m.opportunity?.job.company ?? m.fromAddr}</span>
+                      {m.opportunity && <span className="min-w-0 text-ink-3">{m.opportunity.job.title}</span>}
+                      <time dateTime={m.receivedAt.toISOString()} className="ml-auto text-[12px] text-ink-3">{ago(m.receivedAt)}</time>
+                      {m.opportunity && <Link href={`/app/applications/${m.opportunity.id}`} className="inline-flex min-h-10 items-center text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Заявка</Link>}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </li>
+          )}
           {folded.length > 0 && (
             <li>
               <Link href="/app/inbox?c=confirmation" className="glass flex items-center gap-3 !rounded-2xl px-5 py-4 text-[14px] text-ink-2 hover:bg-white focus-visible:outline-2 focus-visible:outline-green">
@@ -143,8 +172,8 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
         <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4 text-[13.5px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
           <span className="label !text-[10px]">Инструменты</span>
           <span>{demo ? "Вставить письмо вручную · демо-симуляция ответов" : "Вставить письмо вручную"}</span>
-          <span className="ml-auto font-mono text-[11px] text-ink-4 group-open:hidden">показать</span>
-          <span className="ml-auto hidden font-mono text-[11px] text-ink-4 group-open:inline">скрыть</span>
+          <span className="ml-auto font-mono text-[11px] text-ink-3 group-open:hidden">показать</span>
+          <span className="ml-auto hidden font-mono text-[11px] text-ink-3 group-open:inline">скрыть</span>
         </summary>
         <div className="flex flex-col gap-6 border-t border-line px-5 pb-6 pt-5">
           <div className="flex flex-col gap-2">
@@ -168,12 +197,12 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
 }
 
 const CARD: Record<string, { icon: LucideIcon; eyebrow: string; tone: "green" | "amber" | "rose" | "neutral" | "teal" }> = {
-  interview: { icon: Mic, eyebrow: "Interview", tone: "green" },
-  assessment: { icon: ClipboardCheck, eyebrow: "Assessment", tone: "amber" },
-  offer: { icon: BadgeDollarSign, eyebrow: "Offer", tone: "green" },
-  rejection: { icon: MailX, eyebrow: "Declined", tone: "rose" },
-  confirmation: { icon: Mail, eyebrow: "Received", tone: "neutral" },
-  info: { icon: Mail, eyebrow: "Info", tone: "teal" },
+  interview: { icon: Mic, eyebrow: "Интервью", tone: "green" },
+  assessment: { icon: ClipboardCheck, eyebrow: "Тестовое задание", tone: "amber" },
+  offer: { icon: BadgeDollarSign, eyebrow: "Оффер", tone: "green" },
+  rejection: { icon: MailX, eyebrow: "Отказ", tone: "rose" },
+  confirmation: { icon: Mail, eyebrow: "Получено", tone: "neutral" },
+  info: { icon: Mail, eyebrow: "Инфо", tone: "teal" },
   unknown: { icon: Mail, eyebrow: "Письмо", tone: "neutral" },
 };
 
@@ -198,7 +227,7 @@ function ResponseCard({ m }: { m: Msg }) {
           <div className="flex flex-wrap items-center gap-2">
             <Chip tone={meta.tone} dot={big}>{meta.eyebrow}</Chip>
             {m.simulated && <span className="font-mono text-[9.5px] uppercase tracking-[.06em] text-amber">демо</span>}
-            <time dateTime={m.receivedAt.toISOString()} className="ml-auto shrink-0 text-[12px] text-ink-4">{ago(m.receivedAt)}</time>
+            <time dateTime={m.receivedAt.toISOString()} className="ml-auto shrink-0 text-[12px] text-ink-3">{ago(m.receivedAt)}</time>
           </div>
           <h2 id={titleId} className={cx(big ? "h-serif text-[22px] sm:text-[24px]" : "text-[15px] text-head")}>
             {m.classification === "interview" && <>Интервью с {company}</>}
@@ -208,7 +237,7 @@ function ResponseCard({ m }: { m: Msg }) {
             {m.classification === "confirmation" && <>{company} получили заявку</>}
             {!["interview", "assessment", "offer", "rejection", "confirmation"].includes(m.classification) && m.subject}
           </h2>
-          {o && <p className="text-[13.5px] text-ink-3">{o.job.title} · сейчас: {statusLabel(o.status)}</p>}
+          {o && <p className="text-[13.5px] text-ink-3">{o.job.title} · сейчас: {statusRu(o.status).toLowerCase()}</p>}
           {!o && <p className="text-[13px] text-amber">Не связано с заявкой — компания не найдена среди твоих заявок.</p>}
         </div>
       </div>
@@ -229,12 +258,12 @@ function ResponseCard({ m }: { m: Msg }) {
         <div className="flex flex-wrap items-center gap-2">
           {m.classification === "interview" && booking && (
             <a href={booking} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center gap-2 rounded-full bg-cta px-5 text-[14.5px] font-medium text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">
-              Book interview<ExternalLink className="size-4" aria-hidden /><span className="sr-only"> (откроется в новой вкладке)</span>
+              Записаться на интервью<ExternalLink className="size-4" aria-hidden /><span className="sr-only"> (откроется в новой вкладке)</span>
             </a>
           )}
           {m.classification === "interview" && iv && <ButtonLink href={`/app/interviews/${iv.id}`} variant={booking ? "glass" : "primary"}>Prepare<ArrowRight className="size-4" aria-hidden /></ButtonLink>}
-          {m.classification === "assessment" && iv && <ButtonLink href={`/app/interviews/${iv.id}`}>Start preparation<ArrowRight className="size-4" aria-hidden /></ButtonLink>}
-          {m.classification === "offer" && <ButtonLink href="/app/offers">Review offer<ArrowRight className="size-4" aria-hidden /></ButtonLink>}
+          {m.classification === "assessment" && iv && <ButtonLink href={`/app/interviews/${iv.id}`}>Подготовиться<ArrowRight className="size-4" aria-hidden /></ButtonLink>}
+          {m.classification === "offer" && <ButtonLink href="/app/offers">Посмотреть оффер<ArrowRight className="size-4" aria-hidden /></ButtonLink>}
           {!iv && m.classification !== "offer" && o && <ButtonLink href={`/app/opportunities/${o.id}`} variant="glass">Открыть заявку</ButtonLink>}
         </div>
       )}

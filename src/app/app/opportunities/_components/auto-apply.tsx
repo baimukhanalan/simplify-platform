@@ -11,7 +11,15 @@ import { setAutoApply } from "@/lib/actions/opportunities";
  * sent by the agent, so the status line says so instead of claiming the agent applies. Optimistic; reverts on failure.
  */
 export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; min: number; consent: boolean }) {
-  const [on, setOn] = useOptimistic(enabled);
+  // `saved` = what the server confirmed; the optimistic value falls back to it when the transition ends, so a refused
+  // save ({ ok: false }) or a thrown one flips the switch back instead of showing a state that was never stored.
+  const [saved, setSaved] = useState(enabled);
+  const [prevProp, setPrevProp] = useState(enabled);
+  if (enabled !== prevProp) {
+    setPrevProp(enabled);
+    setSaved(enabled);
+  }
+  const [on, setOn] = useOptimistic(saved);
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
 
@@ -21,9 +29,11 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
     start(async () => {
       setOn(next);
       try {
-        await setAutoApply(next);
+        const r = await setAutoApply(next);
+        setSaved(r.enabled);
+        if (!r.ok) setError("Не удалось сохранить — переключатель вернулся в прежнее положение. Попробуй ещё раз.");
       } catch {
-        setError("Не удалось сохранить. Попробуй ещё раз.");
+        setError("Не удалось сохранить — переключатель вернулся в прежнее положение. Попробуй ещё раз.");
       }
     });
   };

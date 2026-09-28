@@ -41,7 +41,7 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
           eyebrow="Offer Desk"
           title={<>Offer <Script>Desk</Script></>}
           sub="Когда придёт оффер, здесь появятся разбор компенсации, сравнение с рынком и Negotiation Assistant."
-          actions={<ButtonLink href="#add-offer" variant="glass" size="sm"><Plus className="size-4" strokeWidth={1.7} aria-hidden />Добавить оффер</ButtonLink>}
+          actions={<ButtonLink href="#add-offer" variant="glass" size="sm" className="!h-10"><Plus className="size-4" strokeWidth={1.7} aria-hidden />Добавить оффер</ButtonLink>}
         />
       )}
       {open.length > 0 && <h1 className="sr-only">Offer Desk</h1>}

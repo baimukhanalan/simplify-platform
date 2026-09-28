@@ -23,7 +23,7 @@ export function ClosedOffer({ offer: o }: { offer: Offer }) {
           <span className="num text-[18px] leading-tight text-head">{c.money(c.base)}</span>
         </div>
         {accepted && (
-          <Link href="/app/hired" className="inline-flex h-9 items-center gap-1 rounded-full px-3 text-[13px] font-medium text-green transition hover:bg-green-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
+          <Link href="/app/hired" className="inline-flex h-10 items-center gap-1 rounded-full px-3 text-[13px] font-medium text-green transition hover:bg-green-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
             HIRED<ArrowUpRight className="size-3.5" strokeWidth={1.8} aria-hidden />
           </Link>
         )}

@@ -12,9 +12,9 @@ import { BackLink, FieldErr, FormAlert } from "./shared";
 type Goal = { primaryRole: string; seniority: string; minSalary: number; countries: string[]; workModes: string[]; relocation: boolean; industries: string[] };
 
 export const REGION_CHIPS: [string, string][] = [
-  ["EU", "Europe"], ["US", "US"], ["UK", "UK"], ["CA", "Canada"], ["WORLD", "Remote worldwide"], ["KZ", "Kazakhstan"], ["CIS", "СНГ"], ["MENA", "ОАЭ / MENA"],
+  ["EU", "Европа"], ["US", "США"], ["UK", "Великобритания"], ["CA", "Канада"], ["WORLD", "Удалённо"], ["KZ", "Казахстан"], ["CIS", "СНГ"], ["MENA", "Ближний Восток"],
 ];
-const MODES: [string, string][] = [["remote", "Remote"], ["hybrid", "Hybrid"], ["onsite", "Onsite"]];
+const MODES: [string, string][] = [["remote", "Удалённо"], ["hybrid", "Гибрид"], ["onsite", "Офис"]];
 
 export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggestions }: { initial: Goal; note?: string; years: number; suggestedSeniority: string; roleSuggestions: string[] }) {
   const { state, pending, formAction, onSubmit } = useActionForm<FormState>(saveGoal, undefined);
@@ -98,7 +98,7 @@ export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggest
               {sal > 0 && sal <= range.mid && <span className="text-green"> · реалистично</span>}
             </span>
           </div>
-          <Toggle name="relocation" defaultChecked={initial.relocation} title="Готов(а) к переезду" hint="Иначе onsite за рубежом не рассматриваем" />
+          <Toggle name="relocation" defaultChecked={initial.relocation} title="Переезд возможен" hint="Иначе onsite за рубежом не рассматриваем" />
         </div>
         {initial.industries.map((x) => <input key={x} type="hidden" name="industries" value={x} />)}
       </section>

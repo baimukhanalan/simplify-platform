@@ -81,7 +81,7 @@ describe("matching.scoreJob", () => {
   test("soft gaps (missing skills, years, salary) never block", () => {
     const r = scoreJob(
       candidate({ skills: ["Excel"], yearsExperience: 1 }, { minSalary: 5000 }),
-      job({ technologies: ["dbt", "Airflow", "Spark", "Looker"], minYears: 4, salaryMax: 3000 }),
+      job({ technologies: ["dbt", "Airflow", "Spark", "Looker"], minYears: 2, salaryMax: 3000 }), // one year short = a stretch, not a blocker
       NOW,
     );
     assert.deepEqual(r.blockers, []);
@@ -128,7 +128,7 @@ describe("readiness.assessReadiness", () => {
     assert.equal(r.verdict, "unrealistic");
     assert.equal(r.probability, "very_low");
     assert.equal(r.suggestedSeniority, "junior");
-    assert.ok(r.suggestions.some((s) => s.includes("lead")));
+    assert.ok(r.suggestions.some((s) => s.includes("Lead")));
   });
 
   test("matching goal is not unrealistic and score is 0..100", () => {

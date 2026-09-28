@@ -137,7 +137,8 @@ const anonPdf = await new Client("anon").req("GET", `/api/applications/${sub.id}
 check(anonPdf.status === 401, "J3.pdf.401", "signed-out PDF -> 401", anonPdf.status);
 const foreignPdf = await other.req("GET", `/api/applications/${sub.id}/cv`);
 check(foreignPdf.status === 404, "J3.pdf.404", "foreign PDF -> 404", foreignPdf.status);
-const nopkg = await opp({ status: "found" });
+// "Показать версию сейчас" builds a preview package while the role stays "found": pick one without any package.
+const nopkg = await opp({ status: "found", pkg: { is: null } });
 if (nopkg) { const x = await c.req("GET", `/api/applications/${nopkg.id}/cv`); check(x.status === 404, "J3.pdf.nopkg", "PDF for role without package -> 404", x.status); }
 // Cyrillic CV content survives into the PDF? (package text for a KZ user)
 const cyr = /[А-Яа-яЁё]/.test((await db.applicationPackage.findUnique({ where: { opportunityId: sub.id } })).cvText);

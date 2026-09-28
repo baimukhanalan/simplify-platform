@@ -113,9 +113,13 @@ check((await new Client("anon").req("GET", "/api/export")).status === 401, "J8.e
 // Delete account
 r = await c.action("account.deleteAccount", [undefined, form({ confirmEmail: "wrong@x.y" })], { page: "/app/settings" });
 check(r.result?.ok === false && (await db.user.findUnique({ where: { id: uid } })), "J8.delete.wrong", "wrong email -> not deleted", r.result);
+const payIds = (await db.payment.findMany({ where: { userId: uid }, select: { id: true } })).map((p) => p.id);
 r = await c.action("account.deleteAccount", [undefined, form({ confirmEmail: c.email.toUpperCase() })], { page: "/app/settings" });
 check(r.redirect?.startsWith("/") && !(await db.user.findUnique({ where: { id: uid } })), "J8.delete", "account deleted + redirect", r.redirect);
-check((await db.payment.count({ where: { userId: uid } })) === 0 && (await db.campaign.count({ where: { userId: uid } })) === 0, "J8.delete.cascade", "payments & campaigns cascade-deleted (note: payment records vanish too)");
+check((await db.campaign.count({ where: { userId: uid } })) === 0, "J8.delete.cascade", "campaigns cascade-deleted with the account");
+// Payments are accounting records: kept, detached from the deleted user (userId -> null, campaignId -> null).
+const kept = await db.payment.findMany({ where: { id: { in: payIds } }, select: { userId: true, campaignId: true, status: true } });
+check(payIds.length > 0 && kept.length === payIds.length && kept.every((p) => p.userId === null && p.campaignId === null), "J8.delete.payments.kept", "payment rows survive account deletion with userId = null", { before: payIds.length, kept });
 const after = await c.get("/app");
 check(after.status === 307 && /\/login/.test(after.location ?? ""), "J8.delete.session", "session cleared -> /login", `${after.status} ${after.location}`);
 // stale JWT of a deleted user

@@ -6,6 +6,8 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card, Chip, Empty, Label, PageHeader, Script, Stat, cx } from "@/components/ui";
 import { fmtKzt } from "@/lib/engine/taxonomy";
+import { activationBlocked, countsAsRevenue, type PaymentMeta } from "@/lib/payments/kaspi";
+import { j } from "@/lib/db";
 import { CopyButton } from "../app/interviews/_components/copy-button";
 
 export const metadata = { title: "Partners" };
@@ -16,19 +18,23 @@ const K_ANON = 3;
 async function partnerStats(code: string) {
   const [signups, pays, campaigns] = await Promise.all([
     db.user.findMany({ where: { referredByCode: code }, select: { createdAt: true } }),
-    db.payment.findMany({ where: { partnerCode: code, status: "paid" }, select: { amount: true, partnerCut: true, createdAt: true, campaignId: true } }),
+    db.payment.findMany({ where: { partnerCode: code, status: "paid" }, select: { amount: true, partnerCut: true, createdAt: true, campaignId: true, provider: true, status: true, meta: true } }),
     db.campaign.findMany({
       where: { user: { referredByCode: code }, status: { not: "draft" } },
       select: { status: true, _count: { select: { opportunities: { where: { interviews: { some: { round: { not: "assessment" } } } } } } } },
     }),
   ]);
-  const revenue = pays.reduce((a, p) => a + p.amount, 0);
-  const share = pays.reduce((a, p) => a + p.partnerCut, 0);
+  // Conversions keep attribution analytics (test-gateway included) but not payments refunded in full;
+  // money (revenue, share) counts only real, kept payments.
+  const converted = pays.filter((p) => !activationBlocked(j<PaymentMeta>(p.meta, {})));
+  const real = pays.filter(countsAsRevenue);
+  const revenue = real.reduce((a, p) => a + p.amount, 0);
+  const share = real.reduce((a, p) => a + p.partnerCut, 0);
   return {
     signups: signups.length,
     signupDates: signups.map((s) => s.createdAt),
-    paid: new Set(pays.map((p) => p.campaignId ?? p.createdAt.toISOString())).size,
-    payDates: pays.map((p) => p.createdAt),
+    paid: new Set(converted.map((p) => p.campaignId ?? p.createdAt.toISOString())).size,
+    payDates: converted.map((p) => p.createdAt),
     revenue,
     share,
     campaigns: campaigns.length,
@@ -133,7 +139,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
                 Показываем результаты, когда наберётся не меньше {K_ANON} кампаний — так ни одного пользователя нельзя узнать по цифрам. Сейчас: {stats.campaigns}.
               </p>
             )}
-            <p className="mt-4 flex gap-2 text-[12px] text-ink-4">
+            <p className="mt-4 flex gap-2 text-[12px] text-ink-3">
               <Info className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.7} />
               Только агрегаты. Имена, email, CV и переписка приведённых пользователей партнёру недоступны.
             </p>

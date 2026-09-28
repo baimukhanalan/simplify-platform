@@ -71,14 +71,16 @@ const CITIZENSHIP_OPTIONS: ChatOption[] = [
   { value: "KZ", label: "Казахстан" }, { value: "UZ", label: "Узбекистан" }, { value: "KG", label: "Кыргызстан" }, { value: "RU", label: "Россия" },
   { value: "BY", label: "Беларусь" }, { value: "UA", label: "Украина" }, { value: "AM", label: "Армения" }, { value: "GE", label: "Грузия" }, { value: "AZ", label: "Азербайджан" },
 ];
+/** Ownership of a role, one naming everywhere (the Profile chip uses the same three words). */
+export const OWNERSHIP_LABEL: Record<string, string> = { led: "Самостоятельно", contributed: "Участие", executed: "Исполнение" };
 const OWNERSHIP_OPTIONS: ChatOption[] = [
-  { value: "led", label: "Вёл(а) сам(а) и принимал(а) решения" },
-  { value: "contributed", label: "Был(а) важной частью команды" },
-  { value: "executed", label: "Выполнял(а) поставленные задачи" },
+  { value: "led", label: OWNERSHIP_LABEL.led },
+  { value: "contributed", label: OWNERSHIP_LABEL.contributed },
+  { value: "executed", label: OWNERSHIP_LABEL.executed },
 ];
 const ENGLISH_OPTIONS: ChatOption[] = ["A2", "B1", "B2", "C1", "C2"].map((v) => ({ value: v, label: v }));
 const RELOCATION_OPTIONS: ChatOption[] = [
-  { value: "yes", label: "Да, готов(а) переехать" },
+  { value: "yes", label: "Да, переезд возможен" },
   { value: "remote", label: "Нет, только remote" },
   { value: "local", label: "Нет, остаюсь в своём городе" },
 ];
@@ -96,7 +98,9 @@ type ChatUser = {
 /** The agent's questions, in order, with whatever the user already answered. Pure: the same list validates answers on the server. */
 export function buildChatTurns(u: ChatUser): ChatTurn[] {
   const turns: ChatTurn[] = [];
-  const saved = (question: string, factId: string | null = null) => u.miniAnswers.find((a) => a.question === question && (a.factId ?? null) === factId)?.answer ?? null;
+  // Answers are stored under the question text; `legacy` finds answers saved under an earlier wording of the same question.
+  const saved = (question: string, factId: string | null = null, legacy?: string) =>
+    u.miniAnswers.find((a) => (a.question === question || (legacy != null && a.question === legacy)) && (a.factId ?? null) === factId)?.answer ?? null;
   const work = u.facts
     .filter((f) => f.kind === "employment" || f.kind === "project")
     .sort((a, b) => Number(a.kind === "project") - Number(b.kind === "project") || a.createdAt.getTime() - b.createdAt.getTime())
@@ -109,9 +113,9 @@ export function buildChatTurns(u: ChatUser): ChatTurn[] {
     if (!f.metrics || m !== null) {
       turns.push({ id: `metric:${f.id}`, factId: f.id, prompt: mq, hint: "Было → стало, в цифрах. Например: «конверсия 18% → 26%» или «отчёт за 4 часа вместо 3 дней».", kind: "text", placeholder: "Например: выручка +15% за квартал", answer: m ?? (f.metrics || null) });
     }
-    const oq = `А в ${where} ты сам(а) принимал(а) решения или работал(а) по задачам команды?`;
-    const o = saved(oq, f.id);
-    if (!f.ownership || o !== null) turns.push({ id: `own:${f.id}`, factId: f.id, prompt: oq, kind: "choice", options: OWNERSHIP_OPTIONS, answer: o ?? (f.ownership || null) });
+    const oq = `Какой была твоя роль в ${where}?`;
+    const o = saved(oq, f.id, `А в ${where} ты сам(а) принимал(а) решения или работал(а) по задачам команды?`);
+    if (!f.ownership || o !== null) turns.push({ id: `own:${f.id}`, factId: f.id, prompt: oq, hint: "Самостоятельно — решения за тобой. Участие — важная часть команды. Исполнение — задачи ставили другие.", kind: "choice", options: OWNERSHIP_OPTIONS, answer: o ?? (f.ownership || null) });
   }
 
   const cq = "Какое у тебя гражданство?";
@@ -123,8 +127,8 @@ export function buildChatTurns(u: ChatUser): ChatTurn[] {
     turns.push({ id: `auth:${r}`, prompt: q, hint: "ВНЖ, рабочая виза, Blue Card, green card или гражданство.", kind: "choice", options: [{ value: "yes", label: "Да, есть" }, { value: "no", label: "Нет, нужна виза" }], answer: saved(q) });
   }
 
-  const rq = "Готов(а) к переезду, если компания поможет с релокацией?";
-  turns.push({ id: "relocation", prompt: rq, kind: "choice", options: RELOCATION_OPTIONS, answer: saved(rq) });
+  const rq = "Рассматриваешь переезд, если компания поможет с релокацией?";
+  turns.push({ id: "relocation", prompt: rq, kind: "choice", options: RELOCATION_OPTIONS, answer: saved(rq, null, "Готов(а) к переезду, если компания поможет с релокацией?") });
   const eq = "Какой у тебя уровень английского?";
   turns.push({ id: "english", prompt: eq, hint: "Честно — на интервью это всё равно проверят.", kind: "choice", options: ENGLISH_OPTIONS, answer: saved(eq), suggested: u.profile?.englishLevel });
   const nq = "Когда сможешь выйти на новую работу?";

@@ -91,7 +91,14 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
     setPassword(DEMO.password);
     setTouched({});
     setDemoHint(true);
-    requestAnimationFrame(() => submitRef.current?.focus());
+    // «Войти в демо» fills the form (so the user sees what happens) and signs in right away.
+    if (pending) return;
+    const fd = new FormData();
+    fd.set("email", DEMO.email);
+    fd.set("password", DEMO.password);
+    fd.set("next", next);
+    if (plan) fd.set("plan", plan);
+    startTransition(() => loginAction(fd));
   };
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
@@ -117,7 +124,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
       <RememberPlan plan={plan} />
 
       <header className="mx-auto flex w-full max-w-[1240px] items-center justify-between gap-3 px-4 py-5 sm:px-8">
-        <Link href="/" aria-label="Simplify — на главную" className="rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
+        <Link href="/" aria-label="Simplify — на главную" className="inline-flex min-h-10 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
         <Link href="/check" className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
           Бесплатный Career Check
         </Link>
@@ -136,7 +143,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
         </section>
 
         {/* Form */}
-        <section className="relative min-w-0 animate-rise [animation-delay:80ms]" aria-labelledby={`${uid}-title`}>
+        <section className={cx("relative min-w-0 animate-rise [animation-delay:80ms]", (intent || plan) && "order-first lg:order-none")} aria-labelledby={`${uid}-title`}>
           {mode === "signup" && <LoopStroke progress={progress} complete={pending} />}
           <div ref={cardRef} className="glass-strong relative p-5 sm:p-8">
 
@@ -172,7 +179,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                 <div className="flex items-baseline justify-between gap-3">
                   <label htmlFor={`${uid}-pw`} className="label">Пароль</label>
                   {mode === "login" && (
-                    <Link href="/reset" className="-my-2 inline-flex min-h-10 items-center rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Забыли пароль?</Link>
+                    <Link href="/reset" className="-my-2 inline-flex min-h-10 items-center rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Не помнишь пароль?</Link>
                   )}
                   {mode === "signup" && password && <span className="label !text-[10px]" aria-live="polite">Надёжность: <span className={cx(pw.score >= 3 ? "text-green" : pw.score === 2 ? "text-amber" : "text-rose")}>{pw.label}</span></span>}
                 </div>
@@ -188,7 +195,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                   />
                   <button
                     type="button" onClick={() => setShowPw((v) => !v)} aria-pressed={showPw} aria-label={showPw ? "Скрыть пароль" : "Показать пароль"}
-                    className="absolute right-1.5 top-1/2 grid size-9 -translate-y-1/2 place-items-center rounded-full text-ink-3 transition-colors hover:bg-mint-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green"
+                    className="absolute right-1 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full text-ink-3 transition-colors hover:bg-mint-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green"
                   >
                     {showPw ? <EyeOff className="size-4" strokeWidth={1.7} /> : <Eye className="size-4" strokeWidth={1.7} />}
                   </button>
@@ -253,7 +260,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
 
               {demoHint && mode === "login" && (
                 <p className="flex items-center gap-2 rounded-2xl bg-amber-soft px-4 py-2.5 text-[12.5px] text-amber animate-fade">
-                  <Sparkles className="size-3.5 shrink-0" />Демо-аккаунт: кампания с тестовыми данными. Нажми «Войти».
+                  <Sparkles className="size-3.5 shrink-0" />Демо-аккаунт: кампания с тестовыми данными. Входим…
                 </p>
               )}
 

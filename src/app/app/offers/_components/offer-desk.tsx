@@ -5,6 +5,8 @@ import { Card, Chip, Field, Label, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { benchmarkOffer, negotiationPlan, type Aggressiveness } from "@/lib/engine/offer";
 import { fxToUsd } from "@/lib/engine/fx";
+import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { regionsRu } from "../../../_components/ru";
 import { markHired } from "@/lib/actions/campaign";
 import { declineOffer, recordFinal, saveNegotiation } from "@/lib/actions/offer";
 import { CopyButton } from "../../interviews/_components/copy-button";
@@ -21,7 +23,8 @@ export const STYLES: { level: Aggressiveness; label: string; hint: string }[] = 
   { level: "assertive", label: "Aggressive", hint: "уверенно" },
 ];
 
-const ordinal = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][n % 10] ?? "th"}`;
+/** Russian ordinal in the prepositional case: 30 → "30-м". */
+const ordinal = (n: number) => `${n}-м`;
 
 type Props = { offer: Offer; level: Aggressiveness; roleFamily: string; seniority: string; regions: string[]; strengths: string[]; name: string };
 
@@ -127,7 +130,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
               ["Notice", o.noticePeriod || "—"],
             ] as const).map(([kk, v]) => (
               <div key={kk} className="flex min-w-0 flex-col">
-                <dt className="text-ink-4">{kk}</dt>
+                <dt className="text-ink-3">{kk}</dt>
                 <dd className="truncate text-head" title={v}>{v}</dd>
               </div>
             ))}
@@ -140,7 +143,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
 
         <Card className="flex animate-rise flex-col" style={{ animationDelay: "120ms" }}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <Label>Salary Benchmark</Label>
+            <Label>Сравнение с рынком</Label>
             <Chip tone={negotiate ? "amber" : "green"} dot>{negotiate ? "Negotiate" : "Accept / at market"}</Chip>
           </div>
           <p className="flex flex-col gap-0.5 rounded-2xl border border-line bg-white/60 px-4 py-3.5 text-[14.5px] leading-relaxed text-ink-2 sm:block">
@@ -159,8 +162,8 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
             Оффер на <span className="num text-head">{ordinal(bm.percentile)}</span> перцентиле рынка
             {bm.gap > 0 ? <> · до медианы <span className="num text-head">{k(Math.round(bm.gap / fx))}</span></> : null}.
           </p>
-          <p className="mt-auto pt-4 text-[12px] text-ink-4">
-            Оценка модели: {seniority}, {regions.join(", ") || "WORLD"}{o.currency !== "USD" ? `, пересчёт по примерному курсу ${o.currency}→USD` : ""}. Ориентир, а не гарантия.
+          <p className="mt-auto pt-4 text-[12px] text-ink-3">
+            Рынок для уровня {SENIORITY_LABEL[seniority] ?? seniority} · {regionsRu(regions) || "весь мир"}{o.currency !== "USD" ? ` · пересчёт по примерному курсу ${o.currency} → USD` : ""}. Ориентир, а не гарантия.
           </p>
         </Card>
       </div>
@@ -168,7 +171,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
       {/* ── Decision: one block with all three outcomes ───────── */}
       <div id={ids.decide} className="scroll-mt-24 rounded-[24px] bg-[#0c1512] px-5 py-7 text-white sm:px-8" role="group" aria-labelledby={`${ids.decide}-h`}>
         <span className="font-mono text-[10.5px] uppercase tracking-[.12em] text-[#8fc7ad]">Решение</span>
-        <h3 id={`${ids.decide}-h`} className="h-serif mt-2 text-[clamp(24px,3vw,34px)] !text-white">Ready to say <span className="script !text-[#7fe3b6]">yes</span>?</h3>
+        <h3 id={`${ids.decide}-h`} className="h-serif mt-2 text-[clamp(24px,3vw,34px)] !text-white">Принимаем <span className="script !text-[#7fe3b6]">оффер</span>?</h3>
         <p className="mt-2 max-w-2xl text-[14px] text-white/65">
           {negotiate
             ? <>Оффер ниже медианы рынка — есть смысл сначала поторговаться. Когда условия устроят, прими оффер здесь.</>
@@ -264,7 +267,7 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           <div>
-            <div className="label mb-2.5">Talking points · что сказать</div>
+            <div className="label mb-2.5">Аргументы</div>
             <ul className="flex flex-col gap-2">
               {plan.args.map((a) => (
                 <li key={a} className="flex gap-2.5 text-[14px] text-ink-2"><Check className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />{a}</li>
@@ -302,7 +305,7 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
               <textarea name="notes" rows={2} defaultValue={saved.notes ?? ""} className="field resize-y" placeholder="Что ответил рекрутер, дедлайны" />
             </Field>
             <div className="flex flex-wrap items-center gap-3">
-              <SubmitButton size="sm" variant="glass" pendingText="Сохраняем…">Сохранить план · {label}</SubmitButton>
+              <SubmitButton size="sm" variant="glass" pendingText="Сохраняем…" className="!h-10">Сохранить план · {label}</SubmitButton>
               {saved.savedAt && (
                 <span className={cx("text-[12px]", saved.level === level ? "text-green" : "text-ink-3")}>
                   Сохранён {new Date(saved.savedAt).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short" })}

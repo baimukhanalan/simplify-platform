@@ -15,7 +15,7 @@ const VERDICT = {
   stretch: { label: "Реалистично с усилением", tone: "teal" as const, head: ["Цель", "достижима", "— с усилением"] },
   unrealistic: { label: "Цель пока нереалистична", tone: "rose" as const, head: ["Цель пока", "далеко", "— но путь есть"] },
 };
-const PROB: Record<string, string> = { high: "высокая", medium: "средняя", low: "низкая", very_low: "очень низкая" };
+const PROB: Record<string, string> = { high: "высокий", medium: "средний", low: "низкий", very_low: "очень низкий" };
 const ELIG = {
   eligible: { label: "Eligible", tone: "green" as const, note: "Нет жёстких блокеров — можно подаваться" },
   soft: { label: "Soft gaps", tone: "amber" as const, note: "Можно подаваться, но есть пробелы" },
@@ -32,7 +32,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
 
   return (
     <div className="min-h-dvh overflow-x-clip">
-      <SiteHeader right={<><ButtonLink href="/check" variant="ghost" size="sm" className="hidden sm:inline-flex">Проверить другое CV</ButtonLink><ButtonLink href="/login?mode=signup" size="sm">Start your campaign</ButtonLink></>} />
+      <SiteHeader right={<><ButtonLink href="/check" variant="ghost" size="sm" className="hidden sm:inline-flex">Проверить другое CV</ButtonLink><ButtonLink href="/login?mode=signup" size="sm" className="!h-10">Start your campaign</ButtonLink></>} />
       <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 pb-24 pt-4 sm:px-8 lg:pt-8">
         {/* Summary */}
         <section className="grid items-center gap-6 animate-rise md:grid-cols-[1fr_auto]">

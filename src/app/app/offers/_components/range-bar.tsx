@@ -26,9 +26,9 @@ export function RangeBar({ low, mid, high, offer, target, final, currency }: { l
       </div>
       {/* Bottom scale */}
       <div className="relative mt-2 h-11 text-[11.5px] text-ink-3">
-        <span className="num absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${clampPos(low)}%` }}>{short(low)}<span className="block text-center text-[10px] text-ink-4">p15</span></span>
+        <span className="num absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${clampPos(low)}%` }}>{short(low)}<span className="block text-center text-[10px] text-ink-3">p15</span></span>
         <span className="num absolute -translate-x-1/2 whitespace-nowrap text-green" style={{ left: `${clampPos(mid)}%` }}>{short(mid)}<span className="block text-center text-[10px]">медиана</span></span>
-        <span className="num absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${clampPos(high)}%` }}>{short(high)}<span className="block text-center text-[10px] text-ink-4">p85</span></span>
+        <span className="num absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${clampPos(high)}%` }}>{short(high)}<span className="block text-center text-[10px] text-ink-3">p85</span></span>
       </div>
       {final != null && final !== offer && (
         <p className="mt-1 flex items-center gap-2 text-[12.5px] text-ink-3">

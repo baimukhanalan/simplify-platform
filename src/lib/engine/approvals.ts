@@ -2,7 +2,9 @@ import "server-only";
 // Exception-queue mechanics shared by the approvals screen (resolveApproval) and the Agent screen (saveAutonomy).
 import { db, j, s } from "../db";
 import { agentMaySubmit, readAutonomy, type Autonomy } from "./autonomy";
-import { logEvent, submit, STANDING_KINDS } from "./agent";
+import { dailyUsage, logEvent, submit, STANDING_KINDS } from "./agent";
+import { startOfToday } from "../time";
+import { count } from "../ru";
 import type { Answer } from "./personalize";
 
 /** Replace the matching screening answer inside ApplicationPackage.answers (matched by question text). */
@@ -22,7 +24,8 @@ export async function patchPackageAnswer(opportunityId: string, question: string
 /**
  * After a question of `opportunityId` was answered: when nothing blocking is left, continue with the same rule as the
  * agent cycle — consent (campaign.autoSubmit) + an active, unexpired campaign + the role is allowed (Apply/Auto, or
- * auto-apply on and Match ≥ threshold). Otherwise the package stays prepared for the user to decide.
+ * auto-apply on and Match ≥ threshold) + the campaign's daily limit, counted like runTick: a role prepared today already
+ * holds its slot; an older one needs a free slot today. Otherwise the package stays prepared (the next cycle sends it).
  */
 export async function continueIfReady(opportunityId: string, autonomy: Pick<Autonomy, "submitApplications" | "autoApplyMinMatch">) {
   const opp = await db.opportunity.findUnique({ where: { id: opportunityId }, include: { campaign: true } });
@@ -30,6 +33,8 @@ export async function continueIfReady(opportunityId: string, autonomy: Pick<Auto
   const left = await db.approval.count({ where: { opportunityId, status: "pending", kind: { not: "handoff" } } });
   const live = opp.campaign.status === "active" && (!opp.campaign.endsAt || opp.campaign.endsAt > new Date());
   if (left || opp.status !== "prepared" || !opp.campaign.autoSubmit || !live || !agentMaySubmit(opp, autonomy)) return false;
+  const since = startOfToday();
+  if (opp.updatedAt < since && (await dailyUsage(opp.campaignId, since)) >= opp.campaign.dailyLimit) return false;
   return (await submit(opportunityId)).ok;
 }
 
@@ -66,6 +71,6 @@ export async function answerMatchingApprovals(
   const autonomy = readAutonomy(user?.autonomy);
   let sent = 0;
   for (const id of touched) if (await continueIfReady(id, autonomy)) sent++;
-  await logEvent(userId, "approval", `Тот же ответ применён ещё к ${n} вопрос(ам)${sent ? `, ${sent} заявк(и) отправлено` : ""}`, null, { kind: opts.kind, answered: n, submitted: sent });
+  await logEvent(userId, "approval", `Тот же ответ применён ещё к ${count(n, ["вопросу", "вопросам", "вопросам"])}${sent ? `, отправлено заявок: ${sent}` : ""}`, null, { kind: opts.kind, answered: n, submitted: sent });
   return n;
 }

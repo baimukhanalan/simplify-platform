@@ -4,6 +4,7 @@ import type { ApplicationPackage } from "@prisma/client";
 import { j } from "@/lib/db";
 import { Card, Chip, Empty, Label } from "@/components/ui";
 import { CopyButton } from "../../_components/copy-button";
+import { cvVersionLabel } from "../../../opportunities/_lib/fit";
 
 type Answer = { q: string; a: string; category?: string; status?: string; kind?: string };
 
@@ -22,7 +23,7 @@ export function SentTab({ pkg, company, submittedAt, opportunityId }: { pkg: App
           </Link>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Chip tone="dark">CV {pkg.cvVersion}</Chip>
+          <Chip tone="dark">{cvVersionLabel(pkg.cvVersion, company)}</Chip>
           <Chip tone={pkg.generatedBy === "claude" ? "green" : "teal"}>{pkg.generatedBy}</Chip>
           <Chip>{method}</Chip>
           {submittedAt && <Chip>{submittedAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short" })}</Chip>}
@@ -32,7 +33,7 @@ export function SentTab({ pkg, company, submittedAt, opportunityId }: { pkg: App
       <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
         <Card>
           <div className="mb-3 flex items-center justify-between gap-3">
-            <h2 className="h-serif text-[22px]">CV · {pkg.cvVersion}</h2>
+            <h2 className="h-serif text-[22px]">{cvVersionLabel(pkg.cvVersion, company)}</h2>
             <CopyButton text={pkg.cvText} />
           </div>
           {pkg.summary && <p className="mb-3 border-l-2 border-green/40 pl-3 text-[14px] italic text-ink-2">{pkg.summary}</p>}

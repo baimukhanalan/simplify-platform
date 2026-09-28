@@ -43,7 +43,7 @@ export const REGIONS: Record<string, { label: string; countries: string[] }> = {
 
 export const SENIORITY = ["intern", "junior", "middle", "senior", "lead"] as const;
 export type Seniority = (typeof SENIORITY)[number];
-export const SENIORITY_LABEL: Record<string, string> = { intern: "Intern", junior: "Junior", middle: "Middle", senior: "Senior", lead: "Lead" };
+export const SENIORITY_LABEL: Record<string, string> = { intern: "Стажёр", junior: "Junior", middle: "Middle", senior: "Senior", lead: "Lead" };
 export const seniorityIndex = (s: string) => Math.max(0, SENIORITY.indexOf(s as Seniority));
 export const seniorityFromYears = (y: number): Seniority => (y < 0.5 ? "intern" : y < 2 ? "junior" : y < 5 ? "middle" : y < 8 ? "senior" : "lead");
 
@@ -78,6 +78,22 @@ export function classifyRole(title: string): string {
   for (const key of order) if (ROLE_FAMILIES[key].keywords.some((k) => t.includes(k))) return key;
   return "other";
 }
+
+/**
+ * One role at one company, regardless of where it is posted: "Growth Analyst (Remote — Europe)" at Arcadia Cloud and
+ * "Growth Analyst" at Arcadia Cloud in Almaty are the same application. Used to never apply twice within a campaign.
+ */
+export function normalizeTitle(title: string): string {
+  return ` ${title.toLowerCase()} `
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, " ") // "(Remote)", "[Berlin]"
+    .replace(/(?<![\p{L}\p{N}])sr\.?(?![\p{L}\p{N}])/gu, " senior ")
+    .replace(/(?<![\p{L}\p{N}])jr\.?(?![\p{L}\p{N}])/gu, " junior ")
+    .replace(/(?<![\p{L}\p{N}])(remote|hybrid|onsite|on-site|m\/f\/d|f\/m\/d|m\/w\/d)(?![\p{L}\p{N}])/gu, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+export const roleKey = (company: string, title: string) => `${company.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim()}|${normalizeTitle(title)}`;
 
 /**
  * Unicode-aware word boundaries. JS `\b` only knows [A-Za-z0-9_], so `\bалматы\b` never matches.

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, ExternalLink, MapPin } from "lucide-react";
-import { requireUser } from "@/lib/auth";
+import { currentUserId, requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { prepareOpportunity } from "@/lib/actions/campaign";
 import { confirmUserSubmitted } from "@/lib/actions/ops";
@@ -17,7 +17,12 @@ import { fitCandidate } from "../_lib/candidate";
 import { cleanRequirement, cvVersionLabel, eligibilityVerdict, interviewChance, risks, whyFits, type Reason } from "../_lib/fit";
 import { experiencePair } from "./_lib/compare";
 
-export const metadata = { title: "Вакансия" };
+/** Tab title = the role; a missing or foreign id gets the 404 title, not «Вакансия». */
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const [{ id }, userId] = await Promise.all([params, currentUserId()]);
+  const o = userId ? await db.opportunity.findFirst({ where: { id, campaign: { userId } }, select: { job: { select: { title: true, company: true } } } }) : null;
+  return { title: o ? `${o.job.title} · ${o.job.company}` : "Страница не найдена" };
+}
 
 const TONE_TEXT = { green: "text-green", teal: "text-teal", amber: "text-amber", rose: "text-rose" } as const;
 
@@ -170,7 +175,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                 )}
               </section>
               <section aria-labelledby="risks-h" className="flex flex-col gap-2.5">
-                <h3 id="risks-h" className="label !text-amber">Risks</h3>
+                <h3 id="risks-h" className="label !text-[#6e4a0b]">Риски</h3>
                 {riskList.length ? (
                   <ul className="flex flex-col gap-1.5 text-[14px] text-ink-2">
                     {riskList.map((r) => <li key={r} className={cx("flex gap-2", fitOpp.blockers.includes(r) && "text-rose")}><AlertTriangle className={cx("mt-0.5 size-4 shrink-0", fitOpp.blockers.includes(r) ? "text-rose" : "text-amber")} strokeWidth={1.8} aria-hidden />{r}</li>)}
@@ -189,7 +194,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                 <Label>CV personalization</Label>
                 <h2 className="h-serif mt-2 text-[24px]">Как агент <Script>адаптировал</Script> CV</h2>
               </div>
-              {pkg && <span className="rounded-full bg-cta px-3 py-1 text-[12px] text-white">{cvVersionLabel(pkg.cvVersion)}</span>}
+              {pkg && <span className="rounded-full bg-cta px-3 py-1 text-[12px] text-white">{cvVersionLabel(pkg.cvVersion, job.company)}</span>}
             </div>
             {pkg ? (
               <div className="flex flex-col gap-5">

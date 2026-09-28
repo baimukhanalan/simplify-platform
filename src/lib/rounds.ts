@@ -5,11 +5,11 @@ export const ROUNDS = ["assessment", ...ROUND_CHAIN] as const;
 export type Round = (typeof ROUNDS)[number];
 
 export const ROUND_LABEL: Record<string, string> = {
-  assessment: "Assessment",
-  recruiter: "Recruiter",
-  hiring_manager: "Hiring Manager",
-  technical: "Technical",
-  final: "Final",
+  assessment: "Тест",
+  recruiter: "Рекрутер",
+  hiring_manager: "Нанимающий менеджер",
+  technical: "Техническое",
+  final: "Финал",
 };
 
 export const ROUND_TONE: Record<string, "amber" | "teal" | "green" | "dark" | "neutral"> = {

@@ -2,11 +2,11 @@ import Link from "next/link";
 import { ChevronDown, LayoutGrid, List } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { currentCampaign, pendingApprovalsCount } from "@/lib/ops-data";
+import { currentCampaign, pendingApprovalsCount, pendingHandoffsCount } from "@/lib/ops-data";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { ButtonLink, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
-import { plural } from "../../_components/ru";
+import { handoffsWaiting, plural, questionsWaiting } from "../../_components/ru";
 import { ApplicationCard, type AppCardData } from "./_components/card";
 
 export const metadata = { title: "Applications" };
@@ -46,13 +46,14 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     );
   }
 
-  const [apps, approvals]: [AppCardData[], number] = await Promise.all([
+  const [apps, approvals, handoffs]: [AppCardData[], number, number] = await Promise.all([
     db.opportunity.findMany({
       where: { campaignId: campaign.id, status: { in: APPLIED_OR_LATER } },
       orderBy: [{ updatedAt: "desc" }],
       select: { id: true, status: true, submittedAt: true, job: { select: { company: true, title: true, source: true } }, pkg: { select: { cvVersion: true } } },
     }),
     pendingApprovalsCount(user.id),
+    pendingHandoffsCount(user.id),
   ]);
 
   if (!apps.length) {
@@ -74,7 +75,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   if (n("offer")) needs.push({ text: `${n("offer")} ${plural(n("offer"), ["оффер ждёт", "оффера ждут", "офферов ждут"])} твоего решения`, href: "/app/offers" });
   if (n("interview")) needs.push({ text: `Подготовься к интервью: ${n("interview")} ${plural(n("interview"), ["заявка", "заявки", "заявок"])} на этапе интервью`, href: "/app/interviews" });
   if (n("assessment")) needs.push({ text: `${n("assessment")} assessment ${plural(n("assessment"), ["ждёт", "ждут", "ждут"])} выполнения`, href: "/app/interviews" });
-  if (approvals) needs.push({ text: `${approvals} ${plural(approvals, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа`, href: "/app/approvals" });
+  if (approvals) needs.push({ text: questionsWaiting(approvals), href: "/app/approvals" });
+  if (handoffs) needs.push({ text: handoffsWaiting(handoffs), href: "/app/approvals#kind-handoff" });
 
   return (
     <div className="flex flex-col gap-5">
@@ -107,9 +109,9 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                 <span className="num rounded-full bg-white/80 px-2 py-0.5 text-[11.5px] text-ink-3">{g.items.length}</span>
               </h2>
               {g.items.length === 0 ? (
-                <div className="grid h-16 place-items-center rounded-2xl border border-dashed border-line text-[12px] text-ink-4">пусто</div>
+                <div className="grid h-16 place-items-center rounded-2xl border border-dashed border-line text-[12px] text-ink-3">пусто</div>
               ) : (
-                <ul className="scroll-thin flex max-h-[64vh] flex-col gap-2 overflow-y-auto pr-0.5">
+                <ul className="scroll-thin flex flex-col gap-2 pr-0.5 lg:max-h-[64vh] lg:overflow-y-auto">
                   {g.items.map((a) => <li key={a.id}><ApplicationCard a={a} showStatus={MULTI.has(g.key)} compact /></li>)}
                 </ul>
               )}

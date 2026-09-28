@@ -6,6 +6,7 @@ import { Card, Chip, Field, Label, cx } from "@/components/ui";
 import { ROLE_FAMILIES, REGIONS, SENIORITY, SENIORITY_LABEL, classifyRole } from "@/lib/engine/taxonomy";
 import { saveGoal } from "@/lib/actions/profile";
 import { ActionForm, FormSubmit } from "../../profile/_components/action-form";
+import { WORK_MODE_RU, regionRu } from "../../../_components/ru";
 
 export type GoalValues = {
   primaryRole: string; extraRoles: string[]; seniority: string; minSalary: number; currency: string; countries: string[];
@@ -14,12 +15,12 @@ export type GoalValues = {
 };
 
 const INDUSTRIES = ["Fintech", "SaaS", "E-commerce", "EdTech", "HealthTech", "AI / ML", "Banking", "Gaming", "Telecom", "Logistics", "Media", "Retail", "Consulting", "GovTech"];
-const WORK_MODES = [["remote", "Remote"], ["hybrid", "Hybrid"], ["onsite", "Onsite"]] as const;
+const WORK_MODES = (["remote", "hybrid", "onsite"] as const).map((k) => [k, WORK_MODE_RU[k]] as const);
 const SIZES = [["any", "Любой"], ["startup", "Стартап"], ["scaleup", "Scale-up"], ["corporate", "Корпорация"]] as const;
 const MODES = [
-  { key: "autonomous", title: "Autonomous", icon: Compass, text: "Агент сам находит вакансии, проверяет Eligibility, ранжирует и подаёт в пределах дневного лимита. Тебя спрашивает только об исключениях: юридические вопросы, зарплата, незнакомые вопросы анкет." },
-  { key: "target", title: "Target Mode", icon: Crosshair, text: "Только компании мечты. Меньше заявок, но каждая глубже: CV и cover letter под конкретную компанию, мониторинг новых позиций. Лучше всего работает при Readiness 70+." },
-  { key: "mass", title: "Mass Hiring lane", icon: Layers, text: "Быстрый параллельный поток в ролях массового найма — support, sales, operations, annotation, QA. Короткие формы и быстрые ответы: первый оффер как страховка, пока основная цель в работе." },
+  { key: "autonomous", title: "Автономный", icon: Compass, text: "Агент сам находит вакансии, проверяет Eligibility, ранжирует и подаёт в пределах дневного лимита. Тебя спрашивает только об исключениях: юридические вопросы, зарплата, незнакомые вопросы анкет." },
+  { key: "target", title: "Точечный", icon: Crosshair, text: "Только компании мечты. Меньше заявок, но каждая глубже: CV и cover letter под конкретную компанию, мониторинг новых позиций. Лучше всего работает при Readiness от 70." },
+  { key: "mass", title: "Массовый найм", icon: Layers, text: "Быстрый параллельный поток в ролях массового найма — support, sales, operations, annotation, QA. Короткие формы и быстрые ответы: первый оффер как страховка, пока основная цель в работе." },
 ] as const;
 
 const CURRENCY_SIGN: Record<string, string> = { USD: "$", EUR: "€" };
@@ -88,7 +89,7 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
           <fieldset>
             <legend className="label mb-2">Регионы *</legend>
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(REGIONS).map(([k, r]) => <Pill key={k} name="countries" value={k} defaultChecked={initial.countries.includes(k)}>{r.label}</Pill>)}
+              {Object.entries(REGIONS).map(([k, r]) => <Pill key={k} name="countries" value={k} defaultChecked={initial.countries.includes(k)}>{regionRu(k) === k ? r.label : regionRu(k)}</Pill>)}
             </div>
           </fieldset>
           <fieldset>
@@ -98,7 +99,7 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
             </div>
           </fieldset>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Toggle name="relocation" defaultChecked={initial.relocation} label="Готов(а) к релокации" />
+            <Toggle name="relocation" defaultChecked={initial.relocation} label="Переезд возможен" />
             <Toggle name="sponsorshipNeeded" defaultChecked={initial.sponsorshipNeeded} label="Нужно визовое спонсорство" hint="Onsite без спонсорства будет заблокирован Eligibility" />
           </div>
         </Card>
@@ -118,7 +119,7 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
             </div>
           </fieldset>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Компании мечты" hint="Через запятую. Обязательны для Target Mode."><textarea name="dreamCompanies" rows={3} defaultValue={initial.dreamCompanies.join(", ")} className="field resize-y" placeholder="Kaspi, Revolut, Wise" /></Field>
+            <Field label="Компании мечты" hint="Через запятую. Обязательны для точечного режима."><textarea name="dreamCompanies" rows={3} defaultValue={initial.dreamCompanies.join(", ")} className="field resize-y" placeholder="Kaspi, Revolut, Wise" /></Field>
             <Field label="Не подавать в" hint="Текущий работодатель, компании из чёрного списка"><textarea name="blockedCompanies" rows={3} defaultValue={initial.blockedCompanies.join(", ")} className="field resize-y" /></Field>
           </div>
         </Card>
@@ -149,25 +150,25 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
         <Card strong className="flex flex-col gap-4">
           <Label>Моя цель</Label>
           <p className="h-serif text-[24px] leading-tight">
-            {v.primaryRole || <span className="text-ink-4">Роль не выбрана</span>}
+            {v.primaryRole || <span className="text-ink-3">Роль не выбрана</span>}
             <span className="text-ink-4"> · </span>
             {SENIORITY_LABEL[v.seniority] ?? cap(v.seniority)}
           </p>
           <SummaryLine text={[
-            v.workModes.map(cap).join(" / ") || "—",
-            v.countries.map((c) => REGIONS[c]?.label ?? c).join(" / ") || "—",
+            v.workModes.map((m) => WORK_MODE_RU[m] ?? cap(m)).join(" / ") || "—",
+            [...new Set(v.countries.map(regionRu))].join(" / ") || "—",
             money(v.minSalary, v.currency),
             v.industries.join(" / "),
           ].filter(Boolean).join(" · ")} />
           <div className="flex flex-wrap gap-1.5">
-            <Chip tone="dark">{MODES.find((m) => m.key === v.mode)?.title ?? "Autonomous"}</Chip>
+            <Chip tone="dark">{MODES.find((m) => m.key === v.mode)?.title ?? "Автономный"}</Chip>
             {v.relocation && <Chip tone="teal">релокация</Chip>}
             {v.sponsorshipNeeded && <Chip tone="amber">нужна виза</Chip>}
             {v.extraRoles.length > 0 && <Chip>+{v.extraRoles.length} ролей</Chip>}
           </div>
           {v.mode === "target" && (
             <p className={cx("text-[12.5px]", v.dreamCompanies.length ? "text-ink-3" : "text-amber")}>
-              {v.dreamCompanies.length ? `Target: ${v.dreamCompanies.slice(0, 4).join(", ")}${v.dreamCompanies.length > 4 ? "…" : ""}` : "Для Target Mode добавьте компании мечты."}
+              {v.dreamCompanies.length ? `Компании: ${v.dreamCompanies.slice(0, 4).join(", ")}${v.dreamCompanies.length > 4 ? "…" : ""}` : "Для точечного режима добавь компании мечты."}
             </p>
           )}
           <FormSubmit size="lg" pendingText="Сохраняем…" className="w-full">Сохранить цель</FormSubmit>

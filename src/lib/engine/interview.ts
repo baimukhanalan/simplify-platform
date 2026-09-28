@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { yearsForEmployer } from "../ops";
 
 // Pure module: safe to import from client components (Copilot runs scaffold() in the browser).
 
@@ -81,7 +82,7 @@ export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite
   let keyNumber = story?.metric || topFact?.metrics || "";
   switch (intent) {
     case "intro":
-      opener = `I'm a ${ctx.role.toLowerCase()} with ${ctx.yearsExperience} years of hands-on experience.`;
+      opener = `I'm a ${ctx.role.toLowerCase()} with ${yearsForEmployer(ctx.yearsExperience) ?? "hands-on project"} of hands-on experience.`;
       bullets = [`Now: ${topFact ? `${topFact.title} at ${topFact.org}` : "current role"}`, `Proof: ${short(keyNumber || topFact?.details.split("\n")[0] || "one concrete result")}`, `Tools: ${ctx.skills.slice(0, 4).join(", ")}`, `Why here: ${ctx.role} at ${ctx.company}`];
       break;
     case "salary":
@@ -114,7 +115,7 @@ export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite
       } else if (topFact) {
         opener = `At ${topFact.org || "my last role"}, …`;
         bullets = [`Context: ${short(topFact.title)}`, `Your part: ${short(topFact.details.split("\n")[0] ?? "")}`, `Result: ${short(topFact.metrics || "state the outcome")}`];
-      } else bullets = ["Pick your strongest verified example", "Your specific action", "Outcome + lesson"];
+      } else bullets = ["Pick your strongest real example", "Your specific action", "Outcome + lesson"];
       if (intent === "behavioral" || intent === "leadership") bullets.push("Close with the lesson learned");
   }
   return { intent, strategy: INTENT_STRATEGY[intent], opener, bullets: bullets.slice(0, 5), keyNumber, storyId: story?.id ?? null };
@@ -145,16 +146,16 @@ export function buildPackHeuristic(ctx: { name: string; role: string; company: s
   const metric = ctx.facts.find((f) => f.metrics)?.metrics;
   const behavioralQs = ["Tell me about a time you had a disagreement with a stakeholder.", "Tell me about a failure and what you learned.", "Describe a project where your work influenced a business decision.", "Tell me about a time you worked under a tight deadline."];
   return {
-    tellMeAboutYourself: `Present: ${top ? `${top.title} at ${top.org}` : ctx.role}, ${ctx.yearsExperience} years with ${ctx.skills.slice(0, 3).join(", ")}.\nPast: how you got here — one pivot, one proof${metric ? ` (${metric})` : ""}.\nFuture: why ${ctx.role} at ${ctx.company} is the logical next step. Keep it 60–90 seconds.`,
+    tellMeAboutYourself: `Present: ${top ? `${top.title} at ${top.org}` : ctx.role}, ${yearsForEmployer(ctx.yearsExperience) ?? "hands-on projects"} with ${ctx.skills.slice(0, 3).join(", ")}.\nPast: how you got here — one pivot, one proof${metric ? ` (${metric})` : ""}.\nFuture: why ${ctx.role} at ${ctx.company} is the logical next step. Keep it 60–90 seconds.`,
     whyCompany: `Name one specific thing about ${ctx.company} (product, market, recent news). Connect it to your experience in ${ctx.skills.slice(0, 2).join(" and ")}. End with what you want to build there.`,
     whyRole: `Map the JD to your proof: ${ctx.technologies.filter((t) => ctx.skills.includes(t)).slice(0, 3).join(", ") || ctx.skills.slice(0, 3).join(", ")}. Mention one requirement you're eager to grow into — honestly.`,
     behavioral: behavioralQs.map((q) => {
       const [s] = retrieveStories(q, ctx.stories, 1);
-      return { question: q, storyTitle: s?.title ?? "Добавьте STAR-историю в профиль", outline: s ? `S: ${s.situation}\nT: ${s.task}\nA: ${s.action}\nR: ${s.result}` : "Нет подходящей подтверждённой истории" };
+      return { question: q, storyTitle: s?.title ?? "Добавь STAR-историю в профиль", outline: s ? `S: ${s.situation}\nT: ${s.task}\nA: ${s.action}\nR: ${s.result}` : "Нет подходящей истории — добавь её в профиль" };
     }),
-    technicalTopics: [...ctx.technologies.slice(0, 4).map((t) => ({ topic: t, why: "Указано в описании вакансии", prep: ctx.skills.includes(t) ? "Повторите 2 рабочих примера и типичные вопросы" : "Нет в профиле — готовьте честный ответ и ближайший аналог" })), ...(ROUND_TOPICS[ctx.round] ?? []).map((t) => ({ topic: t, why: `Типично для раунда ${ctx.round}`, prep: "Подготовьте 1 историю и 1 вопрос" }))],
+    technicalTopics: [...ctx.technologies.slice(0, 4).map((t) => ({ topic: t, why: "Указано в описании вакансии", prep: ctx.skills.includes(t) ? "Повтори 2 рабочих примера и типичные вопросы" : "Нет в профиле — подготовь честный ответ и ближайший аналог" })), ...(ROUND_TOPICS[ctx.round] ?? []).map((t) => ({ topic: t, why: `Типично для раунда ${ctx.round}`, prep: "Подготовь 1 историю и 1 вопрос" }))],
     questionsToAsk: ["What does success look like in the first 90 days?", "What is the biggest challenge the team faces this quarter?", "How does this role work with product/engineering?", "What does the interview process look like from here?", "What do the best people on this team do differently?", `What's ${ctx.company}'s biggest priority for this year?`],
-    redFlags: [ctx.yearsExperience < 2 ? "Не преувеличивайте стаж — говорите о глубине задач" : "Готовьтесь к вопросам о масштабе", "Не называйте цифру зарплаты первым без вилки"],
+    redFlags: [ctx.yearsExperience < 2 ? "Не преувеличивай стаж — говори о глубине задач" : "Готовься к вопросам о масштабе", "Не называй цифру зарплаты первым без вилки"],
   };
 }
 
@@ -184,11 +185,11 @@ export function scoreAnswer(question: string, answer: string, ctx: { skills: str
   const content = Math.min(100, 45 + (hasNumber ? 25 : 0) + relevance * 10 + (/\bi\b|я /i.test(answer) ? 10 : 0));
   const overall = Math.round((content * 0.3 + structure * 0.2 + clarity * 0.15 + lengthScore * 0.15 + confidence * 0.1 + Math.min(100, relevance * 25) * 0.1));
   const tips: string[] = [];
-  if (!hasNumber) tips.push("Добавьте одну цифру результата (было → стало).");
+  if (!hasNumber) tips.push("Добавь одну цифру результата (было → стало).");
   if ((intent === "behavioral" || intent === "leadership") && starScore < 0.75) tips.push(`STAR неполный: не хватает ${Object.entries(star).filter(([, v]) => !v).map(([k]) => k.toUpperCase()).join(", ")}.`);
-  if (n > 220) tips.push("Слишком длинно — уложитесь в 60–120 секунд.");
-  if (n < 40) tips.push("Слишком коротко — раскройте своё конкретное действие.");
-  if (fillers > 2) tips.push(`Слова-паразиты: ${fillers}. Делайте паузу вместо «um/like».`);
-  if (!relevance) tips.push("Свяжите ответ с требованиями вакансии.");
+  if (n > 220) tips.push("Слишком длинно — уложись в 60–120 секунд.");
+  if (n < 40) tips.push("Слишком коротко — раскрой своё конкретное действие.");
+  if (fillers > 2) tips.push(`Слова-паразиты: ${fillers}. Делай паузу вместо «um/like».`);
+  if (!relevance) tips.push("Свяжи ответ с требованиями вакансии.");
   return { overall, content, structure, clarity, length: lengthScore, confidence, fillers, words: n, star, tips, intent };
 }

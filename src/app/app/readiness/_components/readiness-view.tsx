@@ -7,7 +7,7 @@ const BAR: Record<Level, string> = { strong: "bg-green", mid: "bg-teal", weak: "
 const TXT: Record<Level, string> = { strong: "text-green", mid: "text-teal", weak: "text-amber" };
 
 const VERDICT: Record<string, { label: string; tone: "green" | "teal" | "rose" }> = {
-  ready: { label: "Готов к кампании", tone: "green" },
+  ready: { label: "Готово к кампании", tone: "green" },
   stretch: { label: "Реалистично с усилением", tone: "teal" },
   unrealistic: { label: "Цель стоит поправить", tone: "rose" },
 };

@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, Play } from "lucide-react";
-import { requireUser } from "@/lib/auth";
+import { currentUserId, requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Chip, Script, cx } from "@/components/ui";
 import { ROUND_LABEL, ROUND_TONE, IV_STATUS_LABEL, IV_STATUS_TONE } from "@/lib/rounds";
 import { marketRange } from "@/lib/engine/market";
+import { roomReadiness } from "@/lib/engine/interview-readiness";
 import { regionsFor } from "@/lib/regions";
 import type { Pack } from "@/lib/engine/interview";
 import type { Debrief } from "@/lib/actions/interview";
@@ -30,7 +31,11 @@ const TABS = {
 type TabKey = keyof typeof TABS;
 const LEGACY: Record<string, TabKey> = { overview: "brief", pack: "questions" };
 
-export const metadata = { title: "Interview Room" };
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
+  const [{ id }, userId] = await Promise.all([params, currentUserId()]);
+  const iv = userId ? await db.interview.findFirst({ where: { id, userId }, select: { opportunity: { select: { job: { select: { company: true } } } } } }) : null;
+  return { title: iv ? `Interview Room · ${iv.opportunity.job.company}` : "Страница не найдена" };
+}
 
 export default async function InterviewRoom({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
   const [{ id }, sp] = await Promise.all([params, searchParams]);
@@ -78,12 +83,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
     const o = j<{ overall?: number }>(x.feedback, {}).overall;
     return typeof o === "number" ? Math.max(m ?? 0, o) : m;
   }, null);
-  const readiness = [
-    { label: "Match с вакансией", value: iv.opportunity.match, w: 0.45 },
-    { label: "Mock Interview", value: bestMock ?? 40, w: 0.25, hint: bestMock == null ? "ещё не пройден" : "лучший результат" },
-    { label: "STAR-истории", value: Math.min(100, stories.length * 25), w: 0.2, hint: `${stories.length} в библиотеке` },
-    { label: "Brief и ответы", value: pack ? 100 : 60, w: 0.1 },
-  ];
+  const readiness = roomReadiness({ match: iv.opportunity.match, bestMock, stories: stories.length, hasPack: Boolean(pack) });
   const upcoming = iv.status === "upcoming";
   // Debrief is secondary until the call has actually happened.
   const beforeCall = upcoming && (iv.scheduledAt?.getTime() ?? Infinity) > now;
@@ -101,7 +101,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
             <Chip tone={IV_STATUS_TONE[iv.status] ?? "neutral"} dot={upcoming}>{IV_STATUS_LABEL[iv.status] ?? iv.status}</Chip>
           </div>
           <h1 className="h-serif text-[clamp(34px,4.6vw,58px)]">
-            {job.company} <Script>{isAssessment ? "test" : ROUND_LABEL[iv.round]?.toLowerCase() ?? iv.round}</Script>
+            {isAssessment ? <>Тест <Script>{job.company}</Script></> : <>{job.company} <Script>{ROUND_LABEL[iv.round]?.toLowerCase() ?? iv.round}</Script></>}
           </h1>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-ink-2">
             <span>{job.title}</span>
@@ -136,8 +136,8 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
                 aria-current={tab === k ? "page" : undefined}
                 scroll={false}
                 className={cx(
-                  "flex h-9 items-center gap-1.5 rounded-full px-4 text-[13.5px] transition-colors focus-visible:outline-2 focus-visible:outline-green",
-                  tab === k ? "bg-cta text-white shadow-(--shadow-cta)" : k === "debrief" && beforeCall ? "text-ink-4 hover:bg-white/70 hover:text-ink-2" : "text-ink-2 hover:bg-white/70 hover:text-head",
+                  "flex h-10 items-center gap-1.5 rounded-full px-4 text-[13.5px] transition-colors focus-visible:outline-2 focus-visible:outline-green",
+                  tab === k ? "bg-cta text-white shadow-(--shadow-cta)" : k === "debrief" && beforeCall ? "text-ink-3 hover:bg-white/70 hover:text-ink-2" : "text-ink-2 hover:bg-white/70 hover:text-head",
                 )}
               >
                 {isAssessment && k === "mock" ? "Тренировка" : k === "debrief" && beforeCall ? (isAssessment ? "После теста" : "После звонка") : TABS[k]}

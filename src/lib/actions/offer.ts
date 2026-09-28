@@ -1,12 +1,12 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
-import { db, j, s } from "../db";
+import { db, j, s, noNul } from "../db";
 import { logEvent } from "../engine/agent";
 
 const PATH = "/app/offers";
 const int = (v: FormDataEntryValue | null, max = 100_000_000) => Math.max(0, Math.min(max, Math.round(Number(String(v ?? "").replace(/[\s,]/g, "")) || 0)));
-const str = (v: FormDataEntryValue | null, max = 200) => String(v ?? "").trim().slice(0, max);
+const str = (v: FormDataEntryValue | null, max = 200) => noNul(String(v ?? "")).trim().slice(0, max);
 const CURRENCIES = ["USD", "EUR", "GBP", "KZT", "CAD", "AED"];
 
 function terms(form: FormData) {
@@ -33,9 +33,9 @@ export async function addOffer(_: OfferFormState, form: FormData): Promise<Offer
   const company = str(form.get("company"), 120);
   const role = str(form.get("role"), 160);
   const t = terms(form);
-  if (!company) return { error: "Укажите компанию." };
-  if (!role) return { error: "Укажите должность." };
-  if (t.base < 1000) return { error: "Укажите годовую базовую зарплату (например, 68000)." };
+  if (!company) return { error: "Укажи компанию." };
+  if (!role) return { error: "Укажи должность." };
+  if (t.base < 1000) return { error: "Укажи годовую базовую зарплату (например, 68000)." };
   const oppId = str(form.get("opportunityId"), 40);
   const opp = oppId ? await db.opportunity.findFirst({ where: { id: oppId, campaign: { userId: user.id } } }) : null;
   await db.offer.create({ data: { userId: user.id, opportunityId: opp?.id ?? null, company, role, ...t } });

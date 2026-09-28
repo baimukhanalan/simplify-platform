@@ -3,13 +3,14 @@ import type { Prisma } from "@prisma/client";
 import { ArrowLeft, ArrowRight, Check, MapPin, Search } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j, insensitive } from "@/lib/db";
-import { STRONG_MATCH, currentCampaign, pendingApprovalsWhere, windowNumbers } from "@/lib/ops-data";
+import { currentCampaign, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, qualifiedWhere, windowNumbers, type NextCycle } from "@/lib/ops-data";
 import { startOfToday } from "@/lib/time";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { REMOTE_LABEL, ago, salaryLabel } from "@/lib/ops";
 import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
+import { handoffsWaiting, questionsWaiting } from "../../_components/ru";
 import { LaneChip, StatusChip, matchTone } from "./_components/bits";
 import { DecisionBar } from "./_components/decision";
 import { AutoApplyToggle } from "./_components/auto-apply";
@@ -21,9 +22,9 @@ export const metadata = { title: "Opportunities" };
 const PER_PAGE = 24;
 const OPEN = ["found", "qualified", "prepared"];
 const TABS = [
-  { key: "strong", label: "Подходят" },
+  { key: "strong", label: "Ждут решения" },
   { key: "all", label: "Все" },
-  { key: "skipped", label: "Skipped" },
+  { key: "skipped", label: "Пропущенные" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 type SP = Record<string, string | string[] | undefined>;
@@ -67,7 +68,8 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const base: Prisma.OpportunityWhereInput = { campaignId: campaign.id };
   const search: Prisma.OpportunityWhereInput = q ? { job: { OR: [{ title: { contains: q, ...insensitive } }, { company: { contains: q, ...insensitive } }, { location: { contains: q, ...insensitive } }] } } : {};
   const tabWhere: Record<Tab, Prisma.OpportunityWhereInput> = {
-    strong: { status: { in: OPEN }, eligibility: { not: "blocked" }, match: { gte: STRONG_MATCH } },
+    // Same "qualified" as Today (lib/ops-data), narrowed to roles that still wait for a decision.
+    strong: { ...qualifiedWhere(campaign.id), status: { in: OPEN } },
     all: { status: { not: "skipped" } },
     skipped: { status: "skipped" },
   };
@@ -82,9 +84,10 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   ]);
   const since = foundToday ? today : foundWeek ? week : null;
 
-  const [{ found, fit, strong, submitted }, waiting, counts, total, rows, candidate] = await Promise.all([
+  const [{ found, qualified, strong, submitted }, waiting, handoffs, counts, total, rows, candidate, queue] = await Promise.all([
     windowNumbers(campaign.id, since, threshold),
-    db.approval.count({ where: { ...pendingApprovalsWhere(user.id), kind: { not: "handoff" } } }),
+    pendingApprovalsCount(user.id),
+    pendingHandoffsCount(user.id),
     Promise.all(TABS.map((t) => db.opportunity.count({ where: { ...base, ...tabWhere[t.key], ...search } }))),
     db.opportunity.count({ where }),
     db.opportunity.findMany({
@@ -98,11 +101,18 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       },
     }),
     fitCandidate(user),
+    // What the next agent cycle would send on its own — the same computation as Today.
+    nextCycleQueue(campaign, autonomy),
   ]);
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   const when = foundToday ? "Сегодня" : foundWeek ? "За неделю" : "За кампанию";
   const hasDemo = rows.some((o) => o.job.source === "demo");
-  const needs: Need[] = waiting ? [{ text: `${waiting} ${plural(waiting, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа — без этого часть заявок не уйдёт`, href: "/app/approvals" }] : [];
+  const queued = new Set(queue.ids);
+  const queueNote = QUEUE_NOTE[queue.reason];
+  const needs: Need[] = [
+    ...(waiting ? [{ text: `${questionsWaiting(waiting)} — без этого часть заявок не уйдёт`, href: "/app/approvals" }] : []),
+    ...(handoffs ? [{ text: handoffsWaiting(handoffs), href: "/app/approvals#kind-handoff" }] : []),
+  ];
 
   return (
     <div className="flex flex-col gap-5">
@@ -119,7 +129,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         <div className="flex flex-col gap-4">
           <p className="h-serif text-[clamp(21px,2.4vw,28px)] !leading-[1.25]">
             {when} агент нашёл <N v={found} /> {plural(found, ["вакансию", "вакансии", "вакансий"])}.{" "}
-            <N v={fit} /> {plural(fit, ["подошла", "подошли", "подошли"])}.{" "}
+            <N v={qualified} /> {plural(qualified, ["подошла", "подошли", "подошли"])}.{" "}
             <N v={strong} /> {plural(strong, ["была достаточно сильной", "были достаточно сильными", "были достаточно сильными"])}.{" "}
             <N v={submitted} /> {plural(submitted, ["заявка уже отправлена", "заявки уже отправлены", "заявок уже отправлены"])}.
           </p>
@@ -147,7 +157,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
               )}
             >
               {t.label}
-              <span className={cx("num text-[11.5px]", tab === t.key ? "text-white/70" : "text-ink-4")}>{counts[i]}</span>
+              <span className={cx("num text-[11.5px]", tab === t.key ? "text-white/70" : "text-ink-3")}>{counts[i]}</span>
             </Link>
           ))}
         </nav>
@@ -158,6 +168,8 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
           <input id="opp-q" name="q" type="search" defaultValue={q} placeholder="Роль, компания, город" className="field !rounded-full !py-2 !pl-10 !text-[14px]" />
         </form>
       </div>
+
+      {queueNote && <p className="-mt-2 text-[12.5px] text-ink-3">{queueNote}</p>}
 
       {hasDemo && (
         <p className="-mt-2 text-[12.5px] text-ink-3">
@@ -170,7 +182,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       ) : (
         <ul className="grid gap-3 lg:grid-cols-2" aria-label="Вакансии">
           {rows.map((o) => (
-            <OpportunityCard key={o.id} o={o} candidate={candidate} />
+            <OpportunityCard key={o.id} o={o} candidate={candidate} queued={queued.has(o.id) ? queue.when : null} />
           ))}
         </ul>
       )}
@@ -186,11 +198,17 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   );
 }
 
+/** Why the agent will not submit anything on its next cycle (one line above the feed). */
+const QUEUE_NOTE: Partial<Record<NextCycle["reason"], string>> = {
+  "no-consent": "Автоподача выключена в настройках — агент готовит пакеты, но сам ничего не отправляет.",
+  inactive: "Кампания не активна — агент сейчас не подаёт заявки.",
+};
+
 const N = ({ v }: { v: number }) => <span className="num text-[0.92em] text-head">{v}</span>;
 
 function EmptyFeed({ tab, q }: { tab: Tab; q: string }) {
   if (q) return <Empty title="Ничего не найдено" sub={`По запросу «${q}» вакансий нет.`} action={<ButtonLink href={href(tab, "")} variant="glass" size="sm">Сбросить поиск</ButtonLink>} />;
-  if (tab === "strong") return <Empty title="Сильных вакансий пока нет" sub="Агент продолжает искать каждый день. Всё, что он уже нашёл, — во вкладке «Все»." action={<ButtonLink href={href("all", "")} variant="glass" size="sm">Показать все</ButtonLink>} />;
+  if (tab === "strong") return <Empty title="Сейчас ничего не ждёт решения" sub="Агент продолжает искать каждый день. Всё, что он уже нашёл, — во вкладке «Все»." action={<ButtonLink href={href("all", "")} variant="glass" size="sm">Показать все</ButtonLink>} />;
   if (tab === "skipped") return <Empty title="Пропущенных нет" sub="Сюда попадают пропущенные вакансии и роли с hard blockers." />;
   return <Empty title="Вакансий пока нет" sub="Агент ещё не нашёл вакансий. Первый цикл обычно занимает несколько минут." />;
 }
@@ -202,7 +220,7 @@ type Row = {
   job: { title: string; company: string; location: string; remote: string; salaryMin: number | null; salaryMax: number | null; currency: string; postedAt: Date; source: string; roleFamily: string; seniority: string; minYears: number; industry: string; sponsorship: string };
 };
 
-function OpportunityCard({ o, candidate }: { o: Row; candidate: FitCandidate }) {
+function OpportunityCard({ o, candidate, queued }: { o: Row; candidate: FitCandidate; queued: NextCycle["when"] }) {
   const fitOpp = { match: o.match, eligibility: o.eligibility, pInterview: o.pInterview, reasons: j<Reason[]>(o.matchReasons, []), blockers: j<string[]>(o.blockers, []), softGaps: j<string[]>(o.softGaps, []) };
   const why = whyFits(fitOpp, o.job, candidate);
   const risk = risks(fitOpp, o.job, candidate)[0];
@@ -237,7 +255,7 @@ function OpportunityCard({ o, candidate }: { o: Row; candidate: FitCandidate }) 
           <span className={cx("size-1.5 rounded-full", TONE_DOT[chance.tone])} aria-hidden />
           Interview probability: <b className={cx("num font-medium", TONE_TEXT[chance.tone])}>{chance.label}</b>
         </span>
-        {salary ? <span className="num text-head">{salary}</span> : <span className="text-ink-4">зарплата не указана</span>}
+        {salary ? <span className="num text-head">{salary}</span> : <span className="text-ink-3">зарплата не указана</span>}
         <Chip tone={o.job.remote === "remote" ? "green" : "neutral"}>{REMOTE_LABEL[o.job.remote] ?? o.job.remote}</Chip>
         {o.job.location && <span className="inline-flex min-w-0 items-center gap-1 text-ink-3"><MapPin className="size-3.5 shrink-0 text-ink-4" aria-hidden /><span className="truncate">{o.job.location}</span></span>}
         <span className="text-ink-3">опубликована {ago(o.job.postedAt)}</span>
@@ -262,7 +280,15 @@ function OpportunityCard({ o, candidate }: { o: Row; candidate: FitCandidate }) 
             <Link href={`/app/applications/${o.id}`} className="inline-flex min-h-10 items-center gap-1 text-[13px] text-teal hover:text-head">Открыть заявку<ArrowRight className="size-3.5" aria-hidden /></Link>
           </div>
         ) : (
-          <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} pending={o.approvals.length} />
+          <div className="flex flex-col gap-2">
+            {queued && (
+              <span className="inline-flex items-center gap-1.5 text-[12.5px] text-green">
+                <span className="size-1.5 rounded-full bg-green animate-pulse-dot" aria-hidden />
+                {queued === "tomorrow" ? "В очереди — агент подаст завтра" : "В очереди — агент подаст в следующем цикле"}
+              </span>
+            )}
+            <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} pending={o.approvals.length} />
+          </div>
         )}
         <Link href={`/app/opportunities/${o.id}`} className="inline-flex min-h-10 items-center gap-1 text-[12.5px] text-ink-3 hover:text-head" aria-label={`Подробнее: ${o.job.title}, ${o.job.company}`}>
           Подробнее<ArrowRight className="size-3" aria-hidden />

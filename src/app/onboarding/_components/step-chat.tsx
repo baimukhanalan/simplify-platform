@@ -78,7 +78,7 @@ export function StepChat({ name, years, skills, skillCount, positions, turns }: 
 
         <ol role="log" aria-live="polite" aria-label="Диалог с агентом" className="flex flex-col gap-4">
           <AgentBubble>
-            <p>Привет, {name}. Я прочитал всё, что ты загрузил(а){years > 0 ? <> — у тебя <b className="font-medium text-head">{yearsLabel(years)}</b> опыта</> : null}.</p>
+            <p>Привет, {name}. Я разобрал твои материалы{years > 0 ? <> — у тебя <b className="font-medium text-head">{yearsLabel(years)}</b> опыта</> : null}.</p>
             {skills.length > 0 && (
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {skills.map((s) => <span key={s} className="rounded-full border border-line bg-white/80 px-2.5 py-0.5 text-[12.5px] text-ink-2">{s}</span>)}
@@ -225,7 +225,7 @@ function Composer({ turn, initial, busy, error, onSend, onCancel, autoFocus }: {
               <ArrowUp className="size-4" strokeWidth={2.2} aria-hidden />
             </button>
           </div>
-          <span className="text-right text-[11.5px] text-ink-4">Enter — отправить · Shift+Enter — новая строка</span>
+          <span className="text-right text-[11.5px] text-ink-3">Enter — отправить · Shift+Enter — новая строка</span>
         </div>
       )}
       <div className="flex items-center gap-1">

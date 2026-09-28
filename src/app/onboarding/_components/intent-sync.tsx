@@ -2,7 +2,7 @@
 import { useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { applyIntent } from "@/lib/actions/onboarding";
-import { clearStoredIntent, readStoredIntent, type Intent } from "../../_components/campaign-intent";
+import { INTENT_USED_COOKIE, clearStoredIntent, readStoredIntent, type Intent } from "../../_components/campaign-intent";
 
 /**
  * Turns the first-screen answers into the Goal once the user has an account.
@@ -26,6 +26,8 @@ export function IntentSync({ goalEmpty, urlIntent }: { goalEmpty: boolean; urlIn
         await applyIntent(intent);
         // Only now is the intent safely in the Goal; on failure it stays in sessionStorage for the next attempt.
         clearStoredIntent();
+        // Lets the Goal step say «Заполнил по твоим ответам на первом экране» only when that is what happened.
+        document.cookie = `${INTENT_USED_COOKIE}=1; path=/onboarding; max-age=${7 * 86400}; samesite=lax`;
         if (urlIntent) router.replace("/onboarding"); else router.refresh();
       } catch { /* the Goal step still lets the user enter it by hand */ }
     });

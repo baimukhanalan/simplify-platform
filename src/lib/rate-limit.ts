@@ -41,4 +41,4 @@ export async function rateLimitUser(bucket: string, userId: string, limit: numbe
 }
 
 /** Human-readable "try again in N min" for Russian UI messages. */
-export const retryText = (retryAfter?: number) => `Слишком часто. Попробуйте через ${Math.max(1, Math.ceil((retryAfter ?? 60) / 60))} мин.`;
+export const retryText = (retryAfter?: number) => `Слишком часто. Попробуй через ${Math.max(1, Math.ceil((retryAfter ?? 60) / 60))} мин.`;

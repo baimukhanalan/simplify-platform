@@ -153,7 +153,7 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
           aria-describedby={`${uid}-count`}
         />
         {interim && <p className="text-[13px] italic text-ink-3">{interim}…</p>}
-        <p id={`${uid}-count`} className="text-[12px] text-ink-4">{words} слов · Simplify не записывает звук — речь распознаёт браузер</p>
+        <p id={`${uid}-count`} className="text-[12px] text-ink-3">{words} слов · Simplify не записывает звук — речь распознаёт браузер</p>
         {speech.error && <p role="alert" className="rounded-xl bg-amber-soft px-3 py-2 text-[13px] text-amber">{speech.error}</p>}
       </div>
 

@@ -89,7 +89,7 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
       </nav>
 
       <nav aria-label="Дополнительно">
-        <div className="label mb-1.5 px-3 !text-[9.5px] !text-ink-4">Ещё</div>
+        <div className="label mb-1.5 px-3 !text-[9.5px] !text-ink-3">Ещё</div>
         <ul className="flex flex-col">
           {[...SECONDARY, ...extra].map((it) => {
             const active = isActive(it);

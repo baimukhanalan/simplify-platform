@@ -68,13 +68,13 @@ export function whyFits(o: FitOpp, job: FitJob, c: FitCandidate, limit = 4): str
   const out: string[] = [];
   const skills = o.reasons.filter((r) => r.ok && !/years|salary|≥/i.test(r.label) && r.label !== (ROLE_FAMILIES[job.roleFamily]?.label ?? ""));
   const role = o.reasons.find((r) => r.label === ROLE_FAMILIES[job.roleFamily]?.label);
-  if (skills.length) out.push(`${skills.slice(0, 3).map((r) => r.label).join(", ")} match`);
-  if (job.industry && hasDomain(job.industry, c.background)) out.push(`${job.industry} experience`);
+  if (skills.length) out.push(`Совпадают навыки: ${skills.slice(0, 3).map((r) => r.label).join(", ")}`);
+  if (job.industry && hasDomain(job.industry, c.background)) out.push(`Есть опыт в ${job.industry}`);
   if (role?.ok) out.push(`Роль совпадает с целью: ${role.label}`);
-  if (job.remote === "remote" && o.eligibility !== "blocked") out.push("Remote eligible");
-  else if (c.workModes.includes(job.remote) && o.eligibility !== "blocked") out.push(`${job.remote === "hybrid" ? "Hybrid" : "Onsite"} — твой формат`);
+  if (job.remote === "remote" && o.eligibility !== "blocked") out.push("Удалённо — доступно тебе");
+  else if (c.workModes.includes(job.remote) && o.eligibility !== "blocked") out.push(`${job.remote === "hybrid" ? "Гибрид" : "Офис"} — твой формат`);
   const senGap = seniorityIndex(job.seniority) - seniorityIndex(c.seniority);
-  if (senGap === 0 || (senGap === 1 && c.yearsExperience >= job.minYears)) out.push(`Seniority aligned (${SENIORITY_LABEL[job.seniority] ?? job.seniority})`);
+  if (senGap === 0 || (senGap === 1 && c.yearsExperience >= job.minYears)) out.push(`Уровень совпадает: ${SENIORITY_LABEL[job.seniority] ?? job.seniority}`);
   if (job.minYears && c.yearsExperience >= job.minYears) out.push(`Опыт ${years(c.yearsExperience)} ${c.yearsExperience % 1 === 0 ? plural(c.yearsExperience, ["год", "года", "лет"]) : "года"} — требуется от ${years(job.minYears)}`);
   const salary = o.reasons.find((r) => /salary/i.test(r.label));
   if (salary?.ok) out.push("Зарплата выше твоего минимума");
@@ -107,12 +107,11 @@ export function eligibilityVerdict(e: string) {
   return { label: "Pass", hint: "Формальных препятствий нет", tone: "green" as const };
 }
 
-/** "v20-product_analyst" → "CV · версия 20". Internal role codes never reach the UI. */
-export const cvVersionLabel = (v: string | null | undefined) => {
-  if (!v) return "CV";
-  const n = /^v(\d+)/i.exec(v)?.[1];
-  return n ? `CV · версия ${n}` : "CV";
-};
+/**
+ * The CV of one application, labelled the same everywhere (application card, Interview Room): "CV для Kaspi" or just "CV".
+ * Internal version counters ("v57-product_analyst") never reach the UI — they grow across users and mean nothing to one.
+ */
+export const cvVersionLabel = (_v?: string | null, company?: string | null) => (company ? `CV для ${company}` : "CV");
 
 export { plural } from "../../../_components/ru";
 

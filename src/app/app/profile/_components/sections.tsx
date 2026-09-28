@@ -9,12 +9,12 @@ import { updateBasics, updateConstraints, addSkill, removeSkill, reparseCV } fro
 import { ActionForm, FormSubmit } from "./action-form";
 import { Check, Disclosure } from "./bits";
 import { Editable, Facts } from "./editable";
+import { WORK_MODE_RU, regionRu } from "../../../_components/ru";
 import type { Strength } from "./strengths";
 
-const REGION_LABEL: Record<string, string> = { EU: "Europe", US: "US", UK: "UK", CA: "Canada", WORLD: "Remote worldwide", KZ: "Kazakhstan", CIS: "СНГ", MENA: "MENA" };
 const COUNTRY_LABEL: Record<string, string> = { KZ: "Казахстан", UZ: "Узбекистан", KG: "Кыргызстан", RU: "Россия", BY: "Беларусь", UA: "Украина", AM: "Армения", GE: "Грузия", AZ: "Азербайджан", US: "США", GB: "Великобритания", CA: "Канада", AE: "ОАЭ", TR: "Турция" };
 const AUTH_OPTIONS: [string, string][] = [["EU", "Евросоюз"], ["US", "США"], ["GB", "Великобритания"], ["CA", "Канада"], ["AE", "ОАЭ"], ["KZ", "Казахстан"], ["UZ", "Узбекистан"], ["KG", "Кыргызстан"], ["RU", "Россия"], ["GE", "Грузия"], ["AM", "Армения"]];
-const REMOTE_LABEL: Record<string, string> = { remote: "Remote", hybrid: "Hybrid", onsite: "Onsite", any: "Любой формат" };
+const REMOTE_LABEL = WORK_MODE_RU;
 const NOTICE_LABEL: Record<string, string> = { Immediately: "Сразу", "1 week": "Через неделю", "2 weeks": "Через 2 недели", "1 month": "Через месяц", "2 months": "Через 2 месяца" };
 const usd = (n: number) => `$${n.toLocaleString("en-US")}`;
 const yearsText = (y: number) => {
@@ -34,7 +34,7 @@ function Ext({ href }: { href: string }) {
 /* ───────────── Основное ───────────── */
 
 export function Basics({ name, email, profile: p, goal, currentRole }: { name: string; email: string; profile: Profile; goal: Goal | null; currentRole: string }) {
-  const markets = j<string[]>(goal?.countries, []).map((c) => REGION_LABEL[c] ?? REGIONS[c]?.label ?? c).join(", ");
+  const markets = [...new Set(j<string[]>(goal?.countries, []).map((c) => (regionRu(c) !== c ? regionRu(c) : REGIONS[c]?.label ?? c)))].join(", ");
   const location = [p.city || p.location, COUNTRY_LABEL[p.country] ?? p.country].filter(Boolean).join(", ");
   return (
     <Editable
@@ -42,11 +42,11 @@ export function Basics({ name, email, profile: p, goal, currentRole }: { name: s
       view={
         <div className="flex flex-col gap-5">
           <Facts cols={3} rows={[
-            ["Current role", currentRole],
-            ["Experience", p.yearsExperience ? yearsText(p.yearsExperience) : ""],
-            ["English", p.englishLevel],
-            ["Location", location],
-            ["Target markets", markets],
+            ["Текущая роль", currentRole],
+            ["Опыт", p.yearsExperience ? yearsText(p.yearsExperience) : ""],
+            ["Английский", p.englishLevel],
+            ["Город", location],
+            ["Регионы поиска", markets],
             ["Email", email],
           ]} />
           <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-line pt-4 text-[14px]">
@@ -62,7 +62,7 @@ export function Basics({ name, email, profile: p, goal, currentRole }: { name: s
         <ActionForm action={updateBasics} closeDetailsOnSuccess className="flex flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Имя"><input name="name" required minLength={2} autoComplete="name" defaultValue={name} className="field" /></Field>
-            <Field label="Current role" hint="Как ты называешь свою роль сейчас"><input name="headline" defaultValue={p.headline || currentRole} className="field" placeholder="Product Analyst" /></Field>
+            <Field label="Текущая роль" hint="Как ты называешь свою роль сейчас"><input name="headline" defaultValue={p.headline || currentRole} className="field" placeholder="Product Analyst" /></Field>
             <Field label="Опыт, лет"><input name="yearsExperience" type="number" step="0.5" min={0} max={50} inputMode="decimal" defaultValue={p.yearsExperience} className="field" /></Field>
             <Field label="English">
               <select name="englishLevel" defaultValue={p.englishLevel} className="field">
@@ -103,10 +103,10 @@ export function Skills({ skills, facts }: { skills: string[]; facts: Fact[] }) {
             <ul className="flex flex-wrap gap-2" aria-label="Навыки">
               {skills.map((s) => (
                 <li key={s}>
-                  <form action={removeSkill} className="inline-flex items-center gap-1 rounded-full border border-line bg-white/80 py-1 pl-3 pr-1 text-[13.5px] text-head">
+                  <form action={removeSkill} className="inline-flex items-center gap-0.5 rounded-full border border-line bg-white/80 py-0.5 pl-3 pr-0.5 text-[13.5px] text-head">
                     {s}
                     <input type="hidden" name="skill" value={s} />
-                    <button type="submit" aria-label={`Удалить навык ${s}`} className="grid size-6 place-items-center rounded-full text-ink-4 transition-colors hover:bg-rose-soft hover:text-rose focus-visible:outline-2 focus-visible:outline-green">
+                    <button type="submit" aria-label={`Удалить навык ${s}`} className="grid size-10 place-items-center rounded-full text-ink-3 transition-colors hover:bg-rose-soft hover:text-rose focus-visible:outline-2 focus-visible:outline-green">
                       <X className="size-3.5" strokeWidth={1.8} aria-hidden />
                     </button>
                   </form>
@@ -177,8 +177,8 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
       view={
         <Facts cols={3} rows={[
           ["Requires sponsorship", yesNo(p.needsSponsorship)],
-          ["Relocation", yesNo(goal?.relocation ?? p.relocation)],
-          ["Remote preferred", REMOTE_LABEL[p.remotePref] ?? p.remotePref],
+          ["Переезд", yesNo(goal?.relocation ?? p.relocation)],
+          ["Формат работы", REMOTE_LABEL[p.remotePref] ?? p.remotePref],
           ["Minimum salary", minSalary ? `${minSalary} / год` : ""],
           ["Право на работу", authLabels.join(", ")],
           ["Выход на работу", NOTICE_LABEL[p.noticePeriod] ?? p.noticePeriod],
@@ -188,7 +188,7 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
         <ActionForm action={updateConstraints} closeDetailsOnSuccess className="flex flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field label="Гражданство (код)" hint="Например, KZ"><input name="citizenship" maxLength={2} defaultValue={p.citizenship} className="field uppercase" /></Field>
-            <Field label="Remote preferred">
+            <Field label="Формат работы">
               <select name="remotePref" defaultValue={p.remotePref} className="field">
                 {Object.entries(REMOTE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
@@ -216,7 +216,7 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
           </fieldset>
           <div className="grid gap-2 sm:grid-cols-2">
             <Check name="needsSponsorship" defaultChecked={p.needsSponsorship} label="Нужна рабочая виза (sponsorship)" hint="Для стран, где нет права на работу." />
-            <Check name="relocation" defaultChecked={goal?.relocation ?? p.relocation} label="Готов(а) к релокации" />
+            <Check name="relocation" defaultChecked={goal?.relocation ?? p.relocation} label="Переезд возможен" />
           </div>
           <div><FormSubmit pendingText="Сохраняем…">Сохранить</FormSubmit></div>
         </ActionForm>

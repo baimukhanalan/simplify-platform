@@ -1,11 +1,11 @@
 import "server-only";
 import { db, j } from "@/lib/db";
-import { reachedInterview } from "@/lib/engine/insights";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { regionsFor } from "@/lib/regions";
-import { currentCampaign, pendingApprovalsCount, runningCampaign, windowNumbers } from "@/lib/ops-data";
+import { currentCampaign, isQualified, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, reachedAssessment, reachedInterviewRound, runningCampaign, windowNumbers } from "@/lib/ops-data";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { APP_TZ as TZ, startOfToday } from "@/lib/time";
+import { regionsRu } from "@/app/_components/ru";
 
 const DAY = 86400000;
 
@@ -41,7 +41,6 @@ export function campaignDay(c: { startedAt: Date | null; createdAt: Date; endsAt
 
 // ——— Goal line & "what the agent is doing" ———
 
-const REGION_SHORT: Record<string, string> = { KZ: "Казахстан", CIS: "СНГ", EU: "Европа", UK: "UK", US: "США", CA: "Канада", MENA: "ОАЭ", WORLD: "Remote worldwide" };
 const REGION_IN: Record<string, string> = { KZ: "Казахстане", CIS: "СНГ", EU: "Европе", UK: "Великобритании", US: "США", CA: "Канаде", MENA: "ОАЭ" };
 
 const joinRu = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} и ${xs[xs.length - 1]}`);
@@ -55,7 +54,8 @@ function money(n: number, cur: string) {
 export function goalLine(goal: { primaryRole: string; countries: string; minSalary: number; currency: string } | null) {
   if (!goal?.primaryRole) return { line: null as string | null, regions: [] as string[] };
   const regions = regionsFor(j<string[]>(goal.countries, []));
-  const parts = [goal.primaryRole, regions.map((r) => REGION_SHORT[r] ?? r).join(", "), goal.minSalary ? `${money(goal.minSalary, goal.currency)}+` : ""].filter(Boolean);
+  // Region names in Russian, one naming everywhere (src/app/_components/ru.ts): Европа, США, Казахстан, Удалённо…
+  const parts = [goal.primaryRole, regionsRu(regions), goal.minSalary ? `${money(goal.minSalary, goal.currency)}+` : ""].filter(Boolean);
   return { line: parts.join(" · "), regions };
 }
 
@@ -82,20 +82,25 @@ export const STAGES = [
   { key: "hired", label: "Hired" },
 ] as const;
 
-type OppRow = { status: string; match: number; createdAt: Date; submittedAt: Date | null; interviews: { round: string }[]; _count: { offers: number } };
+type OppRow = { status: string; match: number; eligibility: string; createdAt: Date; submittedAt: Date | null; interviews: { round: string }[]; _count: { offers: number } };
 
 /** Sent: has a submittedAt or is at "submitted" or any later pipeline status. The one definition for "Подано" and the Applications stage. */
 export const isSubmitted = (o: { status: string; submittedAt: Date | null }) => o.submittedAt != null || APPLIED_OR_LATER.includes(o.status);
 
+/**
+ * Whole-campaign numbers. qualified = isQualified from src/lib/ops-data.ts (the same definition as the "Сегодня" strip
+ * and the Opportunities tab, which counts with qualifiedWhere; the tab is now «Ждут решения»). interviews = roles that reached a real interview round (assessments excluded);
+ * assessments = roles that received an assessment — counted separately, a role can be in both.
+ */
 export function totals(opps: OppRow[]) {
   const submitted = opps.filter(isSubmitted);
   return {
     found: opps.length,
-    qualified: opps.filter((o) => !["found", "skipped"].includes(o.status)).length,
+    qualified: opps.filter(isQualified).length,
     submitted: submitted.length,
     responses: submitted.filter((o) => !["submitted", "pending"].includes(o.status)).length,
-    assessments: opps.filter((o) => o.status === "assessment" || o.interviews.some((i) => i.round === "assessment")).length,
-    interviews: opps.filter((o) => reachedInterview(o.status, o.interviews.filter((i) => i.round !== "assessment").length)).length,
+    assessments: opps.filter(reachedAssessment).length,
+    interviews: opps.filter(reachedInterviewRound).length,
     offers: opps.filter((o) => ["offer", "hired"].includes(o.status) || o._count.offers > 0).length,
     hired: opps.some((o) => o.status === "hired"),
   };
@@ -144,10 +149,10 @@ export type TimelineItem = {
 };
 
 const RESPONSE_COPY: Record<string, (c: string) => { text: string; kind: TimelineItem["kind"]; cta?: string }> = {
-  interview: (c) => ({ text: `${c} пригласили на интервью`, kind: "interview", cta: "Prepare" }),
-  assessment: (c) => ({ text: `${c} прислали assessment — ты прошёл на следующий этап`, kind: "interview", cta: "Start preparation" }),
-  offer: (c) => ({ text: `Оффер от ${c}`, kind: "offer", cta: "Review" }),
-  rejection: (c) => ({ text: `${c}: application declined. Статус обновлён автоматически`, kind: "rejection" }),
+  interview: (c) => ({ text: `${c}: приглашение на интервью`, kind: "interview", cta: "Подготовиться" }),
+  assessment: (c) => ({ text: `${c}: следующий этап — assessment`, kind: "interview", cta: "Подготовиться" }),
+  offer: (c) => ({ text: `Оффер от ${c}`, kind: "offer", cta: "Открыть оффер" }),
+  rejection: (c) => ({ text: `${c}: отказ. Статус обновлён автоматически`, kind: "rejection" }),
 };
 
 /** Everything the agent did in the last few days, from Event rows plus the opportunities and responses behind them. */
@@ -194,7 +199,7 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
   for (const o of skipped) {
     const reason = j<string[]>(o.blockers, [])[0];
     if (!reason) continue;
-    if (bump(o.createdAt, "skipped") <= 3) items.push({ id: `s-${o.id}`, at: o.createdAt, kind: "skipped", text: `Skipped ${o.job.company}: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`, href: `/app/opportunities/${o.id}` });
+    if (bump(o.createdAt, "skipped") <= 3) items.push({ id: `s-${o.id}`, at: o.createdAt, kind: "skipped", text: `Пропущено — ${o.job.company}: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`, href: `/app/opportunities/${o.id}` });
   }
 
   for (const e of events) {
@@ -239,19 +244,20 @@ export type TimelineDay = Awaited<ReturnType<typeof loadTimeline>>[number];
 
 // ——— The whole Today screen ———
 
-export async function loadToday(user: { id: string; autonomy: string; goal: { primaryRole: string; countries: string; minSalary: number; currency: string } | null }, campaign: { id: string; status: string; startedAt: Date | null; createdAt: Date; endsAt: Date | null; lastRunAt: Date | null; dailyLimit: number }) {
+export async function loadToday(user: { id: string; autonomy: string; goal: { primaryRole: string; countries: string; minSalary: number; currency: string } | null }, campaign: { id: string; status: string; autoSubmit: boolean; startedAt: Date | null; createdAt: Date; endsAt: Date | null; lastRunAt: Date | null; dailyLimit: number }) {
   const now = Date.now();
   // "Сегодня" = the Almaty calendar day, the same window and definitions as the Opportunities header.
   const dayStart = startOfToday(new Date(now));
   const autonomy = readAutonomy(user.autonomy);
-  const [opps, day, approvals, upcoming, offers, responsesToday, timeline] = await Promise.all([
+  const [opps, day, approvals, handoffs, upcoming, offers, responsesToday, timeline] = await Promise.all([
     db.opportunity.findMany({
       where: { campaignId: campaign.id },
-      select: { status: true, match: true, createdAt: true, submittedAt: true, interviews: { select: { round: true } }, _count: { select: { offers: true } } },
+      select: { status: true, match: true, eligibility: true, createdAt: true, submittedAt: true, interviews: { select: { round: true } }, _count: { select: { offers: true } } },
     }),
     windowNumbers(campaign.id, dayStart, autonomy.autoApplyMinMatch),
     // Only the running campaign's questions: a finished campaign no longer asks anything.
     pendingApprovalsCount(user.id),
+    pendingHandoffsCount(user.id),
     db.interview.findMany({
       where: { userId: user.id, status: "upcoming" },
       orderBy: { scheduledAt: "asc" },
@@ -265,7 +271,8 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
 
   const t = totals(opps);
   const stage = currentStage(t, campaign.status);
-  const today = { found: day.found, qualified: day.fit, strong: day.strong, submitted: day.submitted, responses: responsesToday };
+  const today = { found: day.found, qualified: day.qualified, strong: day.strong, submitted: day.submitted, responses: responsesToday };
+  const queue = await nextCycleQueue(campaign, autonomy);
   const { line, regions } = goalLine(user.goal);
   return {
     clock: campaignDay(campaign, now),
@@ -275,9 +282,12 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
     stageValues: stageValues(t, user.goal?.primaryRole ?? ""),
     today,
     strongThreshold: autonomy.autoApplyMinMatch,
+    /** Roles the next agent cycle would send on its own (for «в очереди — агент подаст в следующем цикле»). */
+    queue,
     goalLine: line,
     doing: doingNow(campaign.status, regions, autonomy.findJobs, autonomy.personalizeCv),
     approvals,
+    handoffs,
     upcoming,
     offers,
     timeline,
@@ -289,7 +299,7 @@ export type Today = Awaited<ReturnType<typeof loadToday>>;
 // ——— Agent state for screens outside Today (e.g. Career Mode) ———
 
 /**
- * Whether the agent is actually searching for this user right now, so copy like «Агент ищет за вас» is only shown
+ * Whether the agent is actually searching for this user right now, so copy like «Агент ищет за тебя» is only shown
  * when true. hasCampaign = any non-draft campaign ever; running = active or paused and not past endsAt;
  * searching = running, active (not paused) and Find jobs is on.
  */

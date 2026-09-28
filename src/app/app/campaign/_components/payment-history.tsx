@@ -1,7 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import { j } from "@/lib/db";
 import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
-import { isKaspiProvider } from "@/lib/payments/kaspi";
+import { isKaspiProvider, refundState } from "@/lib/payments/kaspi";
 import { ButtonLink, Card, Chip, Label } from "@/components/ui";
 
 type Payment = {
@@ -37,7 +37,10 @@ export function PaymentHistory({ payments }: { payments: Payment[] }) {
           <ul className="flex flex-col divide-y divide-line">
             {payments.map((p) => {
               const status = effectiveStatus(p);
-              const st = STATUS[status] ?? { label: status, tone: "neutral" as const };
+              const refund = refundState(p.meta);
+              // A paid invoice with a refund promise: the whole payment (it never started a campaign) or an extra charge.
+              const st = status === "paid" && refund.blocked ? { label: "Будет возвращён", tone: "amber" as const } : STATUS[status] ?? { label: status, tone: "neutral" as const };
+              const duplicates = refund.refunds.filter((r) => r.reason === "duplicate_charge").length;
               const planKey = (p.campaign?.plan ?? p.plan) as keyof typeof PLANS;
               return (
                 <li key={p.id} className="flex flex-col gap-2 py-3.5 first:pt-0 last:pb-0">
@@ -61,7 +64,11 @@ export function PaymentHistory({ payments }: { payments: Payment[] }) {
                     <ButtonLink href={`/pay/kaspi/${p.externalId}`} size="sm" className="self-start">Продолжить оплату<ArrowRight className="size-3.5" aria-hidden /></ButtonLink>
                   )}
                   {status === "failed" && <p className="text-[12.5px] text-rose">Kaspi отклонил оплату. Деньги не списаны.</p>}
-                  {status === "expired" && <p className="text-[12.5px] text-ink-3">Счёт истёк через 30 минут без оплаты — деньги не списаны.</p>}
+                  {status === "paid" && refund.blocked && <p className="text-[12.5px] text-amber">Оплата пришла, когда у тебя уже шла кампания, — этот платёж будет возвращён.</p>}
+                  {status === "paid" && duplicates > 0 && <p className="text-[12.5px] text-amber">Kaspi списал оплату по этому счёту повторно ({duplicates}×) — лишнее списание будет возвращено.</p>}
+                  {status === "expired" && (refund.expiredReason === "campaign_started"
+                    ? <p className="text-[12.5px] text-ink-3">Счёт закрыт: кампания запущена по другому счёту — деньги не списаны.</p>
+                    : <p className="text-[12.5px] text-ink-3">Счёт истёк через 30 минут без оплаты — деньги не списаны.</p>)}
                 </li>
               );
             })}

@@ -28,9 +28,9 @@ export async function crawl(c, label, { max = 400, extraSeeds = [] } = {}) {
     seen.set(key, { status: r.status, final: cur, from });
     const text = r.text;
     const appErr = /Application error|server-side exception|Internal Server Error/.test(text) || /E\{\\?"digest\\?":\\?"(?!NEXT_REDIRECT|NEXT_HTTP_ERROR)/.test(text) || /Что-то пошло не так/.test(text);
-    const nf = r.status === 404 || /This page could not be found|NEXT_HTTP_ERROR_FALLBACK;404/.test(text) && r.status !== 200;
     if (r.status >= 500 || appErr) problems.push({ kind: "5xx", path: key, from, chain: chain.join(" -> "), snippet: (text.match(/digest[^,}]*/) ?? [""])[0] });
-    else if (r.status === 404 || /NEXT_HTTP_ERROR_FALLBACK;404/.test(text)) problems.push({ kind: "404", path: key, from, chain: chain.join(" -> ") });
+    else if (r.status === 404) problems.push({ kind: "404", path: key, from, chain: chain.join(" -> ") });
+    else if (/NEXT_HTTP_ERROR_FALLBACK;404/.test(text)) problems.push({ kind: "soft404(200)", path: key, from, chain: chain.join(" -> ") });
     else if (r.status >= 400) problems.push({ kind: String(r.status), path: key, from, chain: chain.join(" -> ") });
     if (!/text\/html/.test(r.res.headers.get("content-type") ?? "")) continue;
     for (const m of text.matchAll(/href="([^"]+)"/g)) {

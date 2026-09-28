@@ -1,4 +1,5 @@
-import { REGIONS, ROLE_FAMILIES, seniorityIndex, seniorityFromYears, classifyRole, normalizeLanguage, wordRe } from "./taxonomy";
+import { REGIONS, ROLE_FAMILIES, SENIORITY_LABEL, seniorityIndex, seniorityFromYears, classifyRole, normalizeLanguage, wordRe } from "./taxonomy";
+import { fmtYearsRu } from "../ru";
 
 const ADVANCED_DEGREE = wordRe("master|phd|магистр", { end: false });
 
@@ -26,7 +27,21 @@ export type MatchResult = {
   match: number; reasons: { label: string; ok: boolean }[];
   eligibility: "eligible" | "soft" | "blocked"; blockers: string[]; softGaps: string[];
   pInterview: number; priority: number; lane: "standard" | "target" | "mass"; segment: string; freshnessDays: number;
+  /** The role is one the goal asks for (primary or extra role; a mass-hiring role in Mass mode). Off-goal roles are never queued by the agent. */
+  onGoal: boolean;
 };
+
+/**
+ * Years a Senior/Lead title implies when the posting names none: a "Senior Data Analyst" without "5+ years" is still
+ * not a role for someone with 2. Middle/junior titles imply nothing (ingest defaults unknown roles to "middle").
+ */
+export const IMPLIED_MIN_YEARS: Record<string, number> = { senior: 4, lead: 6 };
+
+/** Years the role really asks for: the stated minimum, or what the Senior/Lead title implies, whichever is higher. */
+export const requiredYears = (job: Pick<JobCtx, "minYears" | "seniority">) => Math.max(job.minYears || 0, IMPLIED_MIN_YEARS[job.seniority] ?? 0);
+
+/** A gap this large (in years or in seniority levels) is a hard blocker; a one-step stretch stays a soft gap. */
+export const HARD_GAP = 2;
 
 const EN: Record<string, number> = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 };
 
@@ -51,9 +66,11 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
   const skillFit = tech.length ? hit.length / tech.length : 0.6;
   for (const t of tech.filter((t) => !have.has(t.toLowerCase())).slice(0, 3)) softGaps.push(`Нет ${t} в профиле`);
 
-  const yearsFit = job.minYears <= c.yearsExperience ? 1 : job.minYears - c.yearsExperience <= 1 ? 0.7 : 0.3;
-  if (job.minYears) reasons.push({ label: `${job.minYears}+ years`, ok: yearsFit === 1 });
-  if (yearsFit < 1) softGaps.push(`Требуется ${job.minYears}+ лет, у тебя ${c.yearsExperience}`);
+  const needYears = requiredYears(job);
+  const yearsGap = needYears - c.yearsExperience;
+  const yearsFit = yearsGap <= 0 ? 1 : yearsGap <= 1 ? 0.7 : 0.3;
+  if (needYears) reasons.push({ label: `${needYears}+ years`, ok: yearsFit === 1 });
+  if (yearsFit < 1 && yearsGap < HARD_GAP) softGaps.push(`Требуется ${fmtYearsRu(needYears, "+")}, у тебя ${fmtYearsRu(c.yearsExperience)}`);
 
   const senGap = seniorityIndex(job.seniority) - seniorityIndex(seniorityFromYears(c.yearsExperience));
   const senFit = senGap <= 0 ? (senGap < -1 ? 0.7 : 1) : senGap === 1 ? 0.6 : 0.15;
@@ -74,7 +91,7 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
   const anywhere = targets.has("*");
   const jobInTarget = job.countries.length === 0 || anywhere || job.countries.some((x) => targets.has(x) || x === "*");
   if (!jobInTarget) (c.permissions?.outsideCountries ? softGaps : blockers).push(`Страна вне цели: ${job.countries.join(", ")}`);
-  if (salaryFit < 1 && c.permissions && !c.permissions.belowSalaryFloor && job.salaryMax && job.salaryMax < c.goal.minSalary) blockers.push("Зарплата ниже вашего минимума");
+  if (salaryFit < 1 && c.permissions && !c.permissions.belowSalaryFloor && job.salaryMax && job.salaryMax < c.goal.minSalary) blockers.push("Зарплата ниже твоего минимума");
 
   const needsPresence = job.remote !== "remote";
   const authorizedForJob = job.countries.some((x) => auth.has(x)) || job.countries.includes("*");
@@ -98,7 +115,9 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
   const spoken = new Set(c.languages.map(normalizeLanguage)); // "Русский" ≡ "Russian"
   for (const l of jobLangs.filter((l) => l !== "English")) if (!spoken.has(l)) blockers.push(`Требуется язык: ${l}`);
   if (ADVANCED_DEGREE.test(job.education) && (c.educationLevel === "none" || c.educationLevel === "bachelor")) blockers.push(`Обязательное образование: ${job.education}`);
-  if (senGap >= 2) blockers.push(`Уровень ${job.seniority} недостижим с текущим опытом`);
+  // Roles clearly above the candidate are never applied to: two+ years short of the requirement or two+ levels up.
+  if (yearsGap >= HARD_GAP) blockers.push(`Нужно ${fmtYearsRu(needYears, "+")} опыта, у тебя ${fmtYearsRu(c.yearsExperience)} — роль на уровень выше`);
+  else if (senGap >= HARD_GAP) blockers.push(`Уровень ${SENIORITY_LABEL[job.seniority] ?? job.seniority} недостижим с текущим опытом`);
   if (c.goal.blockedCompanies.some((b) => b && job.company.toLowerCase().includes(b.toLowerCase()))) blockers.push("Компания в твоём стоп-листе");
 
   const eligibility = blockers.length ? "blocked" : softGaps.length > 2 ? "soft" : "eligible";
@@ -116,5 +135,7 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
   const modeBias = c.goal.mode === "target" ? (dream ? 3 : 0.2) : c.goal.mode === "mass" ? (job.massHiring ? 1.6 : 0.8) : dream ? 1.3 : 1;
   const priority = Math.round(pInterview * modeBias * 1000) / 1000;
 
-  return { match, reasons, eligibility, blockers, softGaps, pInterview: Math.round(pInterview * 1000) / 1000, priority, lane, segment: job.roleFamily, freshnessDays: Math.round(freshnessDays * 10) / 10 };
+  const onGoal = wanted.includes(job.roleFamily) || (c.goal.mode === "mass" && job.massHiring);
+
+  return { match, reasons, eligibility, blockers, softGaps, pInterview: Math.round(pInterview * 1000) / 1000, priority, lane, segment: job.roleFamily, freshnessDays: Math.round(freshnessDays * 10) / 10, onGoal };
 }

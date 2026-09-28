@@ -37,9 +37,10 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
     return () => clearTimeout(t);
   }, [started, router]);
 
-  // Real flow: the customer confirms in the Kaspi app; we poll the invoice until the webhook settles it.
-  // Both flows: a paid invoice whose campaign isn't attached yet is polled until it is (or turns refund_due).
-  const waiting = (!mockGateway && inv.status === "pending") || (inv.status === "paid" && !inv.campaignId && !inv.refundDue);
+  // Real flow: the customer confirms in the Kaspi app; we poll the invoice until the webhook settles it. A declined
+  // attempt ("failed") is not final — the customer can retry in the app and a later success still settles this invoice.
+  // Both flows: a paid invoice whose campaign isn't attached yet is polled until it is (or it is refunded instead).
+  const waiting = (!mockGateway && (inv.status === "pending" || inv.status === "failed")) || (inv.status === "paid" && !inv.campaignId && !inv.activationBlocked);
   useEffect(() => {
     if (!waiting) return;
     const t = setInterval(async () => {
@@ -95,7 +96,7 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
           <span className="font-mono text-[12px] text-head">{inv.invoiceId}</span>
         </div>
 
-        {paid && inv.refundDue && !inv.campaignId ? (
+        {paid && inv.activationBlocked && !inv.campaignId ? (
           <p className="rounded-2xl bg-amber-soft px-4 py-3 text-[14px] text-amber" role="status">Оплата получена, но у тебя уже идёт кампания — этот платёж будет возвращён.</p>
         ) : paid && !inv.campaignId ? (
           <p className="flex items-center gap-2 rounded-2xl bg-green-soft px-4 py-3 text-[14px] text-green" role="status"><Loader2 className="size-4 animate-spin" />Оплата получена, запускаем кампанию…</p>
@@ -109,7 +110,7 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
           </div>
         ) : expired ? (
           <div className="flex flex-col gap-3 rounded-2xl bg-amber-soft px-4 py-3.5" role="status">
-            <p className="text-[14px] text-amber">Счёт истёк: он действует 30 минут. Деньги не списаны.</p>
+            <p className="text-[14px] text-amber">{inv.expiredReason === "campaign_started" ? "Счёт закрыт: кампания уже запущена по другому счёту. Деньги по этому счёту не списаны." : "Счёт истёк: он действует 30 минут. Деньги не списаны."}</p>
             <Link href={newInvoiceHref} className={`inline-flex h-11 items-center justify-center self-start rounded-full bg-cta px-5 text-[14px] font-medium text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c] ${focusRing}`}>
               Создать новый счёт
             </Link>

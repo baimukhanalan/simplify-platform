@@ -6,6 +6,7 @@ import { cx } from "@/components/ui";
 import { CvInput } from "../../check/_components/cv-input";
 import { useActionForm } from "../../_components/use-action-form";
 import { FieldErr, FormAlert } from "./shared";
+import { count } from "../../_components/ru";
 
 type Links = { linkedin: string; github: string; portfolio: string };
 
@@ -33,7 +34,7 @@ export function StepSources({ hasCv, cvFileName, factCount, skillCount, links, c
                 <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-white text-green"><Check className="size-4" strokeWidth={2.4} aria-hidden /></span>
                 <span className="min-w-0">
                   <span className="block truncate text-[14.5px] font-medium text-head">{cvFileName || "CV загружено"}</span>
-                  <span className="block text-[12.5px] text-ink-3">{factCount} позиций · {skillCount} навыков</span>
+                  <span className="block text-[12.5px] text-ink-3">{count(factCount, ["позиция", "позиции", "позиций"])} · {count(skillCount, ["навык", "навыка", "навыков"])}</span>
                 </span>
               </div>
               <button type="button" onClick={() => setReplace(true)} className="inline-flex h-11 items-center justify-center rounded-full px-4 text-[14px] text-head hover:bg-white/70 focus-visible:outline-2 focus-visible:outline-green">Загрузить новое</button>

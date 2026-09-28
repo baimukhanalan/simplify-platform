@@ -249,11 +249,11 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
             </span>
           )}
           {!popup && !blocked && (
-            <button type="button" onClick={popOut} className="hidden size-8 shrink-0 place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a] sm:grid" aria-label="Открыть в отдельном маленьком окне" title="Отдельное окно — поставь рядом со звонком">
+            <button type="button" onClick={popOut} className="hidden size-10 shrink-0 place-items-center rounded-full text-white/60 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a] sm:grid" aria-label="Открыть в отдельном маленьком окне" title="Отдельное окно — поставь рядом со звонком">
               <PictureInPicture2 className="size-4" strokeWidth={1.7} />
             </button>
           )}
-          <button type="button" onClick={exit} className="grid size-8 shrink-0 place-items-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a]" aria-label="Закрыть Copilot (Esc)">
+          <button type="button" onClick={exit} className="grid size-10 shrink-0 place-items-center rounded-full text-white/70 transition hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a]" aria-label="Закрыть Copilot (Esc)">
             <X className="size-4" strokeWidth={1.8} />
           </button>
         </header>

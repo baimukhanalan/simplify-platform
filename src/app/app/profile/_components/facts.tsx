@@ -4,6 +4,7 @@ import { Chip, Field } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { j } from "@/lib/db";
 import { saveFact, deleteFact } from "@/lib/actions/profile";
+import { OWNERSHIP_LABEL } from "@/lib/onboarding";
 import { ActionForm, FormSubmit } from "./action-form";
 import { Disclosure } from "./bits";
 
@@ -18,7 +19,6 @@ export const KINDS = [
   { key: "skill", label: "Навыки", icon: Wrench },
 ] as const;
 
-const OWNERSHIP: Record<string, string> = { led: "Вёл(а) сам(а)", contributed: "Участвовал(а)", executed: "Исполнял(а)" };
 
 const ORDER = ["employment", "project", "education", "certification", "achievement", "language", "authorization", "skill"];
 
@@ -69,7 +69,7 @@ function FactRow({ fact: f }: { fact: Fact }) {
         )}
         {(tech.length > 0 || f.teamSize != null || f.ownership) && (
           <div className="flex flex-wrap items-center gap-1.5">
-            {f.ownership && <Chip>{OWNERSHIP[f.ownership] ?? f.ownership}</Chip>}
+            {f.ownership && <Chip>{OWNERSHIP_LABEL[f.ownership] ?? f.ownership}</Chip>}
             {f.teamSize != null && <Chip><Users className="size-3" strokeWidth={2} aria-hidden />Команда {f.teamSize}</Chip>}
             {tech.slice(0, 8).map((t) => <Chip key={t}>{t}</Chip>)}
           </div>
@@ -108,16 +108,16 @@ export function FactFields({ fact }: { fact?: Fact }) {
         <Field label="Начало"><input name="startDate" defaultValue={fact?.startDate} className="field" placeholder="Mar 2023" /></Field>
         <Field label="Конец"><input name="endDate" defaultValue={fact?.endDate} className="field" placeholder="Present" /></Field>
       </div>
-      <Field label="Что ты делал(а)" className="sm:col-span-2"><textarea name="details" rows={3} defaultValue={fact?.details} className="field resize-y" /></Field>
+      <Field label="Задачи и вклад" className="sm:col-span-2"><textarea name="details" rows={3} defaultValue={fact?.details} className="field resize-y" /></Field>
       <Field label="Результат в цифрах" hint="Было → стало. Нет цифры — оставь пустым."><input name="metrics" defaultValue={fact?.metrics} className="field" placeholder="churn −9%" /></Field>
       <Field label="Технологии" hint="Через запятую"><input name="tech" defaultValue={tech.join(", ")} className="field" placeholder="SQL, Python" /></Field>
       <Field label="Размер команды"><input name="teamSize" type="number" min={1} inputMode="numeric" defaultValue={fact?.teamSize ?? ""} className="field" /></Field>
       <Field label="Твоя роль">
         <select name="ownership" defaultValue={fact?.ownership ?? ""} className="field">
           <option value="">Не указано</option>
-          <option value="led">Вёл(а) и принимал(а) решения</option>
-          <option value="contributed">Важная часть команды</option>
-          <option value="executed">Выполнял(а) задачи</option>
+          <option value="led">Самостоятельно: вести и принимать решения</option>
+          <option value="contributed">Участие: важная часть команды</option>
+          <option value="executed">Исполнение: выполнять задачи</option>
         </select>
       </Field>
     </div>

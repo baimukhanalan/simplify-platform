@@ -221,19 +221,19 @@ async function newUserJourney(routes, demoIds) {
   } catch (e) { check("onboarding saveCV form present", false, e.message); }
   await visit("after-cv");
 
-  // Step 4 · preferences, Step 5 · goal (deliberately unrealistic: lead with ~5y → readiness should flag it), Step 6 · readiness.
+  // 5-step onboarding (src/lib/onboarding.ts STEP): 1 sources · 2 chat · 3 goal · 4 readiness · 5 plan.
+  // Step 3 · goal (deliberately unrealistic: lead with ~5y → readiness should flag it), step 4 · readiness.
   const step = async (name, page, fields, want) => {
     try {
       const r = await submitForm(page, cookie, fields);
       check(name, r.status === 303 && (r.location ?? "").includes(want), `${r.status} ${r.location ?? ""}${r.status === 200 ? " (form returned an error state)" : ""}`);
     } catch (e) { check(name, false, e.message); }
   };
-  await step("onboarding savePreferences → step 5", "/onboarding?step=4", { citizenship: "KZ", city: "Almaty", workAuth: "KZ", englishLevel: "B2", remotePref: "remote", salaryExpectation: "1500", noticePeriod: "2 weeks", linkedin: "linkedin.com/in/stress" }, "step=5");
-  await step("onboarding saveGoal → step 6", "/onboarding?step=5", { primaryRole: "Data Analyst", seniority: "lead", countries: ["KZ", "WORLD"], workModes: ["remote", "hybrid"], minSalary: "900000", mode: "balanced" }, "step=6");
+  await step("onboarding saveGoal → step 4", "/onboarding?step=3", { primaryRole: "Data Analyst", seniority: "lead", countries: ["KZ", "WORLD"], workModes: ["remote", "hybrid"], minSalary: "900000" }, "step=4");
   const rd = await get("/app/readiness", cookie);
   check("readiness page renders after unrealistic goal", rd.status === 200 && !hasRenderError(rd.body), `${rd.status}`);
-  await step("onboarding completeStep(6) → step 7", "/onboarding?step=6", { step: "6" }, "step=7");
-  await step("onboarding completeStep(999) clamps to step 1", "/onboarding?step=6", { step: "999" }, "step=1");
+  await step("onboarding completeStep(4) → step 5", "/onboarding?step=4", { step: "4" }, "step=5");
+  await step("onboarding completeStep(999) clamps to step 1", "/onboarding?step=4", { step: "999" }, "step=1");
 
   // Inbox: paste a "thank you for applying… unfortunately" email.
   try {

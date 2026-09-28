@@ -7,7 +7,7 @@ import { textToPdf, toWinAnsi } from "./pdf";
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const userId = await currentUserId();
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
-  const rl = await rateLimitUser("cv-pdf", userId, 30, 10 * 60 * 1000);
+  const rl = await rateLimitUser("cv-pdf", userId, 150, 10 * 60 * 1000);
   if (!rl.ok) return Response.json({ error: "too many requests" }, { status: 429, headers: { "Retry-After": String(rl.retryAfter ?? 60) } });
   const { id } = await params;
   const opp = await db.opportunity.findFirst({

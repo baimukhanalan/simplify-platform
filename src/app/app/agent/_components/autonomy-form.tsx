@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { saveAutonomy, type AutonomyState } from "@/lib/actions/agent";
@@ -72,9 +73,14 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
         </div>
       </fieldset>
 
-      <fieldset className="glass p-5 sm:p-6">
+      <fieldset id="auto-apply" className="glass scroll-mt-24 p-5 sm:p-6">
         <legend className="sr-only">Auto-apply</legend>
         <div className="label mb-1" aria-hidden>Auto-apply</div>
+        <p className="mb-1 text-[13px] text-ink-3">
+          Здесь — какие роли агент отправляет сам. Отправлять вообще ему разрешает согласие{" "}
+          <Link href="/app/settings#autosubmit" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">«Автоподача заявок» в Приватности</Link>
+          {autoSubmitConsent ? " — оно включено." : " — сейчас оно выключено."}
+        </p>
         <Switch
           name="submitApplications"
           label={`Auto-apply all jobs above ${threshold}% match`}
@@ -105,7 +111,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
             aria-valuetext={`${threshold}%`}
             className="w-full accent-[#1a6e48]"
           />
-          <div className="flex justify-between font-mono text-[10px] uppercase tracking-[.06em] text-ink-4"><span>50% · больше заявок</span><span>100% · только идеальные</span></div>
+          <div className="flex justify-between font-mono text-[10px] uppercase tracking-[.06em] text-ink-3"><span>50% · больше заявок</span><span>100% · только идеальные</span></div>
         </div>
       </fieldset>
 

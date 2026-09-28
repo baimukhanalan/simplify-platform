@@ -10,7 +10,7 @@ import { answerMatchingApprovals, continueIfReady, patchPackageAnswer } from "..
 
 const MOVABLE = new Set([...PIPELINE.map((p) => p.key), "skipped"]);
 
-const str = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
+const str = (form: FormData, key: string) => noNul(String(form.get(key) ?? "")).trim();
 
 function refresh(opportunityId?: string | null) {
   revalidatePath("/app", "layout");
@@ -112,9 +112,9 @@ export type IngestState = {
 /** Paste an employer email → Inbox Intelligence classifies it and moves the pipeline. */
 export async function ingestPastedEmail(_prev: IngestState, form: FormData): Promise<IngestState> {
   const user = await requireUser();
-  const fields = { from: noNul(str(form, "from")).slice(0, 200), subject: noNul(str(form, "subject")).slice(0, 300), body: noNul(str(form, "body")).slice(0, 20000) };
-  if (!fields.subject && !fields.body) return { error: "Вставьте хотя бы тему или текст письма.", fields };
-  if (fields.body.length < 20) return { error: "Текст письма слишком короткий для классификации — вставьте письмо целиком.", fields };
+  const fields = { from: str(form, "from").slice(0, 200), subject: str(form, "subject").slice(0, 300), body: str(form, "body").slice(0, 20000) };
+  if (!fields.subject && !fields.body) return { error: "Вставь хотя бы тему или текст письма.", fields };
+  if (fields.body.length < 20) return { error: "Текст письма слишком короткий для классификации — вставь письмо целиком.", fields };
   const from = fields.from || "unknown@employer";
   const before = new Map(
     (await db.opportunity.findMany({ where: { campaign: { userId: user.id }, status: { in: APPLIED_OR_LATER } }, select: { id: true, status: true } })).map((o) => [o.id, o.status]),

@@ -23,7 +23,8 @@ const CURRENCIES = ["USD", "EUR", "KZT"] as const;
 export type StoryTag = "conflict" | "failure" | "leadership" | "impact" | "pressure" | "initiative" | "data" | "customer";
 const STORY_TAGS: StoryTag[] = ["conflict", "failure", "leadership", "impact", "pressure", "initiative", "data", "customer"];
 
-const str = (f: FormData, k: string, max = 300) => String(f.get(k) ?? "").trim().slice(0, max);
+/** Free text from a form: NUL bytes stripped (Postgres rejects them), trimmed, capped. */
+const str = (f: FormData, k: string, max = 300) => noNul(String(f.get(k) ?? "")).trim().slice(0, max);
 const bool = (f: FormData, k: string) => f.get(k) === "on" || f.get(k) === "true";
 const oneOf = <T extends string>(v: string, list: readonly T[], fallback: T): T => ((list as readonly string[]).includes(v) ? (v as T) : fallback);
 const intOr = (v: string, fallback: number, min = 0, max = 100_000_000) => {
@@ -134,7 +135,7 @@ export async function saveFact(_: FormState, form: FormData): Promise<FormState>
   const user = await requireUser();
   const id = str(form, "id", 40);
   const title = str(form, "title", 160);
-  if (title.length < 2) return fail("Укажите название: должность, проект, диплом или сертификат.");
+  if (title.length < 2) return fail("Укажи название: должность, проект, диплом или сертификат.");
   const teamRaw = str(form, "teamSize", 6);
   const data = {
     kind: oneOf(str(form, "kind", 20), FACT_KINDS, "employment"),
@@ -180,8 +181,8 @@ export async function saveStory(_: FormState, form: FormData): Promise<FormState
   const task = str(form, "task", 1500);
   const action = str(form, "action", 2000);
   const result = str(form, "result", 1500);
-  if (title.length < 2) return fail("Дайте истории короткое название.");
-  if (!situation || !task || !action || !result) return fail("Заполните все четыре части STAR: Situation, Task, Action, Result.");
+  if (title.length < 2) return fail("Дай истории короткое название.");
+  if (!situation || !task || !action || !result) return fail("Заполни все четыре части STAR: Situation, Task, Action, Result.");
   const factId = str(form, "factId", 40);
   const fact = factId ? await ownFact(user.id, factId) : null;
   const tags = form.getAll("tags").map(String).filter((t): t is StoryTag => (STORY_TAGS as string[]).includes(t));
@@ -211,7 +212,7 @@ export async function deleteStory(form: FormData) {
 export async function reparseCV(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const text = noNul(String(form.get("cvText") ?? "")).trim().slice(0, 30000);
-  if (text.length < 200) return fail("Вставьте полный текст CV — минимум 200 символов.");
+  if (text.length < 200) return fail("Вставь полный текст CV — минимум 200 символов.");
   const rl = await rateLimitUser("cv-parse-user", user.id, 10, 60 * 60 * 1000, { eventTypes: ["cv_parsed", "cv_reparsed"] });
   if (!rl.ok) return fail(retryText(rl.retryAfter));
   const { data: parsed, by } = await parseCV(text);
@@ -236,11 +237,11 @@ export async function reparseCV(_: FormState, form: FormData): Promise<FormState
 export async function saveGoal(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const primaryRole = str(form, "primaryRole", 80);
-  if (primaryRole.length < 2) return fail("Укажите основную роль — например, Data Analyst.");
+  if (primaryRole.length < 2) return fail("Укажи основную роль — например, Data Analyst.");
   const regions = form.getAll("countries").map(String).filter((r) => r in REGIONS);
-  if (!regions.length) return fail("Выберите хотя бы один регион.");
+  if (!regions.length) return fail("Выбери хотя бы один регион.");
   const workModes = form.getAll("workModes").map(String).filter((m) => (WORK_MODES as readonly string[]).includes(m));
-  if (!workModes.length) return fail("Выберите хотя бы один формат работы.");
+  if (!workModes.length) return fail("Выбери хотя бы один формат работы.");
   const extraRoles = form.getAll("extraRoles").map((r) => String(r).trim().slice(0, 60)).filter((r) => r && r.toLowerCase() !== primaryRole.toLowerCase()).slice(0, 6);
   const industries = [...new Set(form.getAll("industries").map((r) => String(r).trim().slice(0, 40)).filter(Boolean))].slice(0, 12);
   const data = {
@@ -259,7 +260,7 @@ export async function saveGoal(_: FormState, form: FormData): Promise<FormState>
     companySize: oneOf(str(form, "companySize", 10), COMPANY_SIZES, "any"),
     mode: oneOf(str(form, "mode", 12), MODES, "autonomous"),
   };
-  if (data.mode === "target" && data.dreamCompanies === "[]") return fail("Target Mode работает только по компаниям мечты — добавьте хотя бы одну.");
+  if (data.mode === "target" && data.dreamCompanies === "[]") return fail("Target Mode работает только по компаниям мечты — добавь хотя бы одну.");
   await db.goal.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
   await logEvent(user.id, "goal_updated", `Цель обновлена: ${primaryRole} · ${data.seniority}`);
   refresh();

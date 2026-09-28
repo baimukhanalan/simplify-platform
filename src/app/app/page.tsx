@@ -11,7 +11,7 @@ import { ButtonLink, Card, Chip, Label, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { dayKey, greeting, hhmm, loadToday, type Today } from "./_components/today-data";
 import { KeyNumbers, NextActionCard, StageBar, StatusDot, Timeline, TodayStrip, type NextAction } from "./_components/today";
-import { plural } from "../_components/ru";
+import { handoffsWaiting, plural, questionsWaiting } from "../_components/ru";
 
 export const metadata: Metadata = { title: "Today" };
 
@@ -28,7 +28,7 @@ function relDay(d: Date, now: number) {
 function pickNext(d: Today): { action: NextAction; also: { label: string; href: string }[] } {
   const cands: NonNullable<NextAction>[] = [];
   const offer = d.offers[0];
-  if (offer) cands.push({ eyebrow: "Offer", title: `Оффер от ${offer.company}`, sub: `${offer.role}. Разберём цифры и переговоры вместе.`, href: "/app/offers", cta: "Review offer", icon: BadgeDollarSign });
+  if (offer) cands.push({ eyebrow: "Offer", title: `Оффер от ${offer.company}`, sub: `${offer.role}. Разберём цифры и переговоры вместе.`, href: "/app/offers", cta: "Посмотреть оффер", icon: BadgeDollarSign });
 
   const interviews = d.upcoming.filter((i) => i.round !== "assessment");
   const assessments = d.upcoming.filter((i) => i.round === "assessment");
@@ -45,13 +45,19 @@ function pickNext(d: Today): { action: NextAction; also: { label: string; href: 
     eyebrow: "Assessment",
     title: `Assessment от ${a.opportunity.job.company}`,
     sub: a.scheduledAt ? `Дедлайн: ${a.scheduledAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" })}. Ты на следующем этапе.` : "Ты на следующем этапе.",
-    href: `/app/interviews/${a.id}`, cta: "Start preparation", icon: ClipboardCheck,
+    href: `/app/interviews/${a.id}`, cta: "Подготовиться", icon: ClipboardCheck,
   });
   if (d.approvals) cands.push({
     eyebrow: "Нужен твой ответ",
-    title: `${d.approvals} ${plural(d.approvals, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} тебя`,
+    title: questionsWaiting(d.approvals),
     sub: "Без этого агент не может отправить часть заявок. Остальное он делает сам.",
-    href: "/app/approvals", cta: "Answer", icon: ShieldCheck,
+    href: "/app/approvals", cta: "Ответить", icon: ShieldCheck,
+  });
+  if (d.handoffs) cands.push({
+    eyebrow: "Отправь сам",
+    title: handoffsWaiting(d.handoffs),
+    sub: "Пакеты готовы: это живые вакансии, их отправляют через форму работодателя. Отметь отправку — и агент поведёт заявку дальше.",
+    href: "/app/approvals#kind-handoff", cta: "Открыть", icon: ShieldCheck,
   });
   const later = interviews.find((i) => i !== soonIv);
   if (later) cands.push(iv(later, "Скоро интервью"));
@@ -115,20 +121,20 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         halves of one card in the left column (joined edges), and Next action sits on the right spanning both rows.
       */}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
-        <section aria-label="Статус кампании" className="glass-strong relative flex animate-rise flex-col gap-6 overflow-hidden p-5 sm:p-8 lg:col-start-1 lg:row-start-1 lg:!rounded-b-none lg:!border-b-0 lg:pb-0 lg:!shadow-none">
+        <section aria-label="Статус кампании" className="glass-strong relative flex animate-rise flex-col gap-6 p-5 sm:p-8 lg:col-start-1 lg:row-start-1 lg:!rounded-b-none lg:!border-b-0 lg:pb-3 lg:!shadow-none">
           <div className="flex flex-wrap items-center gap-2.5">
             <StatusDot status={status} />
             <span className="label">Campaign Day <span className="num text-head">{d.clock.day}</span> / {d.clock.total}</span>
           </div>
           <div className="flex flex-col gap-2">
             <p className="h-serif text-[clamp(32px,4.6vw,54px)]">{greeting()}, <Script>{firstName}</Script>.</p>
-            <p className="h-serif text-[clamp(22px,2.6vw,30px)] !text-teal">{tagline}</p>
+            <p className="h-serif pb-[0.12em] text-[clamp(22px,2.6vw,30px)] !leading-[1.2] !text-teal">{tagline}</p>
           </div>
         </section>
 
         <NextActionCard action={action} also={also} paused={status === "paused"} className="animate-rise lg:col-start-2 lg:row-span-2 lg:row-start-1" />
 
-        <section aria-label="Что делает агент" className="glass-strong flex animate-rise flex-col gap-6 p-5 sm:p-8 lg:col-start-1 lg:row-start-2 lg:-mt-5 lg:!rounded-t-none lg:!border-t-0 lg:pt-6">
+        <section aria-label="Что делает агент" className="glass-strong flex animate-rise flex-col gap-6 p-5 sm:p-8 lg:col-start-1 lg:row-start-2 lg:-mt-5 lg:!rounded-t-none lg:!border-t-0 lg:pt-4">
           {d.goalLine && (
             <Link href="/app/goal" className="group inline-flex w-fit max-w-full items-center gap-2 font-mono text-[11.5px] uppercase tracking-[.08em] text-ink-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
               <span className="text-ink-4">Goal</span><span className="min-w-0 break-words">{d.goalLine}</span>
@@ -166,8 +172,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
       {/* Demo tools (demo account, staff, local dev): available, not advertised. */}
       {demo && (
-        <div className="flex flex-wrap items-center gap-2 px-1 pt-2 text-[12.5px] text-ink-4">
-          <span className="label mr-1 !text-[9.5px] !text-ink-4">Демо-инструменты</span>
+        <div className="flex flex-wrap items-center gap-2 px-1 pt-2 text-[12.5px] text-ink-3">
+          <span className="label mr-1 !text-[9.5px] !text-ink-3">Демо-инструменты</span>
           {isActive && (
             <form action={runAgentNow}>
               <SubmitButton variant="ghost" size="sm" pendingText="Агент работает…" className="!h-10 !px-3 !text-[12.5px] text-ink-3"><Play className="size-3.5" strokeWidth={1.7} aria-hidden />Запустить цикл агента</SubmitButton>

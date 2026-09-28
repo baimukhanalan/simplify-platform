@@ -35,11 +35,11 @@ export function StageBar({ stage, values }: { stage: number; values: Record<Stag
                   {done && <span className="size-1.5 rounded-full bg-white" />}
                 </span>
                 <span className={cx("sr-only sm:not-sr-only sm:text-center", i === 0 && "sm:!text-left", i === STAGES.length - 1 && "sm:!text-right")}>
-                  <span className={cx("block text-[12.5px] leading-tight", current ? "font-medium text-head" : done ? "text-ink-2" : "text-ink-4")}>
+                  <span className={cx("block text-[12.5px] leading-tight", current ? "font-medium text-head" : done ? "text-ink-2" : "text-ink-3")}>
                     {s.label}
                     <span className="sr-only">{current ? " — текущий этап" : done ? " — пройден" : " — впереди"}{value[s.key] ? `, ${value[s.key]}` : ""}</span>
                   </span>
-                  {value[s.key] && s.key !== "goal" && <span aria-hidden className={cx("num block text-[12px]", current ? "text-green" : "text-ink-4")}>{value[s.key]}</span>}
+                  {value[s.key] && s.key !== "goal" && <span aria-hidden className={cx("num block text-[12px]", current ? "text-green" : "text-ink-3")}>{value[s.key]}</span>}
                 </span>
               </li>
             );
@@ -174,7 +174,7 @@ export function Timeline({ days, now }: { days: TimelineDay[]; now: number }) {
               const muted = it.kind === "system" || it.kind === "skipped";
               return (
                 <li key={it.id} className="grid grid-cols-[44px_28px_1fr] items-start gap-2.5 border-b border-line/60 py-2.5 last:border-0 sm:grid-cols-[52px_28px_1fr]">
-                  <time dateTime={it.at.toISOString()} className="num pt-1 text-[12.5px] text-ink-4">{hhmm(it.at)}</time>
+                  <time dateTime={it.at.toISOString()} className="num pt-1 text-[12.5px] text-ink-3">{hhmm(it.at)}</time>
                   <span className={cx("grid size-7 place-items-center rounded-full border", KIND_TONE[it.kind] ?? "border-stroke bg-white text-teal")}><Icon className="size-3.5" strokeWidth={1.7} aria-hidden /></span>
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 pt-0.5">
                     {it.href && !it.cta ? (
@@ -185,7 +185,7 @@ export function Timeline({ days, now }: { days: TimelineDay[]; now: number }) {
                     {it.match != null && <span className="num rounded-full bg-head/[.06] px-2 py-0.5 text-[11.5px] text-head">Match {it.match}%</span>}
                     {it.detail && <span className="font-mono text-[10px] uppercase tracking-[.06em] text-amber">{it.detail}</span>}
                     {it.cta && it.href && (
-                      <Link href={it.href} className="inline-flex items-center gap-1 rounded-full bg-cta px-3 py-1 text-[12px] font-medium text-white hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
+                      <Link href={it.href} className="relative inline-flex items-center gap-1 rounded-full bg-cta px-3 py-1 text-[12px] after:absolute after:-inset-y-2 after:-inset-x-1 after:content-[''] font-medium text-white hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
                         {it.cta}<ArrowRight className="size-3" aria-hidden />
                       </Link>
                     )}
@@ -195,7 +195,7 @@ export function Timeline({ days, now }: { days: TimelineDay[]; now: number }) {
             })}
           </ol>
           {(d.moreFound > 0 || d.moreSkipped > 0 || d.hidden > 0) && (
-            <p className="mt-2 pl-[80px] text-[12.5px] text-ink-4 sm:pl-[90px]">
+            <p className="mt-2 pl-[80px] text-[12.5px] text-ink-3 sm:pl-[90px]">
               {[d.moreFound > 0 && `найдено ещё ${count(d.moreFound, VAC)}`, d.moreSkipped > 0 && `пропущено ещё ${count(d.moreSkipped, VAC)}`, d.hidden > 0 && `ещё ${count(d.hidden, ["событие", "события", "событий"])}`].filter(Boolean).join(" · ")}
               {" · "}<Link href="/app/opportunities" className="text-teal hover:text-head">все вакансии</Link>
             </p>
@@ -210,7 +210,7 @@ export function StatusDot({ status }: { status: string }) {
   const active = status === "active";
   const label = { active: "Active", paused: "Paused", hired: "Hired", expired: "Ended" }[status] ?? status;
   return (
-    <span className={cx("inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10.5px] uppercase tracking-[.08em]", active || status === "hired" ? "border-green/20 bg-green-soft text-green" : status === "paused" ? "border-amber/20 bg-amber-soft text-amber" : "border-stroke bg-white/70 text-ink-3")}>
+    <span className={cx("inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10.5px] uppercase tracking-[.08em]", active || status === "hired" ? "border-green/20 bg-green-soft text-green" : status === "paused" ? "border-amber/20 bg-amber-soft text-[#6e4a0b]" : "border-stroke bg-white/70 text-ink-3")}>
       <span className={cx("size-2 rounded-full", active ? "bg-green animate-pulse-dot" : status === "hired" ? "bg-green" : status === "paused" ? "bg-amber" : "bg-ink-4")} aria-hidden />
       {label}
     </span>

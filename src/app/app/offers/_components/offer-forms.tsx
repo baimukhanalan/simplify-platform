@@ -96,7 +96,7 @@ export function EditTermsForm({ offer }: { offer: Offer }) {
       <input type="hidden" name="offerId" value={offer.id} />
       <TermsFields o={offer} />
       <Status state={state} okText="Условия обновлены." id={uid} />
-      <div><PendingButton size="sm" pending={pending} pendingText="Сохраняем…">Сохранить условия</PendingButton></div>
+      <div><PendingButton size="sm" pending={pending} pendingText="Сохраняем…" className="!h-10">Сохранить условия</PendingButton></div>
     </form>
   );
 }

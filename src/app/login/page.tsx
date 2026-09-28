@@ -23,6 +23,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const next = safeNext(one(sp.next), fallback);
   if (await currentUser()) redirect(next);
   const ref = one(sp.ref).trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 32);
-  const mode = one(sp.mode) === "signup" || ref ? "signup" : "login";
+  const mode = one(sp.mode) === "signup" || ref || ((intent || plan) && one(sp.mode) !== "login") ? "signup" : "login";
   return <AuthExperience initialMode={mode} refCode={ref} next={next} intent={intent} plan={plan} />;
 }

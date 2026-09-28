@@ -61,7 +61,7 @@ export function CvInput({ initialText = "", initialFileName = "", minChars = 120
             aria-pressed={tab === t}
             aria-controls={`${id}-panel-${t}`}
             onClick={() => setTab(t)}
-            className={cx("rounded-full px-4 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green", tab === t ? "bg-cta text-white shadow-(--shadow-cta)" : "text-ink-2 hover:text-head")}
+            className={cx("inline-flex min-h-10 items-center rounded-full px-4 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green", tab === t ? "bg-cta text-white shadow-(--shadow-cta)" : "text-ink-2 hover:text-head")}
           >
             {t === "upload" ? "Загрузить файл" : "Вставить текст"}
           </button>
@@ -81,7 +81,7 @@ export function CvInput({ initialText = "", initialFileName = "", minChars = 120
                 <button type="button" onClick={() => setTab("paste")} className="underline decoration-line underline-offset-2 hover:text-head">проверить текст</button>
               </div>
             </div>
-            <button type="button" onClick={clear} aria-label="Удалить файл" className="grid size-9 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-white hover:text-head focus-visible:outline-2 focus-visible:outline-green"><X className="size-4" /></button>
+            <button type="button" onClick={clear} aria-label="Удалить файл" className="grid size-10 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-white hover:text-head focus-visible:outline-2 focus-visible:outline-green"><X className="size-4" /></button>
           </div>
         ) : (
           <label

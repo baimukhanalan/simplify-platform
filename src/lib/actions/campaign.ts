@@ -2,13 +2,14 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
-import { db } from "../db";
+import { db, j } from "../db";
 import { PLANS } from "../engine/taxonomy";
 import { runTick, simulateResponses, logEvent, notify, prepare, closeCampaignApprovals } from "../engine/agent";
 import { demoToolsEnabled } from "../demo";
 import { createInvoice } from "../payments/kaspi";
 import { toUSD } from "../engine/fx";
 import { rateLimitUser } from "../rate-limit";
+import { runningCampaignWhere } from "../ops-data";
 
 /**
  * Checkout: creates a Kaspi Pay invoice (mock provider) and sends the user to the payment page.
@@ -30,7 +31,7 @@ export async function checkout(form: FormData) {
  * alone can lag). Not exported: every export of a "use server" file is a callable endpoint, and this takes a userId.
  */
 async function activeCampaign(userId: string) {
-  return db.campaign.findFirst({ where: { userId, status: { in: ["active", "paused"] }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] }, orderBy: { createdAt: "desc" } });
+  return db.campaign.findFirst({ where: { userId, ...runningCampaignWhere() }, orderBy: { createdAt: "desc" } });
 }
 
 export async function runAgentNow() {
@@ -62,7 +63,11 @@ export async function updateCampaignSettings(form: FormData) {
   const user = await requireUser();
   const c = await activeCampaign(user.id);
   if (!c) return;
-  await db.campaign.update({ where: { id: c.id }, data: { dailyLimit: Math.max(1, Math.min(PLANS[c.plan as keyof typeof PLANS]?.dailyLimit ?? 10, Number(form.get("dailyLimit")) || c.dailyLimit)), autoSubmit: form.get("autoSubmit") === "on" } });
+  // autoSubmit mirrors the user's auto-submit consent (Settings → Privacy); it is never taken from the form, so a
+  // crafted request can't switch autonomous submission on without the consent.
+  const autoSubmit = j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false;
+  const dailyLimit = Math.max(1, Math.min(PLANS[c.plan as keyof typeof PLANS]?.dailyLimit ?? 10, Number(form.get("dailyLimit")) || c.dailyLimit));
+  await db.campaign.update({ where: { id: c.id }, data: { dailyLimit, autoSubmit } });
   revalidatePath("/app", "layout");
 }
 

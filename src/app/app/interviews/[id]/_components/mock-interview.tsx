@@ -215,7 +215,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
           aria-describedby={`${ids}-hint`}
         />
         {interim && <p className="text-[13px] italic text-ink-3" aria-live="polite">{interim}…</p>}
-        <p id={`${ids}-hint`} className="text-[12px] text-ink-4">{draft.trim().split(/\s+/).filter(Boolean).length} слов · Ctrl/⌘ + Enter — оценить</p>
+        <p id={`${ids}-hint`} className="text-[12px] text-ink-3">{draft.trim().split(/\s+/).filter(Boolean).length} слов · Ctrl/⌘ + Enter — оценить</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

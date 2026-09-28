@@ -9,25 +9,35 @@ function bearerOk(header: string | null, secret: string) {
   return got.byteLength === want.byteLength && timingSafeEqual(got, want);
 }
 
+export const maxDuration = 300;
+
+/** Stop starting new cycles after this long; the rest (the least recently run go first) get the next invocation. */
+const TIME_BUDGET_MS = 240_000;
+
 /**
- * Scheduler entrypoint (Vercel Cron / external). Runs one agent cycle for every active campaign. Paused campaigns are
- * visited too, but only so a campaign paused past its endsAt expires (and closes its questions): runTick does nothing
- * else for a paused campaign.
+ * Scheduler entrypoint (Vercel Cron / external). Runs one agent cycle per active campaign, least recently run first
+ * (never-run campaigns first of all), until the time budget is spent — so a growing number of campaigns rotates through
+ * successive invocations instead of the tail never running. Paused campaigns are visited too, but only so a campaign
+ * paused past its endsAt expires (and closes its questions): runTick does nothing else for a paused campaign.
  */
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || !bearerOk(req.headers.get("authorization"), secret)) return new Response("unauthorized", { status: 401 });
-  const now = new Date();
+  const started = Date.now();
+  const now = new Date(started);
   const campaigns = await db.campaign.findMany({
     where: { OR: [{ status: "active" }, { status: "paused", endsAt: { lte: now } }] },
+    // NULLs sort differently on SQLite (first) and Postgres (last) unless asked explicitly.
+    orderBy: [{ lastRunAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }],
     select: { id: true },
   });
-  let failed = 0, ran = 0, expired = 0;
-  for (const c of campaigns) {
+  let failed = 0, ran = 0, expired = 0, deferred = 0;
+  for (const [i, c] of campaigns.entries()) {
+    if (Date.now() - started > TIME_BUDGET_MS) { deferred = campaigns.length - i; break; }
     try {
       const r = await runTick(c.id);
       if ("skipped" in r) { if (r.skipped === "expired") expired++; } else ran++;
     } catch (e) { failed++; console.error("[cron] tick failed", c.id, e); }
   }
-  return Response.json({ ran, expired, failed });
+  return Response.json({ ran, expired, failed, deferred });
 }

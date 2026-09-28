@@ -4,11 +4,11 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { confirmUserSubmitted, resolveApproval, setOpportunityStatus } from "@/lib/actions/ops";
 import { APPROVAL_KIND, ago } from "@/lib/ops";
-import { pendingApprovalsWhere } from "@/lib/ops-data";
+import { pendingQueueWhere } from "@/lib/ops-data";
 import { Button, ButtonLink, Card, Chip, Empty, Label, PageHeader, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { AgentStatus } from "../../_components/agent-status";
-import { plural } from "../../_components/ru";
+import { handoffsWaiting, plural, questionsWaiting } from "../../_components/ru";
 
 export const metadata = { title: "Подтверждения" };
 
@@ -34,7 +34,7 @@ export default async function ApprovalsPage() {
   const user = await requireUser();
   const [pending, resolved] = await Promise.all([
     db.approval.findMany({
-      where: pendingApprovalsWhere(user.id),
+      where: pendingQueueWhere(user.id),
       orderBy: { createdAt: "asc" },
       include: { opportunity: { select: { id: true, status: true, job: { select: { title: true, company: true, source: true, url: true } }, _count: { select: { approvals: { where: { status: "pending", kind: { not: "handoff" } } } } } } } },
     }),
@@ -46,18 +46,24 @@ export default async function ApprovalsPage() {
     }),
   ]);
 
+  const handoffs = pending.filter((a) => a.kind === "handoff").length;
+  const questions = pending.length - handoffs;
   const kinds = [...new Set([...ORDER, ...pending.map((a) => a.kind)])].filter((k) => pending.some((a) => a.kind === k));
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Exception queue"
+        eyebrow="Подтверждения"
         title="Подтверждения"
         sub="Агент делает всё сам — кроме решений, которые принадлежат только тебе: юридические декларации, чувствительные данные, спорное спонсорство, отправка живых вакансий. Здесь — только они."
       />
 
       <AgentStatus
-        needs={pending.length ? [{ text: `${pending.length} ${plural(pending.length, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа — ниже` }] : []}
+        needs={[
+          ...(questions ? [{ text: `${questionsWaiting(questions)} — ниже` }] : []),
+          ...(handoffs ? [{ text: `${handoffsWaiting(handoffs)} — ниже` }] : []),
+        ]}
+        skip={["questions", "handoffs"]}
         className="-mt-3"
       />
 
@@ -106,7 +112,7 @@ export default async function ApprovalsPage() {
                   {r.opportunity ? " · " : ""}{r.kind === "handoff" ? "отправлено тобой через официальную форму" : r.question}
                   {r.answer && r.kind !== "handoff" && <span className="text-ink-3"> → {r.answer}</span>}
                 </span>
-                <span className="shrink-0 text-[12px] text-ink-4">{ago(r.resolvedAt)}</span>
+                <span className="shrink-0 text-[12px] text-ink-3">{ago(r.resolvedAt)}</span>
               </li>
             ))}
           </ul>
@@ -135,7 +141,7 @@ function ApprovalItem({ a }: { a: Item }) {
           <span className="text-[14.5px] text-ink-3">Без привязки к вакансии</span>
         )}
         {job?.source === "demo" && <span className="text-[12px] text-ink-3">демо-вакансия</span>}
-        <span className="ml-auto text-[12px] text-ink-4">{ago(a.createdAt)}</span>
+        <span className="ml-auto text-[12px] text-ink-3">{ago(a.createdAt)}</span>
       </header>
 
       <div className="flex flex-col gap-2">

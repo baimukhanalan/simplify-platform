@@ -1,6 +1,8 @@
 import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { db, j, s } from "../db";
+import type { Prisma } from "@prisma/client";
+import { db, isPostgres, j, s } from "../db";
+import { runningCampaignWhere } from "../ops-data";
 import { PLANS } from "../engine/taxonomy";
 import { logEvent, notify } from "../engine/agent";
 import { assessReadinessFor } from "./readiness-snapshot";
@@ -110,16 +112,83 @@ export function appBaseUrl(req: Request): string | null {
   return null;
 }
 
-export type InvoiceView = { invoiceId: string; status: string; amount: number; currency: string; plan: string; planLabel: string; expiresAt: string; paymentUrl: string; campaignId: string | null; mock: boolean; refundDue: boolean };
+export type InvoiceView = {
+  invoiceId: string; status: string; amount: number; currency: string; plan: string; planLabel: string; expiresAt: string; paymentUrl: string; campaignId: string | null; mock: boolean;
+  /** Any refund is owed on this invoice (a duplicate charge, a campaign already running, a deleted account). */
+  refundDue: boolean;
+  /** The payment will never start a campaign: it is refunded instead (campaign already running / account deleted). */
+  activationBlocked: boolean;
+  /** Why the invoice was closed before its TTL ("campaign_started"), or null. */
+  expiredReason: string | null;
+};
 
-type Meta = { expiresAt?: string; transactionId?: string; txIds?: string[]; refundDue?: boolean; refundReason?: string; latePayment?: boolean; duplicateCharges?: string[]; [k: string]: unknown };
+export type RefundReason = "duplicate_charge" | "campaign_already_active" | "account_deleted";
+/** One refund promise. Entries are only ever appended — a later event can never erase an earlier promise. */
+export type RefundEntry = { tx: string; reason: RefundReason | string; at: string };
+/** Reasons that mean this payment must not activate a campaign (a duplicate charge only refunds the extra charge). */
+const BLOCKING_REASONS = new Set<string>(["campaign_already_active", "account_deleted"]);
 
-export function view(p: { externalId: string | null; status: string; amount: number; currency: string; plan: string; meta: string; campaignId: string | null; provider: string }): InvoiceView {
+export type PaymentMeta = {
+  expiresAt?: string; transactionId?: string; txIds?: string[]; refunds?: RefundEntry[]; latePayment?: boolean; duplicateCharges?: string[];
+  /** Legacy (pre-`refunds`) single-slot fields: still read, never overwritten. */
+  refundDue?: boolean; refundReason?: string; conflictingCampaignId?: string;
+  /** Why a pending invoice was expired before its TTL ("campaign_started": another invoice started a campaign). */
+  expiredReason?: string;
+  [k: string]: unknown;
+};
+type Meta = PaymentMeta;
+
+/**
+ * The refund list of a payment. Reads the `refunds` list and the legacy single-slot fields (refundDue / refundReason /
+ * duplicateCharges / conflictingCampaignId), so a promise recorded before the list existed — or overwritten by the
+ * old code — is still honoured.
+ */
+export function refundsOf(meta: Meta): RefundEntry[] {
+  const out: RefundEntry[] = Array.isArray(meta.refunds) ? meta.refunds.filter((r) => r && typeof r.reason === "string") : [];
+  const add = (tx: string, reason: string) => { if (!out.some((r) => r.tx === tx && r.reason === reason)) out.push({ tx, reason, at: "" }); };
+  const primary = meta.transactionId ?? "";
+  // The old code overwrote refundReason "campaign_already_active" with "duplicate_charge"; conflictingCampaignId survived.
+  if (meta.refundReason === "campaign_already_active" || meta.conflictingCampaignId) add(primary, "campaign_already_active");
+  for (const tx of meta.duplicateCharges ?? []) add(tx, "duplicate_charge");
+  if (meta.refundDue && !out.length) add(primary, meta.refundReason || "unknown");
+  return out;
+}
+
+/** True when this payment must be refunded instead of starting a campaign. */
+export const activationBlocked = (meta: Meta) => refundsOf(meta).some((r) => BLOCKING_REASONS.has(r.reason));
+
+/** Payment meta string → refund state, for screens (payment history, admin, partners). */
+export function refundState(metaJson: string) {
+  const meta = j<Meta>(metaJson, {});
+  const refunds = refundsOf(meta);
+  return { refunds, refundDue: refunds.length > 0, blocked: activationBlocked(meta), expiredReason: typeof meta.expiredReason === "string" ? meta.expiredReason : undefined };
+}
+
+/**
+ * Real money kept: a paid payment through a real provider whose amount is not being refunded. Mock/test-gateway
+ * payments move no money; a payment that could not start a campaign (campaign already running / account deleted) is
+ * refunded in full. A duplicate charge refunds only the extra charge, so the payment itself still counts.
+ */
+export function countsAsRevenue(p: { provider: string; status: string; meta: string }) {
+  return p.status === "paid" && p.provider !== MOCK_PROVIDER && p.provider !== "test" && !activationBlocked(j<Meta>(p.meta, {}));
+}
+
+/** Appends a refund entry (idempotent per tx+reason) and keeps the legacy `refundDue` flag set for old readers. */
+function withRefund(meta: Meta, tx: string, reason: RefundReason, extra: Partial<Meta> = {}): Meta {
+  const refunds = refundsOf(meta);
+  if (!refunds.some((r) => r.tx === tx && r.reason === reason)) refunds.push({ tx, reason, at: new Date().toISOString() });
+  return { ...meta, ...extra, refunds: refunds.slice(-50), refundDue: true };
+}
+
+export function view(p: { externalId: string | null; status: string; amount: number; currency: string; plan: string; meta: string; campaignId: string | null; provider: string }, now = new Date()): InvoiceView {
   const meta = j<Meta>(p.meta, {});
   const plan = PLANS[p.plan as keyof typeof PLANS];
+  // A pending invoice past its TTL is dead for the user even before the provider reports it (same rule as the page).
+  const status = p.status === "pending" && isExpired(p, now) ? "expired" : p.status;
   return {
-    invoiceId: p.externalId!, status: p.status, amount: p.amount, currency: p.currency, plan: p.plan, planLabel: plan?.label ?? p.plan,
-    expiresAt: meta.expiresAt ?? "", paymentUrl: `/pay/kaspi/${p.externalId}`, campaignId: p.campaignId, mock: p.provider === MOCK_PROVIDER, refundDue: Boolean(meta.refundDue),
+    invoiceId: p.externalId!, status, amount: p.amount, currency: p.currency, plan: p.plan, planLabel: plan?.label ?? p.plan,
+    expiresAt: meta.expiresAt ?? "", paymentUrl: `/pay/kaspi/${p.externalId}`, campaignId: p.campaignId, mock: p.provider === MOCK_PROVIDER,
+    refundDue: refundsOf(meta).length > 0, activationBlocked: activationBlocked(meta), expiredReason: typeof meta.expiredReason === "string" ? meta.expiredReason : null,
   };
 }
 
@@ -127,11 +196,7 @@ export const isExpired = (p: { meta: string }, now = new Date()) => new Date(j<M
 
 /** A running campaign blocks new invoices and payments (one campaign at a time, no double charge). */
 export async function runningCampaign(userId: string) {
-  return db.campaign.findFirst({
-    where: { userId, status: { in: ["active", "paused"] }, OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }] },
-    orderBy: { createdAt: "desc" },
-    select: { id: true },
-  });
+  return db.campaign.findFirst({ where: { userId, ...runningCampaignWhere() }, orderBy: { createdAt: "desc" }, select: { id: true } });
 }
 
 /** Mock-paid payments in the last 24h (abuse cap for the public demo). */
@@ -157,7 +222,8 @@ export async function createInvoice(userId: string, planKey: string) {
     data: {
       userId, amount: plan.priceKzt, currency: "KZT", provider, status: "pending", plan: plan.key,
       externalId: `KSP-${randomBytes(16).toString("hex").toUpperCase()}`, // 128 bits: invoice ids are unguessable
-      partnerCode: partner?.code ?? null, partnerCut: partner ? Math.round(plan.priceKzt * partner.revShare) : 0,
+      // Mock (test-gateway) payments move no money: attribution is kept for analytics, but no revenue share is owed.
+      partnerCode: partner?.code ?? null, partnerCut: partner && provider !== MOCK_PROVIDER ? Math.round(plan.priceKzt * partner.revShare) : 0,
       meta: s({ expiresAt: new Date(Date.now() + INVOICE_TTL_MS).toISOString() }),
     },
   });
@@ -186,6 +252,25 @@ export type WebhookResult =
   | { ok: true; status: 200; duplicate?: boolean; campaignId?: string | null; refundDue?: boolean; startedCampaignId?: string };
 
 const pushTx = (meta: Meta, tx: string) => ({ ...meta, txIds: [...(meta.txIds ?? []), tx].slice(-20) });
+const seen = (meta: Meta, tx: string) => (meta.txIds ?? []).includes(tx) || meta.transactionId === tx;
+
+type Tx = Prisma.TransactionClient;
+
+/**
+ * Serializes payment bookkeeping per user until the transaction ends. Postgres: a row lock (SELECT … FOR UPDATE).
+ * SQLite (dev/tests) has a single writer: a no-op self-assignment makes the write lock the transaction's first
+ * statement — nothing read earlier (and possibly stale) is written back.
+ */
+async function lockUser(tx: Tx, userId: string) {
+  if (isPostgres) await tx.$queryRaw`SELECT 1 FROM "User" WHERE "id" = ${userId} FOR UPDATE`;
+  else await tx.$executeRaw`UPDATE "User" SET "careerMode" = "careerMode" WHERE "id" = ${userId}`;
+}
+
+/** Same as lockUser for a payment that has no user any more (deleted account). */
+async function lockPayment(tx: Tx, paymentId: string) {
+  if (isPostgres) await tx.$queryRaw`SELECT 1 FROM "Payment" WHERE "id" = ${paymentId} FOR UPDATE`;
+  else await tx.$executeRaw`UPDATE "Payment" SET "status" = "status" WHERE "id" = ${paymentId}`;
+}
 
 /** Webhook handler: source-checked, deduplicated on transactionId, amount-checked, idempotent. */
 export async function handleWebhook(evt: WebhookEvent, source: EventSource): Promise<WebhookResult> {
@@ -194,95 +279,141 @@ export async function handleWebhook(evt: WebhookEvent, source: EventSource): Pro
   // A mock-signed event can never settle a real invoice (and vice versa).
   if ((source === "mock") !== (p.provider === MOCK_PROVIDER)) return { ok: false, status: 403, error: "event source does not match invoice provider" };
   if (evt.amount !== p.amount || evt.currency !== p.currency) return { ok: false, status: 400, error: "amount mismatch" };
-  if (!p.userId) return { ok: false, status: 410, error: "account deleted" };
+  // Deleted account: the money may still have moved. Book it (paid + refund promise) and acknowledge, so the provider
+  // stops retrying and the refund is on record — a 4xx here would leave a real charge with no trace.
+  if (!p.userId) return settleOrphan(p.id, evt);
   const meta = j<Meta>(p.meta, {});
-  const seenTx = (meta.txIds ?? []).includes(evt.transactionId);
 
   if (evt.event === "payment.failed") {
-    if (seenTx || p.status === "paid") return { ok: true, status: 200, duplicate: true, campaignId: p.campaignId };
+    if (seen(meta, evt.transactionId) || p.status === "paid") return { ok: true, status: 200, duplicate: true, campaignId: p.campaignId };
     await db.payment.updateMany({ where: { id: p.id, status: "pending" }, data: { status: "failed", meta: s({ ...pushTx(meta, evt.transactionId), lastEvent: evt.event, lastEventAt: evt.occurredAt }) } });
     await logEvent(p.userId, "payment_failed", `Оплата ${p.externalId} отклонена`);
     return { ok: true, status: 200 };
   }
 
-  if (p.status === "paid") {
-    const duplicateCharge = !seenTx;
-    if (duplicateCharge) {
-      // Same invoice paid twice with different transactions: the second charge must be refunded, never silently absorbed.
-      const fresh = j<Meta>((await db.payment.findUniqueOrThrow({ where: { id: p.id } })).meta, {});
-      await db.payment.update({ where: { id: p.id }, data: { meta: s({ ...pushTx(fresh, evt.transactionId), duplicateCharges: [...(fresh.duplicateCharges ?? []), evt.transactionId].slice(-20), refundDue: true, refundReason: "duplicate_charge" }) } });
-      await logEvent(p.userId, "payment_refund_due", `Повторное списание по счёту ${p.externalId} (${evt.transactionId}) — будет возвращено`);
-    }
-    // Retry of an already-paid invoice: make sure the campaign exists (activation may have failed after the claim).
-    const r = await activatePaid(p.id);
-    return { ok: true, status: 200, duplicate: true, campaignId: r.campaignId ?? p.campaignId, refundDue: duplicateCharge || r.kind === "refund_due", startedCampaignId: r.kind === "created" ? r.campaignId : undefined };
-  }
-
-  const late = p.status === "expired" || isExpired(p);
-  const claimMeta: Meta = { ...pushTx(meta, evt.transactionId), transactionId: evt.transactionId, lastEvent: evt.event, lastEventAt: evt.occurredAt, ...(late ? { latePayment: true } : {}) };
-  const r = await activatePaid(p.id, claimMeta);
+  // Claim, duplicate-charge bookkeeping and activation all happen under one per-user lock (see activatePaid).
+  const r = await activatePaid(p.id, { tx: evt.transactionId, event: evt.event, occurredAt: evt.occurredAt });
   if (r.kind === "not_paid") return { ok: true, status: 200, duplicate: true, campaignId: p.campaignId };
-  if (late && r.claimed) await logEvent(p.userId, "payment_late", `Оплата по истёкшему счёту ${p.externalId} получена${r.kind === "refund_due" ? " — кампания уже идёт, платёж будет возвращён" : ""}`);
-  return { ok: true, status: 200, duplicate: !r.claimed, campaignId: r.campaignId ?? null, refundDue: r.kind === "refund_due", startedCampaignId: r.kind === "created" ? r.campaignId : undefined };
+  return {
+    ok: true, status: 200, duplicate: !r.claimed, campaignId: r.campaignId ?? null,
+    refundDue: r.duplicateCharge || r.kind === "refund_due", startedCampaignId: r.kind === "created" ? r.campaignId : undefined,
+  };
 }
 
-type ActivateResult = { claimed: boolean } & ({ kind: "not_paid"; campaignId?: undefined } | { kind: "attached" | "created"; campaignId: string } | { kind: "refund_due"; campaignId?: undefined });
+/** A payment event for an invoice whose account was deleted (Payment.userId nulled). */
+async function settleOrphan(paymentId: string, evt: WebhookEvent): Promise<WebhookResult> {
+  const r = await db.$transaction(async (tx) => {
+    await lockPayment(tx, paymentId);
+    const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    const meta = j<Meta>(p.meta, {});
+    if (seen(meta, evt.transactionId)) return { duplicate: true, refund: false };
+    const base = { ...pushTx(meta, evt.transactionId), lastEvent: evt.event, lastEventAt: evt.occurredAt };
+    if (evt.event === "payment.failed") {
+      if (p.status !== "pending") return { duplicate: true, refund: false };
+      await tx.payment.update({ where: { id: p.id }, data: { status: "failed", meta: s(base) } });
+      return { duplicate: false, refund: false };
+    }
+    if (p.status === "paid") {
+      // Charged again for a deleted account: this charge is owed back too.
+      const next = withRefund({ ...base, duplicateCharges: [...(meta.duplicateCharges ?? []), evt.transactionId].slice(-20) }, evt.transactionId, "duplicate_charge");
+      await tx.payment.update({ where: { id: p.id }, data: { meta: s(next) } });
+      return { duplicate: true, refund: true };
+    }
+    await tx.payment.update({
+      where: { id: p.id },
+      data: { status: "paid", paidAt: new Date(), meta: s(withRefund({ ...base, transactionId: evt.transactionId }, evt.transactionId, "account_deleted")) },
+    });
+    return { duplicate: false, refund: true };
+  });
+  if (r.refund) console.warn("[kaspi] payment for a deleted account — refund due", { paymentId, transactionId: evt.transactionId });
+  return { ok: true, status: 200, duplicate: r.duplicate, campaignId: null, refundDue: r.refund };
+}
+
+/** The charge being processed: its transaction id and the event that reported it. */
+export type Charge = { tx: string; event: string; occurredAt: string };
+
+type ActivateResult = { claimed: boolean; duplicateCharge: boolean } & (
+  | { kind: "not_paid"; campaignId?: undefined }
+  | { kind: "attached" | "created"; campaignId: string }
+  | { kind: "refund_due"; campaignId?: undefined }
+);
 
 /**
- * Claims the payment (when claimMeta is given) and creates the campaign in ONE transaction, so a crash between
- * "paid" and "campaign created" can't leave a paid invoice without a campaign — and a retry repairs it anyway.
- * If the user already has a running campaign the payment is marked refund_due instead of being attached silently.
+ * Under a per-user lock and in ONE transaction: claims the payment for `charge` (or, when the invoice is already paid
+ * by another transaction, records that charge as a duplicate to refund) and creates the campaign — so a crash between
+ * "paid" and "campaign created" can't leave a paid invoice without a campaign, and a retry repairs it anyway.
+ * A payment with a blocking refund entry (campaign already running / account deleted) never activates; if the user
+ * already has a running campaign the payment gets such an entry instead of being attached silently.
  * The first agent tick is NOT run here; callers schedule it with after() so the webhook returns fast.
  */
-export async function activatePaid(paymentId: string, claimMeta?: Meta): Promise<ActivateResult> {
+export async function activatePaid(paymentId: string, charge?: Charge): Promise<ActivateResult> {
   const found = await db.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { userId: true } });
-  if (!found.userId) return { claimed: false, kind: "not_paid" };
-  const pre = { userId: found.userId };
-  const user = await db.user.findUniqueOrThrow({ where: { id: pre.userId }, include: { goal: true } });
-  const readiness = await assessReadinessFor(pre.userId).catch(() => 0);
+  if (!found.userId) return { claimed: false, duplicateCharge: false, kind: "not_paid" };
+  const userId = found.userId;
+  const readiness = await assessReadinessFor(userId).catch(() => 0);
 
-  const r = await db.$transaction(async (tx): Promise<ActivateResult & { externalId?: string | null; planLabel?: string; days?: number }> => {
-    // Row lock on the user (Postgres) / write lock (SQLite): serializes activations of the same user,
-    // so two different invoices paid concurrently can't both start a campaign.
-    await tx.user.update({ where: { id: pre.userId }, data: { careerMode: user.careerMode } });
-    let claimed = false;
-    if (claimMeta) {
-      const c = await tx.payment.updateMany({ where: { id: paymentId, status: { in: ["pending", "failed", "expired"] } }, data: { status: "paid", paidAt: new Date(), meta: s(claimMeta) } });
-      claimed = c.count > 0;
+  type Inner = ActivateResult & { externalId?: string | null; planLabel?: string; days?: number; late?: boolean; newlyBlocked?: boolean };
+  const r = await db.$transaction(async (tx): Promise<Inner> => {
+    // Serializes activations and bookkeeping of the same user: two invoices paid concurrently can't both start a
+    // campaign, and two deliveries can't both append (or lose) a refund entry.
+    await lockUser(tx, userId);
+    let p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
+    let meta = j<Meta>(p.meta, {});
+    let claimed = false, duplicateCharge = false, late = false;
+    if (charge && !seen(meta, charge.tx)) {
+      if (p.status === "pending" || p.status === "failed" || p.status === "expired") {
+        late = p.status === "expired" || isExpired(p);
+        meta = { ...pushTx(meta, charge.tx), transactionId: charge.tx, lastEvent: charge.event, lastEventAt: charge.occurredAt, ...(late ? { latePayment: true } : {}) };
+        p = await tx.payment.update({ where: { id: p.id }, data: { status: "paid", paidAt: new Date(), meta: s(meta) } });
+        claimed = true;
+      } else if (p.status === "paid") {
+        // Same invoice paid twice with different transactions: the second charge must be refunded, never silently absorbed.
+        meta = withRefund({ ...pushTx(meta, charge.tx), duplicateCharges: [...(meta.duplicateCharges ?? []), charge.tx].slice(-20) }, charge.tx, "duplicate_charge");
+        p = await tx.payment.update({ where: { id: p.id }, data: { meta: s(meta) } });
+        duplicateCharge = true;
+      }
     }
-    const p = await tx.payment.findUniqueOrThrow({ where: { id: paymentId } });
-    if (p.status !== "paid") return { kind: "not_paid", claimed };
-    if (p.campaignId) return { kind: "attached", campaignId: p.campaignId, claimed };
-    const meta = j<Meta>(p.meta, {});
-    if (meta.refundDue && !meta.duplicateCharges?.length) return { kind: "refund_due", claimed };
+    const base = { claimed, duplicateCharge, externalId: p.externalId, late };
+    if (p.status !== "paid") return { ...base, kind: "not_paid" };
+    if (p.campaignId) return { ...base, kind: "attached", campaignId: p.campaignId };
+    if (activationBlocked(meta)) return { ...base, kind: "refund_due" };
 
     const now = new Date();
     // Campaigns past endsAt are over even if no tick has expired them yet.
-    await tx.campaign.updateMany({ where: { userId: pre.userId, status: { in: ["active", "paused"] }, endsAt: { lte: now } }, data: { status: "expired" } });
-    const existing = await tx.campaign.findFirst({ where: { userId: pre.userId, status: { in: ["active", "paused"] } }, select: { id: true } });
+    await tx.campaign.updateMany({ where: { userId, status: { in: ["active", "paused"] }, endsAt: { lte: now } }, data: { status: "expired" } });
+    const existing = await tx.campaign.findFirst({ where: { userId, ...runningCampaignWhere(now) }, select: { id: true } });
     if (existing) {
-      await tx.payment.update({ where: { id: p.id }, data: { meta: s({ ...meta, refundDue: true, refundReason: "campaign_already_active", conflictingCampaignId: existing.id }) } });
-      return { kind: "refund_due", claimed, externalId: p.externalId };
+      const next = withRefund(meta, meta.transactionId ?? charge?.tx ?? "", "campaign_already_active", { conflictingCampaignId: existing.id });
+      await tx.payment.update({ where: { id: p.id }, data: { meta: s(next) } });
+      return { ...base, kind: "refund_due", newlyBlocked: true };
     }
+    const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { consents: true, goal: { select: { mode: true } } } });
     const plan = PLANS[p.plan as keyof typeof PLANS] ?? PLANS.local;
     const campaign = await tx.campaign.create({
       data: {
-        userId: pre.userId, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: user.goal?.mode ?? "autonomous", readiness,
+        userId, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: user.goal?.mode ?? "autonomous", readiness,
         dailyLimit: plan.dailyLimit, autoSubmit: j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false, startedAt: now, endsAt: new Date(now.getTime() + plan.days * 86400000),
       },
     });
     await tx.payment.update({ where: { id: p.id }, data: { campaignId: campaign.id } });
-    await tx.user.update({ where: { id: pre.userId }, data: { careerMode: "active" } });
-    // Other open invoices can no longer be paid by mistake (a late payment on one is handled as refund_due).
-    await tx.payment.updateMany({ where: { userId: pre.userId, id: { not: p.id }, status: "pending", provider: { in: KASPI_PROVIDERS } }, data: { status: "expired" } });
-    return { kind: "created", campaignId: campaign.id, claimed, externalId: p.externalId, planLabel: plan.label, days: plan.days };
+    await tx.user.update({ where: { id: userId }, data: { careerMode: "active" } });
+    // Other open invoices can no longer be paid by mistake (a late payment on one is handled as refund_due). The reason
+    // is recorded so the payment history doesn't claim they ran out of time.
+    const others = await tx.payment.findMany({ where: { userId, id: { not: p.id }, status: "pending", provider: { in: KASPI_PROVIDERS } }, select: { id: true, meta: true } });
+    for (const o of others) {
+      await tx.payment.update({ where: { id: o.id }, data: { status: "expired", meta: s({ ...j<Meta>(o.meta, {}), expiredReason: "campaign_started", expiredAt: now.toISOString() }) } });
+    }
+    return { ...base, kind: "created", campaignId: campaign.id, planLabel: plan.label, days: plan.days };
   });
 
+  if (r.duplicateCharge) await logEvent(userId, "payment_refund_due", `Повторное списание по счёту ${r.externalId} (${charge?.tx}) — будет возвращено`);
+  if (r.late && r.claimed) await logEvent(userId, "payment_late", `Оплата по истёкшему счёту ${r.externalId} получена${r.kind === "refund_due" ? " — кампания уже идёт, платёж будет возвращён" : ""}`);
   if (r.kind === "created") {
-    await logEvent(pre.userId, "campaign_started", `Оплата Kaspi Pay ${r.externalId} прошла. Career Campaign «${r.planLabel}» запущена на ${r.days} дней`);
-  } else if (r.kind === "refund_due" && r.externalId) {
-    await logEvent(pre.userId, "payment_refund_due", `Оплата ${r.externalId} получена, но кампания уже идёт — платёж будет возвращён`);
-    await notify(pre.userId, "info", "Платёж будет возвращён", `Счёт ${r.externalId} оплачен, но у тебя уже есть активная кампания. Мы вернём деньги.`, "/app/campaign");
+    await logEvent(userId, "campaign_started", `Оплата Kaspi Pay ${r.externalId} прошла. Career Campaign «${r.planLabel}» запущена на ${r.days} дней`);
+  } else if (r.kind === "refund_due" && r.newlyBlocked) {
+    await logEvent(userId, "payment_refund_due", `Оплата ${r.externalId} получена, но кампания уже идёт — платёж будет возвращён`);
+    await notify(userId, "info", "Платёж будет возвращён", `Счёт ${r.externalId} оплачен, но у тебя уже есть активная кампания. Мы вернём деньги.`, "/app/campaign");
   }
-  return r.kind === "not_paid" || r.kind === "refund_due" ? { kind: r.kind, claimed: r.claimed } : { kind: r.kind, campaignId: r.campaignId, claimed: r.claimed };
+  const flags = { claimed: r.claimed, duplicateCharge: r.duplicateCharge };
+  return r.kind === "not_paid" || r.kind === "refund_due" ? { ...flags, kind: r.kind } : { ...flags, kind: r.kind, campaignId: r.campaignId };
 }

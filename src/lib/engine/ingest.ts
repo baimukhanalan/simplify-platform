@@ -166,3 +166,28 @@ async function reanchorDemoJobs() {
     return db.job.update({ where: { id: r.id }, data: { postedAt: new Date(now - ageHours * 3600000), active: true } });
   }));
 }
+
+/**
+ * Re-derive every demo vacancy's normalized fields (role family, seniority, years, stack…) from the current normalize().
+ * Used by the demo seed so a classifier change reaches rows created by an older version.
+ */
+export async function renormalizeDemoJobs() {
+  await ensureSeedJobs();
+  const rows = await db.job.findMany({ where: { source: "demo" }, select: { id: true, externalId: true, postedAt: true } });
+  let n = 0;
+  for (const r of rows) {
+    const seed = SEED_JOBS[demoIndex(r.externalId)];
+    if (!seed) continue;
+    const x = normalize({ ...seed, source: "demo", externalId: r.externalId, url: `https://jobs.example.com/${r.externalId}`, postedAt: r.postedAt });
+    await db.job.update({
+      where: { id: r.id },
+      data: {
+        roleFamily: x.roleFamily, seniority: x.seniority, minYears: x.minYears, massHiring: x.massHiring, technologies: x.technologies, requirements: x.requirements,
+        countries: x.countries, remote: x.remote, sponsorship: x.sponsorship, workAuth: x.workAuth, languages: x.languages, education: x.education,
+        salaryMin: x.salaryMin, salaryMax: x.salaryMax, description: x.description, industry: x.industry, active: true,
+      },
+    });
+    n++;
+  }
+  return n;
+}

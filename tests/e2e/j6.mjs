@@ -117,7 +117,7 @@ check(!hiredCrawl.problems.length, "J6.crawl", "no broken pages for a HIRED user
 
 // next campaign
 pg = await c.get("/app/campaign");
-check(pg.status === 200 && /Start New Campaign|Запустите/.test(pg.text), "J6.campaign.new", "campaign page offers a new campaign", pg.status);
+check(pg.status === 200 && /Start New Campaign|Запусти(те)? Career/.test(pg.text), "J6.campaign.new", "campaign page offers a new campaign", pg.status);
 r = await c.action("campaign.checkout", [form({ plan: "local", partner: "" })], { page: "/app/campaign" });
 check(r.redirect?.startsWith("/pay/kaspi/"), "J6.next.invoice", "checkout after HIRED creates a new invoice", r.redirect);
 const inv = r.redirect.split(";")[0].split("/").pop();

@@ -2,7 +2,11 @@ import { after } from "next/server";
 import { runTick } from "@/lib/engine/agent";
 import { handleWebhook, parseEvent, verifyWebhook } from "@/lib/payments/kaspi";
 
-export const maxDuration = 60;
+// The first agent cycle runs in after() inside this invocation: give it room (it is also capped, see FIRST_TICK).
+export const maxDuration = 300;
+
+/** The first cycle right after payment prepares at most this many packages (AI builds); the cron picks up the rest. */
+const FIRST_TICK = { maxPrepare: 3 };
 
 const MAX_BODY = 16 * 1024;
 
@@ -25,7 +29,7 @@ export async function POST(req: Request) {
   if (started) {
     after(async () => {
       try {
-        await runTick(started);
+        await runTick(started, FIRST_TICK);
       } catch (e) {
         console.error("[kaspi] first tick failed", e);
       }

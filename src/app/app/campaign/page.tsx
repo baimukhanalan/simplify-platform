@@ -5,7 +5,8 @@ import { ArrowRight, Check, CircleAlert, Pause, Play, TicketPercent, Zap } from 
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { demoToolsEnabled } from "@/lib/demo";
-import { isOverdue, pendingApprovalsCount } from "@/lib/ops-data";
+import { isOverdue, pendingApprovalsCount, pendingHandoffsCount } from "@/lib/ops-data";
+import { readAutonomy } from "@/lib/engine/autonomy";
 import { ButtonLink, Card, Chip, Label, PageHeader, Progress, Ring, Script, cx } from "@/components/ui";
 import { PaymentHistory } from "./_components/payment-history";
 import { SubmitButton } from "@/components/client";
@@ -15,13 +16,13 @@ import { Disclosure } from "../profile/_components/bits";
 import { AgentStatus } from "../../_components/agent-status";
 import { LegalLinks } from "../../_components/legal-page";
 import { PLAN_COOKIE, cleanPlan, type PlanKey } from "../../_components/plan-pref";
-import { plural } from "../../_components/ru";
+import { handoffsWaiting, plural, questionsWaiting } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Career Campaign" };
 
 const INCLUDED = [
   "Career Profile", "Career Goal Builder", "Поиск вакансий (discovery)", "Matching и Eligibility", "Ранжирование по вероятности интервью",
-  "Персонализация CV под вакансию", "Cover letters", "Подача заявок (application execution)", "Ответы на screening-вопросы", "Tracking и Pipeline",
+  "Персонализация CV под вакансию", "Cover letters", "Подача заявок", "Ответы на вопросы анкет", "Трекинг в Applications",
   "Оптимизация стратегии по откликам", "Подготовка к assessment", "Interview Pack", "Mock interviews", "AI Interview Copilot",
   "Разбор после интервью", "Базовая помощь с оффером и переговорами",
 ];
@@ -47,10 +48,11 @@ const date = (d: Date | null | undefined) => (d ? d.toLocaleDateString("ru-RU", 
 
 export default async function CampaignPage() {
   const user = await requireUser();
-  const [rows, payments, approvals, jar] = await Promise.all([
+  const [rows, payments, approvals, handoffs, jar] = await Promise.all([
     db.campaign.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { _count: { select: { opportunities: { where: { submittedAt: { not: null } } } } } } }),
     db.payment.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { campaign: { select: { plan: true } } } }),
     pendingApprovalsCount(user.id),
+    pendingHandoffsCount(user.id),
     cookies(),
   ]);
   // A campaign past endsAt is over even before an agent cycle writes status="expired": no Pause/Run, show the buy form.
@@ -60,7 +62,13 @@ export default async function CampaignPage() {
   const last = past[0];
   const consents = j<{ autoSubmit?: boolean }>(user.consents, {});
   const demo = demoToolsEnabled(user);
-  const needs = active && approvals ? [{ text: `${approvals} ${plural(approvals, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа`, href: "/app/approvals" }] : [];
+  const needs = active
+    ? [
+        ...(approvals ? [{ text: questionsWaiting(approvals), href: "/app/approvals" }] : []),
+        ...(handoffs ? [{ text: handoffsWaiting(handoffs), href: "/app/approvals#kind-handoff" }] : []),
+      ]
+    : [];
+  const autonomy = readAutonomy(user.autonomy);
 
   return (
     <>
@@ -82,7 +90,7 @@ export default async function CampaignPage() {
         />
       )}
 
-      {active ? <ActiveCampaign c={active} autoSubmitConsent={consents.autoSubmit !== false} demo={demo} /> : (
+      {active ? <ActiveCampaign c={active} autoSubmitConsent={consents.autoSubmit !== false} autoApply={autonomy.submitApplications} minMatch={autonomy.autoApplyMinMatch} demo={demo} /> : (
         <>
           {last && (last.status === "hired" || last.status === "expired") && (
             <div className="mb-6 flex animate-rise flex-col gap-2 rounded-2xl border border-line bg-white/70 px-4 py-3.5 text-[14px] text-ink-2 sm:flex-row sm:items-center sm:justify-between">
@@ -190,7 +198,14 @@ function Checkout({ hasGoal, partner, recommended }: { hasGoal: boolean; partner
   );
 }
 
-function ActiveCampaign({ c, autoSubmitConsent, demo }: { c: { id: string; plan: string; status: string; readiness: number; dailyLimit: number; autoSubmit: boolean; startedAt: Date | null; endsAt: Date | null; lastRunAt: Date | null }; autoSubmitConsent: boolean; demo: boolean }) {
+function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch, demo }: { c: { id: string; plan: string; status: string; readiness: number; dailyLimit: number; autoSubmit: boolean; startedAt: Date | null; endsAt: Date | null; lastRunAt: Date | null }; autoSubmitConsent: boolean; autoApply: boolean; minMatch: number; demo: boolean }) {
+  // The agent sends on its own only with the consent (campaign.autoSubmit mirrors it) — and then either for roles above
+  // the auto-apply threshold (Autonomy.submitApplications) or only for roles marked Apply / Auto.
+  const autoLine = !c.autoSubmit || !autoSubmitConsent
+    ? "автоподача выключена — нет согласия в настройках, агент только готовит пакеты"
+    : autoApply
+      ? `автоподача включена: агент сам подаёт на вакансии с Match ≥ ${minMatch}% и на отмеченные Apply / Auto`
+      : "автоподача только для отмеченных Apply / Auto — Auto-apply по Match выключен";
   const plan = PLANS[c.plan as keyof typeof PLANS] ?? PLANS.local;
   const { total, elapsed, left } = campaignClock(c.startedAt, c.endsAt, plan.days);
   const paused = c.status === "paused";
@@ -206,8 +221,9 @@ function ActiveCampaign({ c, autoSubmitConsent, demo }: { c: { id: string; plan:
         </div>
         <div className="flex flex-wrap items-end gap-x-10 gap-y-5">
           <div>
+            <div className="mb-1 text-[13px] text-ink-3">Осталось</div>
             <div className="num text-[64px] leading-none text-head">{left}</div>
-            <div className="mt-1 text-[13px] text-ink-3">{plural(left, ["день остался", "дня осталось", "дней осталось"])} из {total}</div>
+            <div className="mt-1 text-[13px] text-ink-3">{plural(left, ["день", "дня", "дней"])} из {total}</div>
           </div>
           <div className="flex items-center gap-3">
             <Ring value={c.readiness} size={64} stroke={5} />
@@ -245,7 +261,7 @@ function ActiveCampaign({ c, autoSubmitConsent, demo }: { c: { id: string; plan:
         <Card className="animate-rise" style={{ animationDelay: "80ms" }}>
           <Label className="mb-3">Настройки агента</Label>
           <p className="text-[13.5px] text-ink-2">
-            Сейчас: до <span className="num text-head">{Math.min(c.dailyLimit, plan.dailyLimit)}</span> {plural(Math.min(c.dailyLimit, plan.dailyLimit), ["заявки", "заявок", "заявок"])} в день, автоподача {c.autoSubmit ? "включена" : autoSubmitConsent ? "выключена" : "выключена (согласие отозвано)"}.
+            Сейчас: до <span className="num text-head">{Math.min(c.dailyLimit, plan.dailyLimit)}</span> {plural(Math.min(c.dailyLimit, plan.dailyLimit), ["заявки", "заявок", "заявок"])} в день, {autoLine}.
             Что агент делает сам, а что — только с твоего разрешения, настраивается в Agent.
           </p>
           <Link href="/app/agent" className="mt-4 inline-flex items-center gap-1.5 text-[13.5px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">Открыть Agent <ArrowRight className="size-3.5" aria-hidden /></Link>

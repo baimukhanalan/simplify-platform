@@ -13,14 +13,14 @@ const SUPPORT = "support@simplify.kz";
  * The mailto prefills a subject and asks for the account email only — never the password.
  */
 export default function ResetPage() {
-  const mail = `mailto:${SUPPORT}?subject=${encodeURIComponent("Восстановление доступа к Simplify")}&body=${encodeURIComponent("Здравствуйте! Не могу войти в аккаунт.\nEmail аккаунта: \n")}`;
+  const mail = `mailto:${SUPPORT}?subject=${encodeURIComponent("Восстановление доступа к Simplify")}&body=${encodeURIComponent("Привет! Не могу войти в аккаунт.\nEmail аккаунта: \n")}`;
   return (
     <div className="min-h-dvh overflow-x-clip">
       <SiteHeader />
       <main className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 pb-20 pt-6 sm:px-8 sm:pt-12">
         <div className="flex flex-col gap-3 animate-rise">
           <span className="label">Восстановление доступа</span>
-          <h1 className="h-serif text-[clamp(32px,5vw,48px)]">Забыли <Script>пароль</Script>?</h1>
+          <h1 className="h-serif text-[clamp(32px,5vw,48px)]">Не помнишь <Script>пароль</Script>?</h1>
           <p className="text-[15px] text-ink-2">
             Автоматический сброс пароля по почте мы ещё не подключили. Пока доступ восстанавливает поддержка — вручную и обычно в течение рабочего дня.
           </p>

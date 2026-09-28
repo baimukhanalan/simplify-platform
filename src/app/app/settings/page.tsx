@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: "Приватность и данны
 
 const CONSENTS = [
   { key: "autoSubmit", title: "Автоподача заявок", text: "Агент подаёт заявки от твоего имени в пределах дневного лимита. Выключено — каждая заявка ждёт твоего подтверждения, а активная кампания переходит в ручной режим." },
-  { key: "emailScan", title: "Разбор писем работодателей", text: "Simplify классифицирует ответы работодателей (подтверждение, отказ, assessment, интервью, оффер) и обновляет Pipeline. Без согласия статусы обновляются вручную." },
+  { key: "emailScan", title: "Разбор писем работодателей", text: "Simplify классифицирует ответы работодателей (подтверждение, отказ, assessment, интервью, оффер) и обновляет статусы в Applications. Без согласия статусы обновляются вручную." },
   { key: "copilot", title: "AI Interview Copilot", text: "Подсказки во время интервью — из твоего профиля и STAR-историй. Используй Copilot только там, где это допускают правила интервью." },
   { key: "analytics", title: "Продуктовая аналитика", text: "Обезличенные метрики использования, чтобы улучшать продукт. Мы не продаём и не передаём твои данные рекламным сетям." },
 ] as const;
@@ -51,7 +51,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <ActionForm action={updateConsents} className="flex flex-col gap-4">
               <ul className="flex flex-col divide-y divide-line">
                 {CONSENTS.map((c) => (
-                  <li key={c.key} className="py-4 first:pt-0">
+                  <li key={c.key} id={c.key === "autoSubmit" ? "autosubmit" : undefined} className="scroll-mt-24 py-4 first:pt-0">
                     <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-4 has-[:focus-visible]:outline-green">
                       <span className="flex flex-col gap-1">
                         <span className="text-[15px] text-head">{c.title}</span>
@@ -60,6 +60,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                       <input type="checkbox" role="switch" name={c.key} defaultChecked={Boolean(consents[c.key])} className="peer sr-only" />
                       <span className="relative mt-0.5 h-6 w-11 shrink-0 rounded-full bg-head/15 transition-colors peer-checked:bg-green after:absolute after:left-0.5 after:top-0.5 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" aria-hidden />
                     </label>
+                    {c.key === "autoSubmit" && (
+                      <p className="mt-2 max-w-2xl text-[13px] text-ink-3">
+                        Это согласие разрешает агенту отправлять заявки вообще. Какие роли он отправляет сам (порог Match), задаётся в{" "}
+                        <Link href="/app/agent#auto-apply" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">Agent → Auto-apply</Link>.
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -115,7 +121,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                   <li key={e.id} className="grid gap-x-4 gap-y-1 px-5 py-3.5 sm:grid-cols-[150px_1fr_auto] sm:items-center sm:px-6">
                     <time dateTime={e.createdAt.toISOString()} className="num text-[12.5px] text-ink-3">{e.createdAt.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", dateStyle: "short", timeStyle: "short" })}</time>
                     <span className="text-[14px] text-ink-2">{e.message}</span>
-                    <span className="font-mono text-[10.5px] uppercase tracking-[.06em] text-ink-4">{e.type}</span>
+                    <span className="font-mono text-[10.5px] uppercase tracking-[.06em] text-ink-3">{e.type}</span>
                   </li>
                 ))}
               </ol>
@@ -141,7 +147,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </Card>
         </section>
       </div>
-      <p className="mt-10 flex items-center gap-2 text-[12.5px] text-ink-4"><History className="size-3.5" strokeWidth={1.7} aria-hidden />Аккаунт создан {user.createdAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}</p>
+      <p className="mt-10 flex items-center gap-2 text-[12.5px] text-ink-3"><History className="size-3.5" strokeWidth={1.7} aria-hidden />Аккаунт создан {user.createdAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}</p>
     </>
   );
 }

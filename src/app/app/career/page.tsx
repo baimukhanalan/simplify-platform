@@ -7,15 +7,17 @@ import { db, j } from "@/lib/db";
 import { ButtonLink, Card, Chip, Label, Progress, Ring, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { setCareerMode, recordSnapshot } from "@/lib/actions/account";
-import { ROLE_FAMILIES, fmtMoney } from "@/lib/engine/taxonomy";
+import { ROLE_FAMILIES } from "@/lib/engine/taxonomy";
 import { agentState } from "../_components/today-data";
+import { careerHistory } from "@/lib/career";
 import { loadCareer } from "./_components/data";
 import { HistoryChart } from "./_components/history-chart";
 import { BREAKDOWN, baseRole, currentSeniority, nextMilestone, recommendation } from "./_components/next-step";
 
 export const metadata: Metadata = { title: "Career Mode" };
 
-const usd = (n: number) => fmtMoney(n, "USD");
+/** "$58 000" — Russian thousands separator (non-breaking space). */
+const usd = (n: number) => `$${Math.round(n).toLocaleString("ru-RU")}`;
 const kUsd = (n: number) => `$${Math.round(n / 1000)}k`;
 /** What a vacancy "pays": the midpoint of its range (or the only bound given). */
 const midpoint = (j: { salaryMin: number | null; salaryMax: number | null }) =>
@@ -31,8 +33,9 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
   const passive = user.careerMode === "passive";
   const threshold = Math.round(c.currentSalary * 1.25);
   const betterWhere = { active: true, roleFamily: c.family, currency: "USD", salaryMax: { gte: threshold } };
-  const [snapshots, candidates, hiredCampaign, agent] = await Promise.all([
-    db.careerSnapshot.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, take: 36 }),
+  const [history, candidates, hiredCampaign, agent] = await Promise.all([
+    // Today's point is the live score from the header; earlier points are the recorded snapshots.
+    careerHistory(user.id, { score: c.score, marketValue: c.marketValue }),
     // Pre-filter on the top of the range in SQL, then keep only roles whose midpoint clears +25%.
     c.currentSalary > 0
       ? db.job.findMany({
@@ -147,7 +150,7 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
           )}
           {betterCount > 0 && (
             <a href="#better-roles" className="inline-flex h-10 w-fit shrink-0 items-center gap-2 rounded-full bg-[#7fe3b6] px-5 text-[14px] font-medium text-[#0c1512] transition hover:bg-[#9aeec7] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]">
-              Explore<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
+              Посмотреть<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
             </a>
           )}
         </div>
@@ -239,7 +242,7 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="break-words text-[15px] text-head">{jb.title}</div>
-                      <div className="truncate text-[13px] text-ink-3">{jb.company} · {jb.remote === "remote" ? "Remote" : jb.location || jb.remote}</div>
+                      <div className="truncate text-[13px] text-ink-3">{jb.company} · {jb.remote === "remote" ? "Удалённо" : jb.location || jb.remote}</div>
                     </div>
                     <Chip tone="green" className="shrink-0"><span className="sr-only">В среднем </span>+{uplift}%</Chip>
                   </div>
@@ -270,11 +273,11 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
             <SubmitButton size="sm" variant="glass" pendingText="Фиксируем…"><Camera className="size-3.5" strokeWidth={1.7} aria-hidden />Зафиксировать сейчас</SubmitButton>
           </form>
         </div>
-        {snapshots.length >= 2 ? (
-          <HistoryChart points={snapshots.map((s) => ({ at: s.createdAt, score: s.score, marketValue: s.marketValue }))} />
+        {history.length >= 2 ? (
+          <HistoryChart points={history} />
         ) : (
           <p className="py-8 text-center text-[14px] text-ink-3">
-            {snapshots.length === 1 ? "Один замер есть. Зафиксируй ещё один позже — появится динамика." : "Замеров пока нет. Зафиксируй первый Career Score, чтобы отслеживать рост."}
+            Сейчас Career Score — <span className="num text-head">{c.score}</span>. Прошлых замеров пока нет: зафиксируй этот и вернись позже — появится динамика.
           </p>
         )}
       </Card>

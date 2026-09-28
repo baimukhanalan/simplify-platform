@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { requireUser, destroySession } from "../auth";
 import { db, j, s } from "../db";
 import { logEvent } from "../engine/agent";
-import { loadCareer } from "@/app/app/career/_components/data";
+import { loadCareer } from "../career";
+import { startOfToday } from "../time";
 import type { FormState } from "./profile";
 
 export type Consents = { terms?: boolean; autoSubmit?: boolean; emailScan?: boolean; copilot?: boolean; analytics?: boolean; at?: string };
@@ -41,6 +42,8 @@ export async function setCareerMode(form: FormData) {
 export async function recordSnapshot() {
   const user = await requireUser();
   const c = await loadCareer(user.id);
+  // One row per Almaty day: re-recording today replaces today's snapshot, so the history never shows two "today" rows.
+  await db.careerSnapshot.deleteMany({ where: { userId: user.id, createdAt: { gte: startOfToday() } } });
   await db.careerSnapshot.create({ data: { userId: user.id, score: c.score, marketValue: c.marketValue, components: s(c.components) } });
   await logEvent(user.id, "career_snapshot", `Career Score зафиксирован: ${c.score}`);
   revalidatePath("/app/career");

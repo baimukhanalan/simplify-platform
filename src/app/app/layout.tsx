@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { logout } from "@/lib/actions/auth";
-import { currentCampaign, pendingApprovalsCount, unreadMoments } from "@/lib/ops-data";
+import { currentCampaign, pendingQueueCount, unreadMoments } from "@/lib/ops-data";
 import { Nav } from "./nav";
 import { PushMoment } from "./_components/push-moment";
 import { Notifier } from "./_components/notifier";
@@ -12,7 +12,7 @@ const DAY = 86400000;
 async function shellData(userId: string) {
   const since = new Date(Date.now() - 3 * DAY);
   const [approvals, responses, interviews, offers, campaign, moments] = await Promise.all([
-    pendingApprovalsCount(userId),
+    pendingQueueCount(userId), // questions + handoffs: everything on the «Подтверждения» screen
     db.inboxMessage.count({ where: { userId, receivedAt: { gte: since }, classification: { in: ["interview", "assessment", "offer"] } } }),
     db.interview.count({ where: { userId, status: "upcoming" } }),
     // Offers join the primary nav only once one exists; declined ones don't count.

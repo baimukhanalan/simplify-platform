@@ -6,14 +6,14 @@ import { j } from "@/lib/db";
 import { AUTONOMY_LABELS, readAutonomy } from "@/lib/engine/autonomy";
 import { PLANS } from "@/lib/engine/taxonomy";
 import { runAgentNow, setCampaignStatus, updateCampaignSettings } from "@/lib/actions/campaign";
-import { pendingApprovalsCount, runningCampaign } from "@/lib/ops-data";
+import { pendingApprovalsCount, pendingHandoffsCount, runningCampaign } from "@/lib/ops-data";
 import { demoToolsEnabled } from "@/lib/demo";
 import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Field, Label, PageHeader, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { AutonomyForm } from "./_components/autonomy-form";
 import { AgentStatus } from "../../_components/agent-status";
-import { endSentence, plural } from "../../_components/ru";
+import { endSentence, handoffsWaiting, questionsWaiting } from "../../_components/ru";
 
 /** Row copy in the product's «ты» voice (engine labels stay the source of keys and English names). */
 const HINT_OVERRIDE: Record<string, string> = { changeSalary: "Отклоняться от твоей зарплатной вилки в ответах" };
@@ -23,7 +23,7 @@ export const metadata: Metadata = { title: "Agent" };
 export default async function AgentPage() {
   const user = await requireUser();
   const autonomy = readAutonomy(user.autonomy);
-  const [campaign, approvals] = await Promise.all([runningCampaign(user.id), pendingApprovalsCount(user.id)]);
+  const [campaign, approvals, handoffs] = await Promise.all([runningCampaign(user.id), pendingApprovalsCount(user.id), pendingHandoffsCount(user.id)]);
   const demo = demoToolsEnabled(user);
   const rows = AUTONOMY_LABELS.map((r) => (HINT_OVERRIDE[r.key] ? { ...r, hint: HINT_OVERRIDE[r.key] } : r));
   // The agent submits on its own only with the auto-submit consent; a running campaign carries it as campaign.autoSubmit.
@@ -41,7 +41,10 @@ export default async function AgentPage() {
       />
 
       <AgentStatus
-        needs={approvals ? [{ text: `${approvals} ${plural(approvals, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа`, href: "/app/approvals" }] : []}
+        needs={[
+          ...(approvals ? [{ text: questionsWaiting(approvals), href: "/app/approvals" }] : []),
+          ...(handoffs ? [{ text: handoffsWaiting(handoffs), href: "/app/approvals#kind-handoff" }] : []),
+        ]}
         idle={!campaign || paused}
         working={!campaign ? "Кампания не запущена — настройки применятся с первого цикла." : paused ? "Кампания на паузе — агент ничего не отправляет." : "Агент действует в этих границах."}
         className="-mt-3 mb-6"
@@ -81,8 +84,6 @@ export default async function AgentPage() {
                   )}
                 </div>
                 <form action={updateCampaignSettings} className="flex flex-col gap-3 border-t border-line pt-5">
-                  {/* updateCampaignSettings also writes autoSubmit (the consent mirror): pass the current value through unchanged. */}
-                  {campaign.autoSubmit && <input type="hidden" name="autoSubmit" value="on" />}
                   <Field label="Лимит заявок в день" hint={`От 1 до ${maxPerDay} — максимум тарифа ${plan?.label}. Меньше заявок — каждая сильнее.`}>
                     <input name="dailyLimit" type="number" min={1} max={maxPerDay} required inputMode="numeric" defaultValue={Math.min(campaign.dailyLimit, maxPerDay)} className="field" />
                   </Field>
