@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { aiJSON } from "../ai";
+
+// Pure module: safe to import from client components (Copilot runs scaffold() in the browser).
 
 // ——— Question intent (runs client- and server-side; pure, <1ms) ———
 export type Intent = "behavioral" | "experience" | "technical" | "motivation" | "leadership" | "salary" | "strengths" | "weakness" | "case" | "intro" | "closing";
@@ -171,15 +172,6 @@ export function buildPackHeuristic(ctx: { name: string; role: string; company: s
     questionsToAsk: ["What does success look like in the first 90 days?", "What is the biggest challenge the team faces this quarter?", "How does this role work with product/engineering?", "What does the interview process look like from here?", "What do the best people on this team do differently?", `What's ${ctx.company}'s biggest priority for this year?`],
     redFlags: [ctx.yearsExperience < 2 ? "Не преувеличивайте стаж — говорите о глубине задач" : "Готовьтесь к вопросам о масштабе", "Не называйте цифру зарплаты первым без вилки"],
   };
-}
-
-export async function buildPack(ctx: Parameters<typeof buildPackHeuristic>[0]) {
-  return aiJSON({
-    schema: PackSchema,
-    system: "Create a personalized interview preparation pack for this round. Behavioral answers must use ONLY the provided verified STAR stories (reference them by title). Questions to ask: 5–8, specific to the company and role. Keep each item short and speakable.",
-    prompt: JSON.stringify(ctx).slice(0, 40000),
-    fallback: () => buildPackHeuristic(ctx),
-  });
 }
 
 // ——— Mock interview ———
