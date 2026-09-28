@@ -83,6 +83,7 @@ export function Nav({ counts, role, campaign }: { counts: Record<string, number>
   return (
     <>
       <div className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-mint-2/80 px-4 py-3 backdrop-blur-xl lg:hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <Link href="/app"><img src="/brand/nav_logo.svg" alt="Simplify" className="h-5" /></Link>
         <button onClick={() => setOpen(!open)} aria-label="Меню" className="grid size-10 place-items-center rounded-full glass">{open ? <X className="size-4" /> : <Menu className="size-4" />}</button>
       </div>

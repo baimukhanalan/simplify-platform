@@ -4,15 +4,21 @@ import { logout } from "@/lib/actions/auth";
 import { Nav } from "./nav";
 import { LogOut } from "lucide-react";
 
+async function shellData(userId: string) {
+  const now = Date.now();
+  const [approvals, inbox, interviews, campaign] = await Promise.all([
+    db.approval.count({ where: { userId, status: "pending" } }),
+    db.inboxMessage.count({ where: { userId, receivedAt: { gte: new Date(now - 3 * 86400000) }, classification: { in: ["interview", "assessment", "offer"] } } }),
+    db.interview.count({ where: { userId, status: "upcoming" } }),
+    db.campaign.findFirst({ where: { userId }, orderBy: { createdAt: "desc" } }),
+  ]);
+  const daysLeft = campaign?.endsAt ? Math.max(0, Math.ceil((campaign.endsAt.getTime() - now) / 86400000)) : null;
+  return { approvals, inbox, interviews, campaign, daysLeft };
+}
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const [approvals, inbox, interviews, campaign] = await Promise.all([
-    db.approval.count({ where: { userId: user.id, status: "pending" } }),
-    db.inboxMessage.count({ where: { userId: user.id, receivedAt: { gte: new Date(Date.now() - 3 * 86400000) }, classification: { in: ["interview", "assessment", "offer"] } } }),
-    db.interview.count({ where: { userId: user.id, status: "upcoming" } }),
-    db.campaign.findFirst({ where: { userId: user.id }, orderBy: { createdAt: "desc" } }),
-  ]);
-  const daysLeft = campaign?.endsAt ? Math.max(0, Math.ceil((campaign.endsAt.getTime() - Date.now()) / 86400000)) : null;
+  const { approvals, inbox, interviews, campaign, daysLeft } = await shellData(user.id);
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
       <Nav counts={{ approvals, inbox, interviews }} role={user.role} campaign={campaign && campaign.status !== "draft" ? { status: campaign.status, daysLeft } : null} />

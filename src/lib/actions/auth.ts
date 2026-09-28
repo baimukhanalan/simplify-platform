@@ -11,7 +11,8 @@ export async function login(_: AuthState, form: FormData): Promise<AuthState> {
   const user = await db.user.findUnique({ where: { email } });
   if (!user || !(await verifyPassword(password, user.passwordHash))) return { error: "Неверный email или пароль" };
   await createSession(user.id);
-  redirect(String(form.get("next") || "/app"));
+  const next = String(form.get("next") || "");
+  redirect(next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : "/app");
 }
 
 export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
@@ -34,7 +35,8 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
   });
   await db.event.create({ data: { userId: user.id, type: "signup", message: "Аккаунт создан" } });
   await createSession(user.id);
-  redirect("/onboarding");
+  const plan = String(form.get("plan") ?? "");
+  redirect(plan === "local" || plan === "international" ? `/onboarding?plan=${plan}` : "/onboarding");
 }
 
 export async function logout() {

@@ -30,7 +30,7 @@ export async function checkout(form: FormData) {
   const readiness = await readinessFor(user.id);
   const now = new Date();
   const campaign = await db.campaign.create({
-    data: { userId: user.id, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: user.goal!.mode, readiness: readiness.score, dailyLimit: plan.dailyLimit, startedAt: now, endsAt: new Date(now.getTime() + plan.days * 86400000) },
+    data: { userId: user.id, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: user.goal!.mode, readiness: readiness.score, dailyLimit: plan.dailyLimit, autoSubmit: j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false, startedAt: now, endsAt: new Date(now.getTime() + plan.days * 86400000) },
   });
   await db.payment.create({ data: { userId: user.id, campaignId: campaign.id, amount: plan.priceKzt, currency: "KZT", provider: "test", status: "paid", partnerCode: partner?.code ?? null, partnerCut: partner ? Math.round(plan.priceKzt * partner.revShare) : 0 } });
   await db.user.update({ where: { id: user.id }, data: { careerMode: "active" } });
