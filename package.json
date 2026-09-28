@@ -9,7 +9,9 @@
     "lint": "eslint",
     "seed": "tsx --conditions=react-server prisma/seed.ts",
     "db:push": "prisma db push",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:pg": "node scripts/pg-schema.mjs",
+    "vercel-build": "node scripts/pg-schema.mjs && prisma generate --schema prisma/postgres/schema.prisma && prisma db push --schema prisma/postgres/schema.prisma --skip-generate && next build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",
