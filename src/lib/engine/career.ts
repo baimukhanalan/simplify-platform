@@ -1,5 +1,5 @@
 import { ROLE_FAMILIES, classifyRole, seniorityFromYears } from "./taxonomy";
-import { marketRange } from "./market";
+import { marketDemandScore, marketRange } from "./market";
 import { interviewReadiness } from "./interview-readiness";
 
 const EN: Record<string, number> = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 };
@@ -13,7 +13,9 @@ export function careerScore(i: { role: string; skills: string[]; yearsExperience
   const range = marketRange(family, seniority, i.regions.length ? i.regions : ["WORLD"]);
   const marketValue = Math.round((range.mid * (0.9 + 0.2 * Math.min(1, coverage))) / 1000) * 1000;
   const components = {
-    marketDemand: Math.min(100, 45 + Math.round(Math.sqrt(i.demandJobs) * 6)),
+    // Same function as the Readiness "Market demand" parameter (./market.ts).
+    marketDemand: marketDemandScore(i.demandJobs),
+    // Years in the field — NOT Readiness's "Experience", which measures how the profile backs the goal level.
     skillStrength: Math.min(100, Math.round(40 + coverage * 60)),
     experience: Math.min(100, Math.round(30 + i.yearsExperience * 11)),
     // The same interview readiness as the Readiness page and the Career Readiness check (./interview-readiness.ts).
@@ -26,7 +28,23 @@ export function careerScore(i: { role: string; skills: string[]; yearsExperience
   return { score, components, marketValue, range, gap, underpaid: i.currentSalary > 0 && gap / marketValue > 0.15 };
 }
 
+/**
+ * Two different scores, named apart so identical labels never show different numbers:
+ * Readiness = «готовность к цели» (the goal you chose), Career Score = «положение на рынке» (where you stand today).
+ * Shared components (Market demand, Interview readiness) come from the same functions on both screens.
+ */
+export const SCORE_NAMES = {
+  readiness: { en: "Readiness", ru: "Готовность к цели" },
+  career: { en: "Career Score", ru: "Положение на рынке" },
+} as const;
+
 export const COMPONENT_LABEL: Record<string, string> = {
-  marketDemand: "Market demand", skillStrength: "Skill strength", experience: "Experience",
+  marketDemand: "Market demand", skillStrength: "Skill strength", experience: "Years in the field",
   interviewReadiness: "Interview readiness", internationalMobility: "International mobility", compensationPosition: "Compensation position",
+};
+
+/** Russian labels for the Career Score breakdown. "Стаж" (years) — never «Опыт», which is Readiness's goal-fit parameter. */
+export const COMPONENT_LABEL_RU: Record<string, string> = {
+  marketDemand: "Спрос на рынке", skillStrength: "Навыки", experience: "Стаж в профессии",
+  interviewReadiness: "Готовность к интервью", internationalMobility: "Международная мобильность", compensationPosition: "Компенсация",
 };

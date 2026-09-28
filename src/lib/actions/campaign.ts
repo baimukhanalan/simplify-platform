@@ -109,8 +109,8 @@ export async function markHired(form: FormData) {
     if (p) await db.profile.update({ where: { userId: user.id }, data: { salaryExpectation: toUSD(offer.finalBase ?? offer.base, offer.currency) } }); // profile salary is USD
   }
   await db.user.update({ where: { id: user.id }, data: { careerMode: "passive" } });
-  await logEvent(user.id, "hired", "HIRED — кампания завершена. Включён Passive Career Mode", offer?.opportunityId);
-  await notify(user.id, "hired", offer ? `HIRED: ${offer.role.slice(0, 80)} — ${offer.company.slice(0, 60)}` : "HIRED — кампания завершена", "Поздравляем! Агент перестал подавать заявки и включил Passive Career Mode.", "/app/hired");
+  await logEvent(user.id, "hired", "HIRED — кампания завершена. Агент перешёл в фоновый режим Career", offer?.opportunityId);
+  await notify(user.id, "hired", offer ? `HIRED: ${offer.role.slice(0, 80)} — ${offer.company.slice(0, 60)}` : "HIRED — кампания завершена", "Поздравляем! Агент перестал подавать заявки и перешёл в фоновый режим Career.", "/app/hired");
   revalidatePath("/app", "layout");
   redirect("/app/career?hired=1");
 }

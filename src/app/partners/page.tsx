@@ -9,8 +9,10 @@ import { fmtKzt } from "@/lib/engine/taxonomy";
 import { activationBlocked, countsAsRevenue, type PaymentMeta } from "@/lib/payments/kaspi";
 import { j } from "@/lib/db";
 import { CopyButton } from "../app/interviews/_components/copy-button";
+import { SUPPORT_EMAIL } from "../_components/legal-page";
+import { count } from "../_components/ru";
 
-export const metadata = { title: "Partners" };
+export const metadata = { title: "Партнёрский кабинет" };
 
 /** Outcomes are only shown once a cohort is large enough that no individual can be singled out. */
 const K_ANON = 3;
@@ -62,8 +64,8 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
   if (!partner)
     return (
       <>
-        <PageHeader eyebrow="Partners" title={<>Партнёрский <Script>кабинет</Script></>} />
-        <Empty title="Партнёрский профиль не привязан" sub="Напишите команде Simplify — мы привяжем ваш аккаунт к партнёрскому коду." />
+        <PageHeader eyebrow="Партнёрам" title={<>Партнёрский <Script>кабинет</Script></>} />
+        <Empty title="Партнёрский профиль не привязан" sub={`Напиши на ${SUPPORT_EMAIL} — команда Simplify привяжет твой аккаунт к партнёрскому коду.`} />
       </>
     );
 
@@ -80,9 +82,9 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
-        eyebrow={`Distribution partner · ${partner.code}`}
-        title={<>{partner.name} <Script>partners</Script></>}
-        sub={`B2C revenue share: ${Math.round(partner.revShare * 100)}% партнёру, ${100 - Math.round(partner.revShare * 100)}% Simplify — с каждой оплаченной Career Campaign по вашему коду.`}
+        eyebrow={`Партнёр · ${partner.code}`}
+        title={<>{partner.name} · <Script>партнёр</Script></>}
+        sub={`Доля выручки: ${Math.round(partner.revShare * 100)}% партнёру, ${100 - Math.round(partner.revShare * 100)}% Simplify — с каждой оплаченной Career Campaign по твоему коду.`}
       />
 
       <div className="flex flex-col gap-6">
@@ -90,17 +92,17 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
           <div className="min-w-0 flex-1">
             <Label className="mb-2">Реферальная ссылка</Label>
             <code className="block truncate rounded-xl border border-line bg-white/70 px-3.5 py-2.5 font-mono text-[13px] text-head" title={link}>{link}</code>
-            <p className="mt-2 text-[12.5px] text-ink-3">Код <span className="font-mono text-head">{partner.code}</span> также можно ввести при оплате кампании.</p>
+            <p className="mt-2 text-[12.5px] text-ink-3">Код <span className="font-mono text-head">{partner.code}</span> также можно ввести при регистрации.</p>
           </div>
           <CopyButton text={link} label="Копировать ссылку" className="self-start lg:self-center" />
         </Card>
 
         <section aria-label="Ключевые показатели" className="grid grid-cols-2 gap-4 lg:grid-cols-5">
           <Card><Stat label="Аудитория" value={partner.audience.toLocaleString("ru-RU")} hint="охват партнёра, не пользователи Simplify" /></Card>
-          <Card><Stat label="Регистрации" value={stats.signups} hint="по вашему коду" /></Card>
+          <Card><Stat label="Регистрации" value={stats.signups} hint="по твоему коду" /></Card>
           <Card><Stat label="Оплаченные кампании" value={stats.paid} hint={`конверсия ${conv}%`} /></Card>
-          <Card><Stat label="Выручка" value={<span className="text-[26px]">{fmtKzt(stats.revenue)}</span>} hint="gross, оплачено" /></Card>
-          <Card className="col-span-2 lg:col-span-1"><Stat label="Ваша доля" value={<span className="text-[26px]">{fmtKzt(stats.share)}</span>} tone="green" hint={`${Math.round(partner.revShare * 100)}% от выручки`} /></Card>
+          <Card><Stat label="Выручка" value={<span className="text-[26px]">{fmtKzt(stats.revenue)}</span>} hint="до вычетов, оплачено" /></Card>
+          <Card className="col-span-2 lg:col-span-1"><Stat label="Твоя доля" value={<span className="text-[26px]">{fmtKzt(stats.share)}</span>} tone="green" hint={`${Math.round(partner.revShare * 100)}% от выручки`} /></Card>
         </section>
 
         <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
@@ -112,7 +114,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
                 <span className="flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-sm bg-green" />Оплаты</span>
               </div>
             </div>
-            <div role="img" aria-label={signupSeries.map((m, i) => `${m.label}: ${m.count} регистраций, ${paySeries[i].count} оплат`).join("; ")} className="flex h-40 items-end gap-2 sm:gap-4">
+            <div role="img" aria-label={signupSeries.map((m, i) => `${m.label}: ${count(m.count, ["регистрация", "регистрации", "регистраций"])}, ${count(paySeries[i].count, ["оплата", "оплаты", "оплат"])}`).join("; ")} className="flex h-40 items-end gap-2 sm:gap-4">
               {signupSeries.map((m, i) => (
                 <div key={m.key} className="flex h-full flex-1 flex-col items-center gap-2">
                   <div className="flex w-full flex-1 items-end justify-center gap-1">
@@ -131,12 +133,12 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
               <dl className="grid grid-cols-3 gap-3">
                 <div><dt className="label !text-[10px]">Кампании</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.campaigns}</dd></div>
                 <div><dt className="label !text-[10px]">С интервью</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.withInterview}</dd><dd className="text-[12px] text-ink-3">{Math.round((stats.withInterview / stats.campaigns) * 100)}%</dd></div>
-                <div><dt className="label !text-[10px]">Hired</dt><dd className="num mt-1 text-[28px] leading-none text-green">{stats.hired}</dd></div>
+                <div><dt className="label !text-[10px]">С оффером</dt><dd className="num mt-1 text-[28px] leading-none text-green">{stats.hired}</dd></div>
               </dl>
             ) : (
               <p className="flex gap-2 text-[14px] text-ink-2">
                 <Users className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} />
-                Показываем результаты, когда наберётся не меньше {K_ANON} кампаний — так ни одного пользователя нельзя узнать по цифрам. Сейчас: {stats.campaigns}.
+                Результаты появятся, когда наберётся не меньше {count(K_ANON, ["кампании", "кампаний", "кампаний"])} — так ни одного пользователя нельзя узнать по цифрам. Сейчас: {stats.campaigns}.
               </p>
             )}
             <p className="mt-4 flex gap-2 text-[12px] text-ink-3">
@@ -149,7 +151,7 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
         {isAdmin && (
           <Card className="!p-0">
             <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5 sm:px-6">
-              <Label>Все партнёры · admin</Label>
+              <Label>Все партнёры · администратор</Label>
               <Chip tone="dark">{partners.length}</Chip>
             </div>
             <div className="scroll-thin mt-4 overflow-x-auto">

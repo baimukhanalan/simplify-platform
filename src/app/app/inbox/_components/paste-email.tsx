@@ -7,6 +7,15 @@ import { INBOX_CLASS } from "@/lib/ops";
 import { statusRu } from "../../../_components/ru";
 import { Chip, cx } from "@/components/ui";
 
+/** What the letter means for the application, in words (the engine's own effect lines name internal statuses). */
+const EFFECT: Record<string, string> = {
+  confirmation: "работодатель подтвердил, что получил заявку",
+  rejection: "работодатель отказал — агент учтёт это при выборе следующих вакансий",
+  assessment: "приглашение на тестовое задание — агент готовит Interview Room",
+  interview: "приглашение на интервью — агент готовит Interview Room",
+  offer: "это оффер — он появится в Offer Desk",
+};
+
 type Example = { key: string; label: string; from: string; subject: string; body: string };
 
 function examples(company: string, title: string): Example[] {
@@ -52,7 +61,7 @@ export function PasteEmail({ sample }: { sample: { company: string; title: strin
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="label">Тема</span>
-            <input ref={subject} name="subject" type="text" autoComplete="off" placeholder="Interview invitation — Data Analyst" defaultValue={state.fields?.subject} className="field !text-[14px]" />
+            <input ref={subject} name="subject" type="text" autoComplete="off" placeholder="Тема письма от работодателя" defaultValue={state.fields?.subject} className="field !text-[14px]" />
           </label>
         </div>
         <label className="flex flex-col gap-1.5">
@@ -88,7 +97,7 @@ export function PasteEmail({ sample }: { sample: { company: string; title: strin
                     <Chip tone="green">{statusRu(r.after ?? "")}</Chip>
                   </div>
                 ) : (
-                  <p className="text-[13px] text-ink-3">Статус не изменился{r.after ? ` (остаётся «${statusRu(r.after)}»)` : ""}: {meta.effect.toLowerCase()}.</p>
+                  <p className="text-[13px] text-ink-3">Статус не изменился{r.after ? ` (остаётся «${statusRu(r.after)}»)` : ""}: {EFFECT[r.classification] ?? "письмо сохранено"}.</p>
                 )}
               </div>
             ) : (

@@ -44,13 +44,13 @@ export function callScript(o: { ask: string; walkaway: string }): string[] {
     "Начни с благодарности и интереса к команде и задаче.",
     `Назови цифру: “Based on the scope and market data, I was hoping for a base closer to ${o.ask}.”`,
     "Пауза. Дай им ответить первыми — не заполняй тишину.",
-    "Если возражают: спроси, где есть гибкость — base, signing bonus или пересмотр через 6 месяцев.",
+    "Если возражают: спроси, где есть гибкость — оклад, бонус за подписание или пересмотр через 6 месяцев.",
     `Нижняя граница: не соглашайся ниже ${o.walkaway} без компенсации в другом виде.`,
     "Финал: договорись о следующих шагах и попроси обновлённый оффер письменно.",
   ];
 }
 
-/** Levers when base doesn't move. */
+/** Levers when the base salary doesn't move (Russian chips). */
 export function fallbackLevers(signing: string): string[] {
-  return [`Signing bonus ≈ ${signing}`, "Пересмотр компенсации через 6 месяцев", "Доп. дни отпуска или learning budget", "Гибкий remote или бюджет на оборудование"];
+  return [`Бонус за подписание ≈ ${signing}`, "Пересмотр компенсации через 6 месяцев", "Дополнительные дни отпуска или бюджет на обучение", "Гибкая удалёнка или бюджет на оборудование"];
 }

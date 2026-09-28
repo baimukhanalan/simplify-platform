@@ -11,7 +11,7 @@ export default async function PartnersLayout({ children }: { children: React.Rea
       <header className="sticky top-0 z-40 border-b border-line bg-mint-2/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-[1180px] items-center gap-3 px-4 sm:px-8">
           <Link href="/app" className="inline-flex min-h-10 items-center rounded focus-visible:outline-2 focus-visible:outline-green"><Logo /></Link>
-          <Chip tone="teal" className="hidden sm:inline-flex">Partners</Chip>
+          <Chip tone="teal" className="hidden sm:inline-flex">Партнёрам</Chip>
           <span className="flex-1" />
           <Link href="/app" className="flex h-9 items-center gap-1.5 rounded-full px-3 text-[13px] text-ink-2 hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-green">
             <ArrowLeft className="size-3.5" strokeWidth={1.7} /><span className="hidden sm:inline">В приложение</span><span className="sm:hidden">Назад</span>

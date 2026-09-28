@@ -6,9 +6,9 @@ import type { CheckResult } from "@/lib/onboarding";
 import { Card, Label, H, Script, Chip, Ring, Progress, ButtonLink, Divider, cx } from "@/components/ui";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
 import { SiteHeader } from "../../_components/site-header";
-import { count } from "../../_components/ru";
+import { WORK_MODE_RU, count, yearsRu } from "../../_components/ru";
 
-export const metadata: Metadata = { title: "Результат Career Check", robots: { index: false } };
+export const metadata: Metadata = { title: "Результат проверки CV", robots: { index: false } };
 
 const VERDICT = {
   ready: { label: "Готово к кампании", tone: "green" as const, head: ["Профиль", "готов", "к кампании"] },
@@ -17,11 +17,12 @@ const VERDICT = {
 };
 const PROB: Record<string, string> = { high: "высокий", medium: "средний", low: "низкий", very_low: "очень низкий" };
 const ELIG = {
-  eligible: { label: "Eligible", tone: "green" as const, note: "Нет жёстких блокеров — можно подаваться" },
-  soft: { label: "Soft gaps", tone: "amber" as const, note: "Можно подаваться, но есть пробелы" },
-  blocked: { label: "Blocked", tone: "rose" as const, note: "Есть жёсткий блокер — агент не стал бы подавать" },
+  eligible: { label: "Проходишь", tone: "green" as const, note: "Нет жёстких блокеров — можно подаваться" },
+  soft: { label: "Есть пробелы", tone: "amber" as const, note: "Можно подаваться, но есть пробелы" },
+  blocked: { label: "Не проходишь", tone: "rose" as const, note: "Есть жёсткий блокер — агент не стал бы подавать" },
 };
-const REMOTE: Record<string, string> = { remote: "Remote", hybrid: "Hybrid", onsite: "Onsite" };
+// Readiness check labels built in lib that still carry English; mapped by key until the source is fixed.
+const CHECK_LABEL_RU: Record<string, string> = { skills: "Навыки под роль", interview: "Готовность к интервью" };
 
 export default async function CheckResultPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -32,25 +33,25 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
 
   return (
     <div className="min-h-dvh overflow-x-clip">
-      <SiteHeader right={<><ButtonLink href="/check" variant="ghost" size="sm" className="hidden sm:inline-flex">Проверить другое CV</ButtonLink><ButtonLink href="/login?mode=signup" size="sm" className="!h-10">Start your campaign</ButtonLink></>} />
+      <SiteHeader right={<><ButtonLink href="/check" variant="ghost" size="sm" className="hidden sm:inline-flex">Проверить другое CV</ButtonLink><ButtonLink href="/login?mode=signup" size="sm" className="!h-10">Начать кампанию</ButtonLink></>} />
       <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 pb-24 pt-4 sm:px-8 lg:pt-8">
         {/* Summary */}
         <section className="grid items-center gap-6 animate-rise md:grid-cols-[1fr_auto]">
           <div className="flex min-w-0 flex-col gap-3">
-            <Label>Career Check · {r.roleLabel}</Label>
+            <Label>Проверка CV · {r.roleLabel}</Label>
             <h1 className="h-serif text-[clamp(32px,4.6vw,54px)]">{v.head[0]} <Script>{v.head[1]}</Script> {v.head[2]}</h1>
             <div className="flex flex-wrap gap-2">
               <Chip tone={v.tone} dot>{v.label}</Chip>
               <Chip>Шанс интервью: {PROB[r.readiness.probability]}</Chip>
-              <Chip tone="teal">{r.years} г. опыта ≈ {SENIORITY_LABEL[r.seniority] ?? r.seniority}</Chip>
-              <Chip>English {r.english}</Chip>
+              <Chip tone="teal">{yearsRu(r.years)} опыта ≈ {SENIORITY_LABEL[r.seniority] ?? r.seniority}</Chip>
+              <Chip>Английский {r.english}</Chip>
             </div>
             <p className="max-w-2xl text-[14.5px] text-ink-2">
-              Распознано {count(r.skills.length, ["навык", "навыка", "навыков"])} и {count(r.factsCount, ["факт опыта", "факта опыта", "фактов опыта"])}, из них {r.metricsCount} с измеримым результатом. Это оценка по одному CV — до мини-интервью по опыту.
+              Распознано {count(r.skills.length, ["навык", "навыка", "навыков"])} и {count(r.factsCount, ["факт опыта", "факта опыта", "фактов опыта"])}, из них {r.metricsCount} — с измеримым результатом. Это оценка по одному CV — до мини-интервью по опыту.
             </p>
           </div>
           <Card strong className="flex items-center gap-5 md:flex-col md:px-8">
-            <Ring value={r.readiness.score} size={120} stroke={8} label="readiness" />
+            <Ring value={r.readiness.score} size={120} stroke={8} label="Readiness" />
             <div className="text-[13px] text-ink-3 md:text-center">из 100 · цель: {SENIORITY_LABEL[r.readiness.suggestedSeniority] ?? r.readiness.suggestedSeniority} {r.roleLabel}</div>
           </Card>
         </section>
@@ -90,7 +91,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
               {r.readiness.checks.map((c) => (
                 <li key={c.key} className="flex flex-col gap-1.5">
                   <div className="flex items-baseline justify-between gap-3 text-[13.5px]">
-                    <span className="text-head">{c.label}</span>
+                    <span className="text-head">{CHECK_LABEL_RU[c.key] ?? c.label}</span>
                     <span className="num text-ink-3">{c.score}</span>
                   </div>
                   <Progress value={c.score} tone={c.status === "ok" ? "green" : c.status === "warn" ? "amber" : "rose"} />
@@ -134,12 +135,12 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px] text-ink-3">
                     <span className="text-ink-2">{r.job.company}</span>
                     {r.job.location && <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" />{r.job.location}</span>}
-                    <span>{REMOTE[r.job.remote] ?? r.job.remote}</span>
+                    <span>{WORK_MODE_RU[r.job.remote] ?? r.job.remote}</span>
                     {r.job.salary && <span className="num">{r.job.salary}</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <Ring value={r.job.match} size={76} stroke={6} label="match" />
+                  <Ring value={r.job.match} size={76} stroke={6} label="Match" />
                   <div className="flex flex-col gap-1.5">
                     <Chip tone={ELIG[r.job.eligibility].tone} dot>{ELIG[r.job.eligibility].label}</Chip>
                     <span className="num text-[12px] text-ink-3">Interview probability ≈ {Math.round(r.job.pInterview * 100)}%</span>
@@ -160,7 +161,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                   </ul>
                 </div>
                 <div className="flex flex-col gap-2.5">
-                  <Label>Eligibility</Label>
+                  <Label>Требования</Label>
                   <p className="text-[13.5px] text-ink-2">{ELIG[r.job.eligibility].note}</p>
                   {[...r.job.blockers.map((b) => ({ b, hard: true })), ...r.job.softGaps.map((b) => ({ b, hard: false }))].slice(0, 5).map(({ b, hard }) => (
                     <div key={b} className={cx("flex items-start gap-2 text-[13px]", hard ? "text-rose" : "text-amber")}>
@@ -181,8 +182,8 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <Card className="flex flex-col gap-3">
-                <Label>Было · summary из CV</Label>
-                <p className="text-[14.5px] leading-relaxed text-ink-3">{r.positioning.before || `В CV нет summary — рекрутер видит только ${r.positioning.headline ? `заголовок «${r.positioning.headline}» и ` : ""}список мест работы.`}</p>
+                <Label>Было · вступление из CV</Label>
+                <p className="text-[14.5px] leading-relaxed text-ink-3">{r.positioning.before || `В CV нет вступления — рекрутер видит только ${r.positioning.headline ? `заголовок «${r.positioning.headline}» и ` : ""}список мест работы.`}</p>
                 <Label className="mt-2">Навыки в порядке CV</Label>
                 <div className="flex flex-wrap gap-1.5">{r.positioning.skillsBefore.map((x) => <Chip key={x}>{x}</Chip>)}</div>
               </Card>
@@ -207,7 +208,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
           <h2 className="h-serif text-[clamp(28px,4vw,46px)]">Задай цель. Simplify доведёт до <Script>оффера</Script>.</h2>
           <p className="max-w-lg text-[15px] text-ink-2">Агент найдёт вакансии, адаптирует CV под каждую, подаст заявки, отследит ответы и подготовит к интервью — 60 дней кампании.</p>
           <div className="flex flex-col items-center gap-3 sm:flex-row">
-            <ButtonLink href="/login?mode=signup" size="lg">Start your campaign <ArrowRight className="size-4" /></ButtonLink>
+            <ButtonLink href="/login?mode=signup" size="lg">Начать кампанию <ArrowRight className="size-4" aria-hidden /></ButtonLink>
             <ButtonLink href="/check" variant="ghost">Проверить другое CV</ButtonLink>
           </div>
         </section>

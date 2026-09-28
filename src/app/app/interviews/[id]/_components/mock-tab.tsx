@@ -1,9 +1,10 @@
 import type { MockSession } from "@prisma/client";
 import { j } from "@/lib/db";
 import { Card, Chip, Label, Ring } from "@/components/ui";
-import { PERSONA_KEYS, PERSONA_LABEL } from "@/lib/rounds";
+import { PERSONA_KEYS } from "@/lib/rounds";
+import { count } from "../../../../_components/ru";
 import { MockInterview, type MockFeedback } from "./mock-interview";
-import type { MockCtx } from "./mock-questions";
+import { personaRu, type MockCtx } from "./mock-questions";
 
 export function MockTab({ interviewId, round, mocks, ctx, jdTerms, assessment = false }: { interviewId: string; round: string; mocks: MockSession[]; ctx: MockCtx; jdTerms: string[]; assessment?: boolean }) {
   const defaultPersona = round === "assessment" ? "technical" : PERSONA_KEYS.includes(round) ? round : "hiring_manager";
@@ -13,7 +14,7 @@ export function MockTab({ interviewId, round, mocks, ctx, jdTerms, assessment = 
       <aside aria-labelledby="mock-history" className="flex flex-col gap-3">
         <h2 id="mock-history" className="label px-1">Прошлые сессии</h2>
         {mocks.length === 0 ? (
-          <p className="glass px-5 py-6 text-[13.5px] text-ink-3">{assessment ? "Здесь появятся сохранённые тренировки с оценками. Цель — 75+ перед тестом." : "Здесь появятся сохранённые Mock Interview с оценками. Цель — 75+ перед реальным звонком."}</p>
+          <p className="glass px-5 py-6 text-[13.5px] text-ink-3">{assessment ? "Здесь появятся сохранённые тренировки с оценками. Цель — 75+ перед тестом." : "Здесь появятся сохранённые пробные интервью с оценками. Цель — 75+ перед реальным звонком."}</p>
         ) : (
           mocks.map((m) => {
             const fb = j<Partial<MockFeedback>>(m.feedback, {});
@@ -23,8 +24,8 @@ export function MockTab({ interviewId, round, mocks, ctx, jdTerms, assessment = 
                 <div className="flex items-center gap-4">
                   <Ring value={fb.overall ?? 0} size={56} stroke={5} />
                   <div className="flex min-w-0 flex-col gap-1">
-                    <Chip tone="teal" className="self-start">{PERSONA_LABEL[m.persona] ?? m.persona}</Chip>
-                    <span className="text-[12.5px] text-ink-3">{m.createdAt.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {fb.answered ?? transcript.filter((t) => t.role === "candidate").length} ответов</span>
+                    <Chip tone="teal" className="self-start">{personaRu(m.persona)}</Chip>
+                    <span className="text-[12.5px] text-ink-3">{m.createdAt.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {count(fb.answered ?? transcript.filter((t) => t.role === "candidate").length, ["ответ", "ответа", "ответов"])}</span>
                   </div>
                 </div>
                 {fb.plan && fb.plan.length > 0 && (
@@ -34,7 +35,7 @@ export function MockTab({ interviewId, round, mocks, ctx, jdTerms, assessment = 
                 )}
                 {transcript.length > 0 && (
                   <details className="mt-3">
-                    <summary className="cursor-pointer text-[12.5px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">Транскрипт</summary>
+                    <summary className="flex min-h-10 cursor-pointer items-center text-[12.5px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">Транскрипт</summary>
                     <ol className="scroll-thin mt-2 flex max-h-72 flex-col gap-2 overflow-auto text-[12.5px]">
                       {transcript.map((t, i) => (
                         <li key={i} className={t.role === "interviewer" ? "font-medium text-head" : "text-ink-2"}>

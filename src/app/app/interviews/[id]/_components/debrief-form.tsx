@@ -5,6 +5,7 @@ import { Label, cx } from "@/components/ui";
 import { PendingButton, submitVia } from "../../_components/pending-button";
 import { useSpeech, useSpeechSupported } from "../../_components/use-speech";
 import { saveDebrief, type DebriefState } from "@/lib/actions/interview";
+import { count } from "../../../../_components/ru";
 import { DEBRIEF_PROMPTS } from "./debrief-engine";
 
 const OUTCOMES = [
@@ -117,14 +118,14 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
               <span className="sr-only">{listening ? "Остановить запись" : "Рассказать голосом"}</span>
             </button>
             <div className="flex flex-col gap-1">
-              <span className="text-[15px] font-medium text-head">{listening ? "Слушаю — говори свободно" : secs ? "Можно продолжить или отредактировать текст" : "Рассказать голосом"}</span>
+              <span className="text-[15px] font-medium text-head">{listening ? "Запись идёт — говори свободно" : secs ? "Можно продолжить или отредактировать текст" : "Рассказать голосом"}</span>
               <span id={`${uid}-timer`} className="num text-[13px] text-ink-3" aria-live="off">
                 {Math.floor(secs / 60)}:{String(secs % 60).padStart(2, "0")} / ~1:00
               </span>
               <label htmlFor={`${uid}-lang`} className="sr-only">Язык рассказа</label>
-              <select id={`${uid}-lang`} value={lang} onChange={(e) => setLang(e.target.value)} disabled={listening} className="field mt-1 !h-8 !w-auto !rounded-full !py-0 !pl-3 !pr-8 text-[12.5px]">
+              <select id={`${uid}-lang`} value={lang} onChange={(e) => setLang(e.target.value)} disabled={listening} className="field mt-1 !h-10 !w-auto !rounded-full !py-0 !pl-3 !pr-8 text-[12.5px]">
                 <option value="ru-RU">Русский</option>
-                <option value="en-US">English</option>
+                <option value="en-US">Английский</option>
               </select>
             </div>
           </div>
@@ -148,12 +149,12 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
           onChange={(e) => setTranscript(e.target.value)}
           rows={6}
           required
-          placeholder="Спросили про сегментацию клиентов и SQL window functions. Сложно было с вопросом про конфликт. Сказали, что следующий этап — техническое интервью, ответ обещали через неделю. О зарплате не говорили."
+          placeholder="Спросили про сегментацию клиентов и оконные функции в SQL. Сложно было с вопросом про конфликт. Сказали, что следующий этап — техническое интервью, ответ обещали через неделю. О зарплате не говорили."
           className="field resize-y leading-relaxed"
           aria-describedby={`${uid}-count`}
         />
         {interim && <p className="text-[13px] italic text-ink-3">{interim}…</p>}
-        <p id={`${uid}-count`} className="text-[12px] text-ink-3">{words} слов · Simplify не записывает звук — речь распознаёт браузер</p>
+        <p id={`${uid}-count`} className="text-[12px] text-ink-3">{count(words, ["слово", "слова", "слов"])} · Simplify не записывает звук — речь распознаёт браузер</p>
         {speech.error && <p role="alert" className="rounded-xl bg-amber-soft px-3 py-2 text-[13px] text-amber">{speech.error}</p>}
       </div>
 
@@ -161,7 +162,7 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
         <legend className="label mb-2">Статус раунда</legend>
         <div className="flex flex-wrap gap-2">
           {OUTCOMES.map((o) => (
-            <label key={o.v} className={cx("flex cursor-pointer items-center gap-2 rounded-full border border-line bg-white/60 px-4 py-2 text-[14px] has-[:checked]:border-green/40 has-[:checked]:bg-green-soft has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green", o.v === "failed" && "has-[:checked]:!border-rose/30 has-[:checked]:!bg-rose-soft")}>
+            <label key={o.v} className={cx("flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-line bg-white/60 px-4 py-2 text-[14px] has-[:checked]:border-green/40 has-[:checked]:bg-green-soft has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green", o.v === "failed" && "has-[:checked]:!border-rose/30 has-[:checked]:!bg-rose-soft")}>
               <input type="radio" name="outcome" value={o.v} required defaultChecked={initialOutcome === o.v} className="accent-green" />
               {o.label}
             </label>
@@ -172,7 +173,7 @@ export function DebriefForm({ id, initialTranscript = "", initialOutcome = "done
       {state?.error && <p id={`${uid}-err`} role="alert" className="rounded-xl bg-rose-soft px-3 py-2 text-[13.5px] text-rose">{state.error}</p>}
       <div className="flex flex-wrap items-center gap-3">
         <PendingButton pending={pending} pendingText="Разбираем интервью…" size="lg" disabled={words < 3}>Разобрать интервью</PendingButton>
-        <span className="text-[12.5px] text-ink-3">Получишь оценку, сильные и слабые места, план подготовки и thank-you письмо.</span>
+        <span className="text-[12.5px] text-ink-3">Получишь оценку, сильные и слабые места, план подготовки и письмо с благодарностью.</span>
       </div>
     </form>
   );

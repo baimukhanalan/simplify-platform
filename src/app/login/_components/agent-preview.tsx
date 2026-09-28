@@ -8,20 +8,20 @@ type Item = { id: number; kind: Kind; role: string; company: string; meta: strin
 
 // Illustrative only — fictional companies, not live data.
 const ROLES = [
-  { role: "Data Analyst", company: "Kestrel Analytics", where: "Remote · EU", match: 92 },
-  { role: "Product Analyst", company: "Northwind Pay", where: "Hybrid · Almaty", match: 87 },
-  { role: "BI Analyst", company: "Arcadia Cloud", where: "Remote · Worldwide", match: 84 },
-  { role: "Analytics Engineer", company: "Lumen Health", where: "Remote · UK", match: 78 },
-  { role: "Data Analyst", company: "Tundra Logistics", where: "Onsite · Astana", match: 81 },
+  { role: "Data Analyst", company: "Kestrel Analytics", where: "Удалённо · Европа", match: 92 },
+  { role: "Product Analyst", company: "Northwind Pay", where: "Гибрид · Алматы", match: 87 },
+  { role: "BI Analyst", company: "Arcadia Cloud", where: "Удалённо · весь мир", match: 84 },
+  { role: "Analytics Engineer", company: "Lumen Health", where: "Удалённо · Великобритания", match: 78 },
+  { role: "Data Analyst", company: "Tundra Logistics", where: "Офис · Астана", match: 81 },
 ];
 const SEQ: Kind[] = ["match", "tailored", "applied", "invite"];
 const META: Record<Kind, (r: (typeof ROLES)[number]) => string> = {
   match: (r) => r.where,
-  tailored: () => "Summary и порядок навыков под вакансию",
-  applied: () => "Заявка подана · Greenhouse",
-  invite: () => "Recruiter screen · чт, 15:00",
+  tailored: () => "Вступление и порядок навыков под вакансию",
+  applied: () => "Через форму Greenhouse",
+  invite: () => "Скрининг с рекрутером · чт, 15:00",
 };
-const LABEL: Record<Kind, string> = { match: "Match", tailored: "CV tailored", applied: "Applied", invite: "Interview invite" };
+const LABEL: Record<Kind, string> = { match: "Match", tailored: "CV адаптировано", applied: "Заявка подана", invite: "Приглашение на интервью" };
 const ICON = { match: Search, tailored: FileCheck2, applied: Send, invite: CalendarCheck2 };
 
 function make(n: number): Item {
@@ -49,13 +49,13 @@ export function AgentPreview({ className }: { className?: string }) {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <span className="size-2 rounded-full bg-green animate-pulse-dot" />
-            <span className="label !text-head">Agent · live preview</span>
+            <span className="label !text-head">Агент · пример работы</span>
           </div>
           <span className="rounded-full border border-line bg-white/60 px-2 py-0.5 font-mono text-[9.5px] uppercase tracking-[.08em] text-ink-3">Иллюстрация</span>
         </div>
 
         <div className="grid grid-cols-3 gap-2">
-          {[["Found", found], ["Applied", applied], ["Interviews", interviews]].map(([l, v]) => (
+          {[["Найдено", found], ["Подано", applied], ["Интервью", interviews]].map(([l, v]) => (
             <div key={l} className="rounded-2xl border border-stroke bg-white/55 px-3 py-2.5">
               <div className="label !text-[9.5px]">{l}</div>
               <div className="num mt-1 text-[22px] leading-none text-head tabular-nums">{v}</div>
@@ -90,7 +90,7 @@ export function AgentPreview({ className }: { className?: string }) {
                 {it.match != null && (
                   <div className="flex shrink-0 flex-col items-end">
                     <span className="num text-[18px] leading-none text-green">{it.match}%</span>
-                    <span className="label !text-[9px]">match</span>
+                    <span className="label !text-[9px]">Match</span>
                   </div>
                 )}
               </li>

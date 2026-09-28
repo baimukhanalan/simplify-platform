@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { CornerDownLeft, Gauge, Info, Mic, MicOff, PictureInPicture2, X } from "lucide-react";
 import { retrieveStories, scaffold, type FactLite, type Intent, type Scaffold, type StoryLite } from "@/lib/engine/interview";
@@ -8,7 +8,7 @@ import { cx } from "@/components/ui";
 import { useSpeech, useSpeechSupported } from "../../../_components/use-speech";
 import { matchMethod, type Method } from "./methods";
 
-type Ctx = { stories: StoryLite[]; facts: FactLite[]; skills: string[]; yearsExperience: number; company: string; role: string; salary?: { low: number; high: number } };
+type Ctx = { stories: StoryLite[]; facts: FactLite[]; skills: string[]; yearsExperience: number; company: string; role: string; currentTitle?: string; salary?: { low: number; high: number; source?: "floor" | "published" | "market" | "none" } };
 type Row = { k: string; v: string };
 type Card =
   | { mode: "technical"; method: Method; opener: string; keyNumber: string }
@@ -23,16 +23,17 @@ const clip = (s: string, n = 110) => (s.length > n ? `${s.slice(0, n - 1).trim()
 const PAUSE_MS = 700;
 
 const MODE_LABEL: Record<Intent, string> = {
-  behavioral: "Behavioral", leadership: "Behavioral · Leadership", experience: "Experience", technical: "Technical Interview Mode", case: "Technical Interview Mode · Case",
-  motivation: "Motivation", salary: "Salary", strengths: "Strengths", weakness: "Weakness", intro: "Tell me about yourself", closing: "Your questions",
+  behavioral: "Поведенческий вопрос", leadership: "Поведенческий · лидерство", experience: "Опыт", technical: "Технический вопрос", case: "Технический · кейс",
+  motivation: "Мотивация", salary: "Зарплата", strengths: "Сильные стороны", weakness: "Слабые стороны", intro: "Рассказ о себе", closing: "Твои вопросы",
 };
 
+/** Coaching hint for the closing line of a story (Russian; the answer itself is said in the interview language). */
 function lessonFor(story: StoryLite | undefined) {
-  if (!story) return "What you'd repeat or change next time";
-  if (story.tags.includes("failure")) return "What I changed in my process afterwards";
-  if (story.tags.includes("conflict")) return "Disagree with data, then commit as a team";
-  if (story.tags.includes("leadership")) return "How it changed the way I work with people";
-  return "What I'd repeat next time";
+  if (!story) return "Что повторишь или сделаешь иначе в следующий раз";
+  if (story.tags.includes("failure")) return "Что изменилось в твоём процессе после этого";
+  if (story.tags.includes("conflict")) return "Спорить данными, потом действовать как команда";
+  if (story.tags.includes("leadership")) return "Как это изменило твою работу с людьми";
+  return "Что повторишь в следующий раз";
 }
 
 /** Pure + synchronous: question → on-screen card. Stays well under a frame. */
@@ -46,18 +47,18 @@ function buildCard(q: string, ctx: Ctx): { intent: Intent; card: Card } {
     const [s] = retrieveStories(q, ctx.stories, 1);
     const rows: Row[] = s
       ? [
-          { k: "Context", v: clip(s.situation) },
-          { k: "Why", v: clip(s.task) },
-          { k: "Action", v: clip(s.action) },
-          { k: "Result", v: clip(s.result) },
-          { k: "Lesson", v: lessonFor(s) },
+          { k: "Контекст", v: clip(s.situation) },
+          { k: "Задача", v: clip(s.task) },
+          { k: "Действие", v: clip(s.action) },
+          { k: "Результат", v: clip(s.result) },
+          { k: "Вывод", v: lessonFor(s) },
         ]
       : [
-          { k: "Context", v: "Where and when — one sentence" },
-          { k: "Why", v: "What was at stake, your responsibility" },
-          { k: "Action", v: "2–3 things you did personally" },
-          { k: "Result", v: "Outcome with a number" },
-          { k: "Lesson", v: lessonFor(undefined) },
+          { k: "Контекст", v: "Где и когда — одна фраза" },
+          { k: "Задача", v: "Что было на кону и твоя зона ответственности" },
+          { k: "Действие", v: "2–3 твоих личных шага" },
+          { k: "Результат", v: "Итог с цифрой" },
+          { k: "Вывод", v: lessonFor(undefined) },
         ];
     const opener = s ? `One example that taught me a lot was ${s.title.charAt(0).toLowerCase()}${s.title.slice(1)}.` : "One example that taught me a lot was…";
     return { intent: sc.intent, card: { mode: "behavioral", rows, opener, keyNumber: s?.metric ?? "", storyTitle: s?.title ?? null } };
@@ -67,6 +68,8 @@ function buildCard(q: string, ctx: Ctx): { intent: Intent; card: Card } {
 
 export function Copilot({ interviewId, ctx, title, round, blocked }: { interviewId: string; ctx: Ctx; title: string; round?: string; blocked: "employer" | "assessment" | "consent" | null }) {
   const router = useRouter();
+  // Latency is a developer metric: shown only with ?debug=1.
+  const debug = useSearchParams().get("debug") === "1";
   const exitHref = `/app/interviews/${interviewId}`;
   const uid = useId();
   const [popup, setPopup] = useState(false);
@@ -224,9 +227,9 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
     <div ref={rootRef} role="dialog" aria-modal="true" aria-labelledby={`${uid}-title`} className="fixed inset-0 z-[70] flex items-end justify-center bg-[#0c1512]/85 p-0 backdrop-blur-md sm:items-end sm:justify-end sm:p-6">
       {/* Calm backdrop hint (desktop only) */}
       <div aria-hidden className="pointer-events-none absolute left-8 top-8 hidden max-w-sm flex-col gap-2 text-white/70 lg:flex">
-        <span className="font-mono text-[11px] uppercase tracking-[.1em] text-white/45">Interview Copilot</span>
+        <span className="font-mono text-[11px] uppercase tracking-[.1em] text-white/45">Copilot</span>
         <span className="font-serif text-[28px] leading-tight text-white/85">Смотри в камеру. Карточка — только опора.</span>
-        <span className="text-[13px]">Space — слушать / стоп · Esc — закрыть</span>
+        <span className="text-[13px]">Пробел — слушать / стоп · Esc — закрыть</span>
       </div>
 
       <section
@@ -242,10 +245,10 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
             <span className="truncate">Copilot · <span className="text-white/90">{title}</span></span>
             {round && <span className="shrink-0 text-white/70"><span aria-hidden className="hidden sm:inline">· </span>{round}</span>}
           </h1>
-          {latency != null && (
-            <span className={cx("flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[10.5px]", latency <= 150 ? "bg-[#4fd39a]/15 text-[#7fe3b6]" : "bg-amber-400/15 text-amber-200")} title="От конца вопроса до карточки на экране">
+          {debug && latency != null && (
+            <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] text-white/35" title="От конца вопроса до карточки на экране">
               <Gauge className="size-3" strokeWidth={1.8} aria-hidden />
-              <span className="num">{latency < 10 ? latency.toFixed(1) : Math.round(latency)}</span> ms
+              <span className="num">{latency < 10 ? latency.toFixed(1) : Math.round(latency)}</span>&nbsp;мс
             </span>
           )}
           {!popup && !blocked && (
@@ -268,7 +271,7 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
 
             <div className="border-t border-white/10 px-4 py-2.5">
               <p className="line-clamp-2 min-h-[1.5em] text-[12.5px] leading-snug text-white/55">
-                <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[.08em] text-white/35">Слышу</span>
+                <span className="mr-1.5 font-mono text-[10px] uppercase tracking-[.08em] text-white/35">Распознано</span>
                 {live || (speech.listening ? "…" : "микрофон выключен")}
               </p>
               {history.length > 1 && (
@@ -279,7 +282,7 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
                       type="button"
                       onClick={() => { setActive(h); setLatency(null); }}
                       aria-pressed={active?.at === h.at}
-                      className={cx("max-w-[180px] shrink-0 truncate rounded-full px-2.5 py-1 text-[12px] transition focus-visible:outline-2 focus-visible:outline-[#4fd39a]", active?.at === h.at ? "bg-white/15 text-white" : "bg-white/5 text-white/60 hover:bg-white/10")}
+                      className={cx("min-h-10 max-w-[180px] shrink-0 truncate rounded-full px-3 text-[12px] transition focus-visible:outline-2 focus-visible:outline-[#4fd39a]", active?.at === h.at ? "bg-white/15 text-white" : "bg-white/5 text-white/60 hover:bg-white/10")}
                     >
                       {h.q}
                     </button>
@@ -300,12 +303,12 @@ export function Copilot({ interviewId, ctx, title, round, blocked }: { interview
                 >
                   {speech.listening ? <MicOff className="size-4.5" strokeWidth={1.8} aria-hidden /> : <Mic className="size-4.5" strokeWidth={1.8} aria-hidden />}
                   {speech.listening ? "Стоп" : "Слушать"}
-                  <kbd className="hidden rounded border border-current/30 px-1 font-mono text-[10px] opacity-60 sm:inline">Space</kbd>
+                  <kbd className="hidden rounded border border-current/30 px-1 font-mono text-[10px] opacity-60 sm:inline">Пробел</kbd>
                 </button>
                 <label htmlFor={`${uid}-lang`} className="sr-only">Язык интервью</label>
                 <select id={`${uid}-lang`} value={lang} onChange={(e) => setLang(e.target.value)} disabled={speech.listening} className="h-11 rounded-full border border-white/15 bg-transparent px-3 text-[13px] text-white focus-visible:outline-2 focus-visible:outline-[#4fd39a] disabled:opacity-50 [&>option]:text-black">
-                  <option value="en-US">EN</option>
-                  <option value="ru-RU">RU</option>
+                  <option value="en-US">Англ.</option>
+                  <option value="ru-RU">Рус.</option>
                 </select>
               </div>
               <form onSubmit={submitManual} className="flex items-center gap-2">
@@ -351,7 +354,7 @@ function CardView({ item }: { item: Item }) {
 
       {card.mode === "technical" && (
         <div className="flex flex-col gap-3">
-          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Method · {card.method.title}</span>
+          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Метод · {card.method.title}</span>
           <ol className="flex flex-col gap-2">
             {card.method.steps.map((s, i) => (
               <li key={s} className="flex gap-3 text-[15px] leading-snug text-white/92">
@@ -362,13 +365,13 @@ function CardView({ item }: { item: Item }) {
           </ol>
           {card.method.formula && (
             <div className="rounded-xl bg-white/6 px-3 py-2.5 ring-1 ring-white/10">
-              <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Formula</span>
+              <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Формула</span>
               <p className="num mt-0.5 text-[15px] text-[#7fe3b6]">{card.method.formula}</p>
             </div>
           )}
           {card.method.mention && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Mention</span>
+              <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Стоит упомянуть</span>
               {card.method.mention.map((m) => <span key={m} className="rounded-full bg-white/8 px-2 py-0.5 text-[12px] text-white/80">{m}</span>)}
             </div>
           )}
@@ -377,10 +380,10 @@ function CardView({ item }: { item: Item }) {
 
       {card.mode === "behavioral" && (
         <div className="flex flex-col gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Suggested structure</span>
+          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Структура ответа</span>
           <dl className="flex flex-col gap-2">
             {card.rows.map((r) => (
-              <div key={r.k} className="grid grid-cols-[64px_1fr] gap-2.5">
+              <div key={r.k} className="grid grid-cols-[84px_1fr] gap-2.5">
                 <dt className="pt-0.5 font-mono text-[10.5px] uppercase tracking-[.06em] text-[#7fe3b6]">{r.k}</dt>
                 <dd className="text-[14.5px] leading-snug text-white/90">{r.v}</dd>
               </div>
@@ -391,7 +394,7 @@ function CardView({ item }: { item: Item }) {
 
       {card.mode === "general" && (
         <div className="flex flex-col gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Structure · {card.strategy}</span>
+          <span className="font-mono text-[10px] uppercase tracking-[.08em] text-white/40">Структура · {card.strategy}</span>
           <ul className="flex flex-col gap-2">
             {card.bullets.map((b, i) => (
               <li key={i} className="flex gap-2.5 text-[15px] leading-snug text-white/90">
@@ -416,7 +419,7 @@ function CardView({ item }: { item: Item }) {
 function Idle({ listening, supported }: { listening: boolean; supported: boolean }) {
   return (
     <div className="flex h-full min-h-[40dvh] flex-col justify-center gap-3 py-6 sm:min-h-0 sm:justify-start">
-      <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-white/45">{listening ? "Слушаю интервьюера" : "Ждёт вопроса"}</span>
+      <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-white/45">{listening ? "Copilot слушает интервьюера" : "Ждёт вопроса"}</span>
       <p className="font-serif text-[24px] leading-[1.15] text-white">
         {listening ? "Как только вопрос закончится, здесь появится карточка." : supported ? "Нажми «Слушать», когда начнётся звонок." : "Вставь вопрос интервьюера в поле ниже."}
       </p>
@@ -430,15 +433,15 @@ function Blocked({ kind, exitHref }: { kind: "employer" | "assessment" | "consen
   const text = {
     employer: "Для этого раунда отмечено, что правила интервью не разрешают внешнюю помощь.",
     assessment: "Во время онлайн-тестов внешняя помощь обычно запрещена правилами платформы.",
-    consent: "Interview Copilot выключен в настройках приватности.",
+    consent: "Copilot выключен в настройках приватности.",
   }[kind];
   return (
     <div className="flex flex-col gap-4 px-4 py-6">
       <Info className="size-6 text-[#7fe3b6]" strokeWidth={1.6} aria-hidden />
       <h2 className="font-serif text-[26px] leading-tight">Copilot не нужен в этом раунде</h2>
-      <p className="text-[14.5px] leading-relaxed text-white/70">{text} Подготовься заранее — Mock Interview даёт тот же материал до звонка.</p>
+      <p className="text-[14.5px] leading-relaxed text-white/70">{text} Подготовься заранее — пробное интервью даёт тот же материал до звонка.</p>
       <div className="flex flex-wrap gap-2">
-        <Link href={`${exitHref}?tab=mock`} className="flex h-10 items-center rounded-full bg-white px-4 text-[14px] font-medium text-[#0c1512] hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fd39a]">Mock Interview</Link>
+        <Link href={`${exitHref}?tab=mock`} className="flex h-10 items-center rounded-full bg-white px-4 text-[14px] font-medium text-[#0c1512] hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#4fd39a]">Пробное интервью</Link>
         {kind === "consent" && <Link href="/app/settings" className="flex h-10 items-center rounded-full border border-white/20 px-4 text-[14px] text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-[#4fd39a]">Настройки</Link>}
       </div>
     </div>

@@ -24,7 +24,11 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
   const headRef = useRef<HTMLHeadingElement>(null);
   const roleRef = useRef<HTMLInputElement>(null);
   const salaryRef = useRef<HTMLInputElement>(null);
+  const whereRef = useRef<HTMLButtonElement>(null);
   const moved = useRef(false);
+  // Validation failure: after the (possibly new) step renders, focus its first invalid field.
+  const invalidStep = useRef<number | null>(null);
+  const [errTick, setErrTick] = useState(0);
 
   // Move focus to the new question after the first interaction (not on page load).
   useEffect(() => {
@@ -34,6 +38,14 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
     else headRef.current?.focus();
   }, [step]);
 
+  useEffect(() => {
+    const s = invalidStep.current;
+    if (s === null) return;
+    invalidStep.current = null;
+    if (s === 0) roleRef.current?.focus();
+    else if (s === 1) whereRef.current?.focus();
+  }, [errTick]);
+
   const go = (n: number) => { moved.current = true; setError(""); setStep(n); };
   const salaryNum = Number(salary.replace(/\D/g, "")) || 0;
 
@@ -42,9 +54,16 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
     if (s === 1 && !where.length) return "Выбери хотя бы один вариант";
     return "";
   };
+  const fail = (s: number, message: string) => {
+    moved.current = true;
+    invalidStep.current = s;
+    setStep(s);
+    setError(message);
+    setErrTick((t) => t + 1);
+  };
   const next = () => {
     const e = validate(step);
-    if (e) { setError(e); return; }
+    if (e) { fail(step, e); return; }
     go(step + 1);
   };
 
@@ -53,7 +72,7 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
     if (going) return;
     for (const s of [0, 1]) {
       const err = validate(s);
-      if (err) { go(s); setError(err); return; }
+      if (err) { fail(s, err); return; }
     }
     const intent: Intent = { role: role.trim().slice(0, 100), where, salary: salaryNum };
     storeIntent(intent);
@@ -128,10 +147,10 @@ export function IntentFlow({ signedIn }: { signedIn: boolean }) {
           <div role="group" aria-labelledby={`${uid}-q`} aria-describedby={error ? `${uid}-err` : `${uid}-multi`} className="flex flex-col gap-3">
             <span id={`${uid}-multi`} className="text-[13px] text-ink-3">Можно выбрать несколько.</span>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              {WHERE_OPTIONS.map((o) => {
+              {WHERE_OPTIONS.map((o, i) => {
                 const on = where.includes(o.key);
                 return (
-                  <button key={o.key} type="button" onClick={() => toggle(o.key)} aria-pressed={on}
+                  <button key={o.key} ref={i === 0 ? whereRef : undefined} type="button" onClick={() => toggle(o.key)} aria-pressed={on} aria-describedby={error ? `${uid}-err` : undefined}
                     className={cx("flex min-h-[64px] flex-col items-start justify-center gap-0.5 rounded-2xl border px-4 py-3 text-left transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green active:scale-[.98]", on ? "border-cta bg-cta text-white shadow-(--shadow-cta)" : "border-line bg-white/65 text-head hover:bg-white")}
                   >
                     <span className="flex w-full items-center justify-between gap-2 text-[15px] font-medium">{o.label}{on && <Check className="size-4" strokeWidth={2.4} aria-hidden />}</span>

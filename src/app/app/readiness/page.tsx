@@ -12,7 +12,7 @@ import { loadReadiness } from "./_components/data";
 import { goalTitle, kUsd, readinessView, fmtYears } from "./_components/model";
 import { BlockersAndPlan, ParamTable, ReadinessHero } from "./_components/readiness-view";
 
-export const metadata: Metadata = { title: "Career Readiness" };
+export const metadata: Metadata = { title: "Readiness" };
 
 export default async function ReadinessPage() {
   const user = await requireUser();
@@ -24,7 +24,7 @@ export default async function ReadinessPage() {
   if (!data) {
     return (
       <>
-        <PageHeader eyebrow="Career Readiness" title={<>Где ты <Script>сейчас</Script></>} />
+        <PageHeader eyebrow="Readiness" title={<>Где ты <Script>сейчас</Script></>} />
         <Empty title="Сначала задай цель" sub="Readiness сравнивает твой Career Profile с конкретной целью: ролью, уровнем, страной и зарплатой." action={<ButtonLink href="/app/goal">Задать цель</ButtonLink>} />
       </>
     );
@@ -44,7 +44,7 @@ export default async function ReadinessPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Career Readiness"
+        eyebrow="Readiness"
         title={<>Где ты <Script>сейчас</Script></>}
         sub="Насколько твой профиль готов к цели — и что агент сделает, чтобы усилить его."
         actions={<ButtonLink href="/app/goal" variant="glass"><Target className="size-4" strokeWidth={1.7} aria-hidden />Моя цель</ButtonLink>}
@@ -95,7 +95,7 @@ function FixForm({ fix, role, title, note, cta }: { fix: string; role?: string; 
         <div className="text-[14px] text-head">{title}</div>
         <div className="text-[12px] text-ink-3">{note}</div>
       </div>
-      <SubmitButton size="sm" variant="glass" pendingText="…">{cta}</SubmitButton>
+      <SubmitButton size="sm" variant="glass" pendingText="…" className="!h-10 shrink-0">{cta}</SubmitButton>
     </form>
   );
 }

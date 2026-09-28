@@ -18,9 +18,9 @@ type SP = Record<string, string | string[] | undefined>;
  * The same groups are the columns of the optional board view (?view=board), so both views always agree.
  */
 const GROUPS = [
-  { key: "offer", label: "Offer", hint: "Разбери цифры и реши", statuses: ["offer", "hired"], dot: "bg-green" },
-  { key: "interview", label: "Interviews", hint: "Идут раунды интервью", statuses: ["recruiter", "hiring_manager", "technical", "final"], dot: "bg-teal" },
-  { key: "assessment", label: "Assessment", hint: "Тестовое задание", statuses: ["assessment"], dot: "bg-amber" },
+  { key: "offer", label: "Оффер", hint: "Разбери цифры и реши", statuses: ["offer", "hired"], dot: "bg-green" },
+  { key: "interview", label: "Интервью", hint: "Идут раунды интервью", statuses: ["recruiter", "hiring_manager", "technical", "final"], dot: "bg-teal" },
+  { key: "assessment", label: "Тестовые", hint: "Тестовое задание от работодателя", statuses: ["assessment"], dot: "bg-amber" },
   { key: "waiting", label: "Ждём ответа", hint: "Заявка отправлена, ждём работодателя", statuses: ["submitted", "pending"], dot: "bg-cta" },
 ] as const;
 const MULTI = new Set(["interview", "offer", "waiting"]); // groups holding more than one status show a status chip on each card
@@ -41,7 +41,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     return (
       <>
         {header}
-        <Empty title="Заявок пока нет" sub="Запусти кампанию — агент будет подавать на сильные вакансии и показывать здесь каждую заявку." action={<ButtonLink href="/app/campaign">Start your campaign</ButtonLink>} />
+        <Empty title="Заявок пока нет" sub="Запусти кампанию — агент будет подавать на сильные вакансии и показывать здесь каждую заявку." action={<ButtonLink href="/app/campaign">Начать кампанию</ButtonLink>} />
       </>
     );
   }
@@ -74,7 +74,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   const needs: Need[] = [];
   if (n("offer")) needs.push({ text: `${n("offer")} ${plural(n("offer"), ["оффер ждёт", "оффера ждут", "офферов ждут"])} твоего решения`, href: "/app/offers" });
   if (n("interview")) needs.push({ text: `Подготовься к интервью: ${n("interview")} ${plural(n("interview"), ["заявка", "заявки", "заявок"])} на этапе интервью`, href: "/app/interviews" });
-  if (n("assessment")) needs.push({ text: `${n("assessment")} assessment ${plural(n("assessment"), ["ждёт", "ждут", "ждут"])} выполнения`, href: "/app/interviews" });
+  if (n("assessment")) needs.push({ text: `${n("assessment")} ${plural(n("assessment"), ["тестовое задание ждёт", "тестовых задания ждут", "тестовых заданий ждут"])} выполнения`, href: "/app/interviews" });
   if (approvals) needs.push({ text: questionsWaiting(approvals), href: "/app/approvals" });
   if (handoffs) needs.push({ text: handoffsWaiting(handoffs), href: "/app/approvals#kind-handoff" });
 

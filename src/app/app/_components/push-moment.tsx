@@ -1,26 +1,35 @@
-import { ArrowRight, CalendarClock, X } from "lucide-react";
-import { dismissNotification, openNotification } from "@/lib/actions/notifications";
+import { ArrowRight, CalendarClock } from "lucide-react";
+import { openNotification } from "@/lib/actions/notifications";
 import type { PushMoment as Moment } from "@/lib/ops-data";
 import { cx } from "@/components/ui";
+import { count } from "../../_components/ru";
+import { DismissButton, PushGate } from "./push-controls";
 
-function when(d: Date | null) {
+/** «пятница, 3 октября, 18:00» — lowercase inside a sentence («Дедлайн: пятница…»), capitalised when it starts the line. */
+function when(d: Date | null, capitalise: boolean) {
   if (!d) return null;
   const s = d.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return capitalise ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
 
 const KIND: Record<string, { eyebrow: string; headline: string; tone: "forest" | "ink" | "soft" }> = {
   interview: { eyebrow: "Новое интервью", headline: "INTERVIEW", tone: "forest" },
-  assessment: { eyebrow: "Assessment", headline: "Ты на следующем этапе", tone: "forest" },
-  offer: { eyebrow: "Offer", headline: "YOU GOT THE OFFER", tone: "ink" },
-  hired: { eyebrow: "Hired", headline: "HIRED.", tone: "ink" },
+  assessment: { eyebrow: "Тестовое задание", headline: "Ты на следующем этапе", tone: "forest" },
+  offer: { eyebrow: "Оффер", headline: "YOU GOT THE OFFER", tone: "ink" },
+  hired: { eyebrow: "Новая работа", headline: "HIRED.", tone: "ink" },
 };
 
 /**
- * The celebratory in-app "push": the newest unread notification, full width above every app screen.
- * Server-rendered; both buttons are plain forms, so it works before hydration and without JS.
+ * The celebratory in-app "push": one current unread notification at a time (the layout loads it via `unreadPushes`,
+ * which closes past interview pushes first), full width above every app screen, with a small «ещё N» when more are
+ * waiting. Hidden on the live Copilot screen (PushGate: usePathname + isPushHiddenOn). «Открыть» is a plain form
+ * (works without JS); dismissing moves focus to the page heading.
  */
 export function PushMoment({ m, more }: { m: Moment; more: number }) {
+  return <PushGate><MomentCard m={m} more={more} /></PushGate>;
+}
+
+function MomentCard({ m, more }: { m: Moment; more: number }) {
   const k = KIND[m.type];
   const titleId = `moment-${m.id}`;
 
@@ -29,14 +38,14 @@ export function PushMoment({ m, more }: { m: Moment; more: number }) {
     return (
       <section aria-labelledby={titleId} className="glass mb-6 flex animate-rise items-center gap-3 px-4 py-3 sm:px-5">
         <span className="size-2 shrink-0 rounded-full bg-teal" aria-hidden />
-        <p id={titleId} className="min-w-0 flex-1 text-[14px] text-ink-2"><span className="text-head">{m.title}</span>{m.body && <span className="text-ink-3"> · {m.body}</span>}</p>
+        <p id={titleId} className="min-w-0 flex-1 text-[14px] text-ink-2"><span className="text-head">{m.title}</span>{m.body && <span className="text-ink-3"> · {m.body}</span>}{more > 0 && <span className="text-ink-3"> · ещё {count(more, ["уведомление", "уведомления", "уведомлений"])}</span>}</p>
         <DismissButton id={m.id} light={false} />
       </section>
     );
   }
 
   const dark = k.tone === "ink";
-  const time = when(m.when);
+  const time = when(m.when, m.type !== "assessment");
   return (
     <section
       aria-labelledby={titleId}
@@ -55,7 +64,7 @@ export function PushMoment({ m, more }: { m: Moment; more: number }) {
           <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[.12em] text-white/70">
             <span className="size-2 rounded-full bg-[#8fc7ad] animate-pulse-dot" aria-hidden />
             {k.eyebrow}
-            {more > 0 && <span className="text-white/50">· ещё {more}</span>}
+            {more > 0 && <span className="text-white/60">· ещё {count(more, ["уведомление", "уведомления", "уведомлений"])}</span>}
           </span>
           <h2 id={titleId} className={cx("h-serif !text-white", m.type === "assessment" ? "text-[clamp(30px,4.4vw,52px)]" : "text-[clamp(44px,8vw,96px)] tracking-[.02em]")}>
             {k.headline}
@@ -83,23 +92,5 @@ export function PushMoment({ m, more }: { m: Moment; more: number }) {
         </div>
       </div>
     </section>
-  );
-}
-
-function DismissButton({ id, light }: { id: string; light: boolean }) {
-  return (
-    <form action={dismissNotification}>
-      <input type="hidden" name="id" value={id} />
-      <button
-        aria-label="Скрыть уведомление"
-        title="Скрыть"
-        className={cx(
-          "grid size-10 place-items-center rounded-full transition-colors focus-visible:outline-2",
-          light ? "text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-white" : "text-ink-3 hover:bg-white hover:text-head focus-visible:outline-green",
-        )}
-      >
-        <X className="size-4" aria-hidden />
-      </button>
-    </form>
   );
 }

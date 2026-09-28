@@ -3,10 +3,11 @@ import { useId, useRef, useState, useTransition } from "react";
 import { Mic, MicOff, RotateCcw, ArrowRight, Check, SkipForward, Play } from "lucide-react";
 import { Button, Card, Chip, Label, Progress, Ring, cx } from "@/components/ui";
 import { scoreAnswer } from "@/lib/engine/interview";
-import { PERSONAS, PERSONA_LABEL } from "@/lib/rounds";
+import { PERSONAS } from "@/lib/rounds";
+import { count } from "../../../../_components/ru";
 import { saveMockSession } from "@/lib/actions/interview";
 import { useSpeech, useSpeechSupported } from "../../_components/use-speech";
-import { MOCK_SETS, missingPoints, suggestion, type MockCtx } from "./mock-questions";
+import { MOCK_SETS, missingPoints, personaRu, suggestion, type MockCtx } from "./mock-questions";
 
 type Score = ReturnType<typeof scoreAnswer>;
 type Turn = { question: string; answer: string; score: Score | null };
@@ -27,6 +28,8 @@ const DIMS: { key: keyof MockFeedback["dims"]; label: string }[] = [
   { key: "length", label: "Длина" },
   { key: "confidence", label: "Уверенность" },
 ];
+const STAR_RU = { s: "ситуация", t: "задача", a: "действие", r: "результат" } as const;
+
 const DIM_ADVICE: Record<keyof MockFeedback["dims"], string> = {
   content: "Каждый ответ — с одной цифрой результата из твоего опыта.",
   structure: "Отвечай по STAR: 1 фраза контекста, 1 — задача, 2–3 — твои действия, 1 — результат.",
@@ -134,7 +137,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
   if (phase === "select")
     return (
       <Card strong>
-        <Label className="mb-2">Mock Interview</Label>
+        <Label className="mb-2">{assessment ? "Тренировка" : "Пробное интервью"}</Label>
         <h2 className="h-serif mb-2 text-[clamp(24px,2.6vw,32px)]">Кто будет тебя интервьюировать?</h2>
         <p className="mb-5 max-w-xl text-[14px] text-ink-3">5 вопросов. Отвечай голосом или текстом — после каждого ответа: оценка, структура, ясность, чего не хватило и как сказать сильнее на твоих же историях.</p>
         <fieldset>
@@ -143,7 +146,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
             {PERSONAS.map((p) => (
               <label key={p.key} className={cx("flex cursor-pointer flex-col gap-1 rounded-2xl border p-4 transition has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green", persona === p.key ? "border-green/40 bg-green-soft/70" : "border-line bg-white/60 hover:bg-white")}>
                 <input type="radio" name={`${ids}-persona`} value={p.key} checked={persona === p.key} onChange={() => setPersona(p.key)} className="sr-only" />
-                <span className="flex items-center justify-between text-[15px] font-medium text-head">{p.label}{persona === p.key && <Check className="size-4 text-green" strokeWidth={2} />}</span>
+                <span className="flex items-center justify-between text-[15px] font-medium text-head">{personaRu(p.key)}{persona === p.key && <Check className="size-4 text-green" strokeWidth={2} aria-hidden />}</span>
                 <span className="text-[12.5px] text-ink-3">{p.sub}</span>
               </label>
             ))}
@@ -158,9 +161,9 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
     return (
       <Card strong className="flex flex-col gap-6">
         <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">
-          <Ring value={fb.overall} size={112} label="overall" />
+          <Ring value={fb.overall} size={112} label="из 100" />
           <div className="flex flex-col gap-1.5">
-            <Label>Итог · {PERSONA_LABEL[persona]}</Label>
+            <Label>Итог · {personaRu(persona)}</Label>
             <h2 className="h-serif text-[28px]">{fb.overall >= 75 ? (assessment ? "Уровень для теста есть" : "Уровень для звонка есть") : fb.overall >= 55 ? "Почти на уровне" : "Нужна ещё одна тренировка"}</h2>
             <p className="text-[13px] text-ink-3" role="status">
               {fb.answered === 0 ? "Нет ответов — сессия не сохранена." : pending ? "Сохраняем сессию…" : saved === "ok" ? "Сессия сохранена." : saved === "error" ? "Не удалось сохранить сессию." : ""}
@@ -185,7 +188,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
           </div>
         )}
         <div className="flex flex-wrap gap-2">
-          <Button onClick={start}><RotateCcw className="size-4" strokeWidth={1.7} />Ещё раз</Button>
+          <Button onClick={start}><RotateCcw className="size-4" strokeWidth={1.7} aria-hidden />Ещё раз</Button>
           <Button variant="glass" onClick={() => setPhase("select")}>Другой интервьюер</Button>
         </div>
       </Card>
@@ -195,7 +198,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
   return (
     <Card strong className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Chip tone="teal">{PERSONA_LABEL[persona]}</Chip>
+        <Chip tone="teal">{personaRu(persona)}</Chip>
         <span className="num text-[13px] text-ink-3" aria-label={`Вопрос ${idx + 1} из ${questions.length}`}>{idx + 1} / {questions.length}</span>
       </div>
       <Progress value={((idx + (current ? 1 : 0)) / questions.length) * 100} tone="teal" />
@@ -215,18 +218,18 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
           aria-describedby={`${ids}-hint`}
         />
         {interim && <p className="text-[13px] italic text-ink-3" aria-live="polite">{interim}…</p>}
-        <p id={`${ids}-hint`} className="text-[12px] text-ink-3">{draft.trim().split(/\s+/).filter(Boolean).length} слов · Ctrl/⌘ + Enter — оценить</p>
+        <p id={`${ids}-hint`} className="text-[12px] text-ink-3">{count(draft.trim().split(/\s+/).filter(Boolean).length, ["слово", "слова", "слов"])} · Ctrl/⌘ + Enter — оценить</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
         {supported ? (
           <>
             <Button variant={speech.listening ? "danger" : "glass"} onClick={speech.listening ? speech.stop : speech.start} aria-pressed={speech.listening}>
-              {speech.listening ? <><MicOff className="size-4" strokeWidth={1.7} />Стоп</> : <><Mic className="size-4" strokeWidth={1.7} />Ответить голосом</>}
+              {speech.listening ? <><MicOff className="size-4" strokeWidth={1.7} aria-hidden />Стоп</> : <><Mic className="size-4" strokeWidth={1.7} aria-hidden />Ответить голосом</>}
             </Button>
             <label className="sr-only" htmlFor={`${ids}-lang`}>Язык распознавания</label>
-            <select id={`${ids}-lang`} value={lang} onChange={(e) => setLang(e.target.value)} disabled={speech.listening} className="field !w-auto !rounded-full !py-2 text-[13px]">
-              <option value="en-US">English</option>
+            <select id={`${ids}-lang`} value={lang} onChange={(e) => setLang(e.target.value)} disabled={speech.listening} className="field min-h-10 !w-auto !rounded-full !py-2 text-[13px]">
+              <option value="en-US">Английский</option>
               <option value="ru-RU">Русский</option>
             </select>
           </>
@@ -234,9 +237,9 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
           <span className="text-[12.5px] text-ink-3">Голосовой ввод недоступен в этом браузере — ответь текстом.</span>
         )}
         <span className="flex-1" />
-        <Button variant="ghost" onClick={() => advance(true)}><SkipForward className="size-4" strokeWidth={1.7} />Пропустить</Button>
+        <Button variant="ghost" onClick={() => advance(true)}><SkipForward className="size-4" strokeWidth={1.7} aria-hidden />Пропустить</Button>
         {current ? (
-          <Button onClick={() => advance()}>{idx + 1 >= questions.length ? "Завершить" : "Следующий вопрос"}<ArrowRight className="size-4" strokeWidth={1.7} /></Button>
+          <Button onClick={() => advance()}>{idx + 1 >= questions.length ? "Завершить" : "Следующий вопрос"}<ArrowRight className="size-4" strokeWidth={1.7} aria-hidden /></Button>
         ) : (
           <Button onClick={evaluate} disabled={!draft.trim()}>Оценить ответ</Button>
         )}
@@ -254,7 +257,7 @@ function Feedback({ c }: { c: Current }) {
   return (
     <section aria-label="Оценка ответа" aria-live="polite" className="animate-rise overflow-hidden rounded-2xl border border-line bg-white/75">
       <div className="flex flex-col gap-5 p-4 sm:flex-row sm:items-center sm:p-5">
-        <Ring value={s.overall} size={88} label="score" />
+        <Ring value={s.overall} size={88} label="оценка" />
         <div className="grid flex-1 grid-cols-2 gap-x-6 gap-y-3">
           {[
             { label: "Структура", v: s.structure },
@@ -266,13 +269,13 @@ function Feedback({ c }: { c: Current }) {
             </div>
           ))}
           <div className="col-span-2 flex flex-wrap items-center gap-2 text-[12px]">
-            <span className="flex gap-1" role="img" aria-label={`STAR: ${(["s", "t", "a", "r"] as const).map((k) => `${k.toUpperCase()} ${s.star[k] ? "есть" : "нет"}`).join(", ")}`}>
+            <span className="flex gap-1" role="img" aria-label={`STAR: ${(["s", "t", "a", "r"] as const).map((k) => `${STAR_RU[k]} — ${s.star[k] ? "есть" : "нет"}`).join(", ")}`}>
               {(["s", "t", "a", "r"] as const).map((k) => (
                 <span key={k} aria-hidden className={cx("num grid size-6 place-items-center rounded-md text-[11px] uppercase", s.star[k] ? "bg-green text-white" : "bg-head/10 text-ink-4")}>{k}</span>
               ))}
             </span>
-            <Chip>{s.words} слов</Chip>
-            <Chip tone={s.fillers > 2 ? "amber" : "neutral"}>Паразиты: {s.fillers}</Chip>
+            <Chip>{count(s.words, ["слово", "слова", "слов"])}</Chip>
+            <Chip tone={s.fillers > 2 ? "amber" : "neutral"}>Слова-паразиты: {s.fillers}</Chip>
             <Chip>Уверенность {s.confidence}</Chip>
           </div>
         </div>

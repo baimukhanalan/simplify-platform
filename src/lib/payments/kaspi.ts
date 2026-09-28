@@ -412,7 +412,7 @@ export async function activatePaid(paymentId: string, charge?: Charge): Promise<
     await logEvent(userId, "campaign_started", `Оплата Kaspi Pay ${r.externalId} прошла. Career Campaign «${r.planLabel}» запущена на ${r.days} дней`);
   } else if (r.kind === "refund_due" && r.newlyBlocked) {
     await logEvent(userId, "payment_refund_due", `Оплата ${r.externalId} получена, но кампания уже идёт — платёж будет возвращён`);
-    await notify(userId, "info", "Платёж будет возвращён", `Счёт ${r.externalId} оплачен, но у тебя уже есть активная кампания. Мы вернём деньги.`, "/app/campaign");
+    await notify(userId, "info", "Платёж будет возвращён", `Счёт ${r.externalId} оплачен, но у тебя уже есть активная кампания — деньги вернутся тем же способом оплаты.`, "/app/campaign");
   }
   const flags = { claimed: r.claimed, duplicateCharge: r.duplicateCharge };
   return r.kind === "not_paid" || r.kind === "refund_due" ? { ...flags, kind: r.kind } : { ...flags, kind: r.kind, campaignId: r.campaignId };

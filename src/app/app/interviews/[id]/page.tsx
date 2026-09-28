@@ -8,9 +8,11 @@ import { ROUND_LABEL, ROUND_TONE, IV_STATUS_LABEL, IV_STATUS_TONE } from "@/lib/
 import { marketRange } from "@/lib/engine/market";
 import { roomReadiness } from "@/lib/engine/interview-readiness";
 import { regionsFor } from "@/lib/regions";
-import type { Pack } from "@/lib/engine/interview";
+import { latestEmployment, type Pack } from "@/lib/engine/interview";
+import { readAutonomy } from "@/lib/engine/autonomy";
+import { salaryTarget, userFloorUsd } from "@/lib/engine/salary";
 import type { Debrief } from "@/lib/actions/interview";
-import { fmtDate, nowMs, relDays } from "../_components/format";
+import { deadlineText, fmtDate, nowMs, relDays } from "../_components/format";
 import { buildBriefHeuristic, type StoredBrief } from "./_components/brief";
 import { BriefTab } from "./_components/brief-tab";
 import { QuestionsTab } from "./_components/questions-tab";
@@ -21,10 +23,10 @@ import { DebriefTab } from "./_components/debrief-tab";
 import { RoomAside } from "./_components/room-aside";
 
 const TABS = {
-  assessment: "Assessment",
-  brief: "Brief",
+  assessment: "Тестовое задание",
+  brief: "Компания и роль",
   questions: "Вопросы и STAR",
-  mock: "Mock Interview",
+  mock: "Пробное интервью",
   sent: "Что отправили",
   debrief: "Как прошло?",
 } as const;
@@ -37,7 +39,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: iv ? `Interview Room · ${iv.opportunity.job.company}` : "Страница не найдена" };
 }
 
-export default async function InterviewRoom({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function InterviewRoom({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; debug?: string }> }) {
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   const user = await requireUser();
   const iv = await db.interview.findFirst({
@@ -50,10 +52,12 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
   if (!iv) notFound();
   const [stories, facts] = await Promise.all([
     db.story.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, select: { id: true, title: true, situation: true, task: true, action: true, result: true, metric: true, tags: true } }),
-    db.fact.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, select: { kind: true, title: true, org: true, details: true, metrics: true, tech: true, teamSize: true } }),
+    db.fact.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" }, select: { kind: true, title: true, org: true, details: true, metrics: true, tech: true, teamSize: true, startDate: true, endDate: true } }),
   ]);
 
   const now = nowMs();
+  // ?debug=1: small muted technical lines (who generated the materials, when). Hidden from users otherwise.
+  const debug = sp.debug === "1";
   const job = iv.opportunity.job;
   const isAssessment = iv.round === "assessment";
   const order: TabKey[] = isAssessment ? ["assessment", "brief", "mock", "sent", "debrief"] : ["brief", "questions", "mock", "sent", "debrief"];
@@ -77,7 +81,10 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
   const storyLite = stories.map((s) => ({ ...s, tags: j<string[]>(s.tags, []) }));
   const factLite = facts.map((f) => ({ ...f, tech: j<string[]>(f.tech, []) }));
   const range = marketRange(job.roleFamily, job.seniority, regionsFor([...j<string[]>(job.countries, []), ...j<string[]>(user.goal?.countries, [])]));
-  const ctx = { stories: storyLite, facts: factLite, skills, yearsExperience: user.profile?.yearsExperience ?? 0, company: job.company, role: job.title };
+  // Salary for the mock: the user's own expectation, the same rule as the screening answer (src/lib/engine/salary.ts);
+  // the market range is only a fallback when no expectation is set.
+  const salary = salaryTarget(userFloorUsd(user.goal, user.profile?.salaryExpectation ?? 0), job, readAutonomy(user.autonomy).changeSalary, range);
+  const ctx = { stories: storyLite, facts: factLite, skills, yearsExperience: user.profile?.yearsExperience ?? 0, company: job.company, role: job.title, currentTitle: latestEmployment(factLite)?.title ?? "" };
 
   const bestMock = iv.mocks.reduce<number | null>((m, x) => {
     const o = j<{ overall?: number }>(x.feedback, {}).overall;
@@ -97,16 +104,16 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
       <header className="mb-7 flex flex-col gap-5 animate-rise lg:flex-row lg:items-end lg:justify-between">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{isAssessment ? "Assessment Room" : `Interview Room · ${ROUND_LABEL[iv.round] ?? iv.round}`}</Chip>
+            <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{isAssessment ? "Тестовое задание" : `Interview Room · ${ROUND_LABEL[iv.round] ?? iv.round}`}</Chip>
             <Chip tone={IV_STATUS_TONE[iv.status] ?? "neutral"} dot={upcoming}>{IV_STATUS_LABEL[iv.status] ?? iv.status}</Chip>
           </div>
           <h1 className="h-serif text-[clamp(34px,4.6vw,58px)]">
-            {isAssessment ? <>Тест <Script>{job.company}</Script></> : <>{job.company} <Script>{ROUND_LABEL[iv.round]?.toLowerCase() ?? iv.round}</Script></>}
+            {isAssessment ? <>Тест <Script>{job.company}</Script></> : <>{job.company} · <Script>{ROUND_LABEL[iv.round]?.toLowerCase() ?? iv.round}</Script></>}
           </h1>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-ink-2">
             <span>{job.title}</span>
             <span aria-hidden className="text-ink-4">·</span>
-            <span className="num">{isAssessment ? `Дедлайн ${fmtDate(iv.scheduledAt)}` : fmtDate(iv.scheduledAt)}</span>
+            <span className="num">{isAssessment ? `Дедлайн: ${deadlineText(iv.scheduledAt)}` : fmtDate(iv.scheduledAt)}</span>
             {iv.scheduledAt && upcoming && <span className="text-green">{relDays(iv.scheduledAt, now)}</span>}
           </p>
         </div>
@@ -142,7 +149,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
               >
                 {isAssessment && k === "mock" ? "Тренировка" : k === "debrief" && beforeCall ? (isAssessment ? "После теста" : "После звонка") : TABS[k]}
                 {k === "mock" && iv.mocks.length > 0 && <span className="num text-[11px] opacity-70">{iv.mocks.length}</span>}
-                {k === "debrief" && justHappened && <span aria-label="нужно заполнить" className="size-1.5 rounded-full bg-green" />}
+                {k === "debrief" && justHappened && <><span aria-hidden className="size-1.5 rounded-full bg-green" /><span className="sr-only">(нужно заполнить)</span></>}
               </Link>
             </li>
           ))}
@@ -153,7 +160,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
         {(tab === "brief" || tab === "assessment") && (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
             {tab === "brief" ? (
-              <BriefTab id={iv.id} brief={brief} company={job.company} role={job.title} skills={skills} technologies={technologies} jobUrl={job.url} location={job.location} remote={job.remote} />
+              <BriefTab id={iv.id} debug={debug} brief={brief} company={job.company} role={job.title} skills={skills} technologies={technologies} jobUrl={job.url} location={job.location} remote={job.remote} />
             ) : (
               <AssessmentTab
                 interviewId={iv.id}
@@ -177,18 +184,20 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
             id={iv.id}
             pack={pack}
             generatedBy={packRaw?.generatedBy}
-            ctx={{ ...ctx, round: iv.round, technologies, salary: { low: range.low, high: range.high }, companyWhat: brief.company.what }}
+            generatedAt={packRaw?.generatedAt}
+            debug={debug}
+            ctx={{ ...ctx, round: iv.round, technologies, salary, companyWhat: brief.company.what }}
             stories={storyLite}
           />
         )}
-        {tab === "sent" && <SentTab pkg={iv.opportunity.pkg} company={job.company} submittedAt={iv.opportunity.submittedAt} opportunityId={iv.opportunityId} />}
+        {tab === "sent" && <SentTab debug={debug} pkg={iv.opportunity.pkg} company={job.company} submittedAt={iv.opportunity.submittedAt} opportunityId={iv.opportunityId} />}
         {tab === "mock" && (
           <MockTab
             interviewId={iv.id}
             round={iv.round}
             mocks={iv.mocks}
             assessment={isAssessment}
-            ctx={ctx}
+            ctx={{ ...ctx, salary }}
             jdTerms={[...technologies, ...requirements.flatMap((r) => r.split(/\W+/).filter((w) => w.length > 5)).slice(0, 12)]}
           />
         )}
@@ -196,6 +205,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
           <DebriefTab
             iv={{ id: iv.id, round: iv.round, status: iv.status, company: job.company, upcoming: beforeCall }}
             debrief={debrief}
+            debug={debug}
           />
         )}
       </div>

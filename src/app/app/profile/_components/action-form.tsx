@@ -1,7 +1,7 @@
 "use client";
 import { createContext, useActionState, useContext, useEffect, useRef, startTransition, type ComponentProps, type ReactNode } from "react";
 import { CircleAlert, CircleCheck } from "lucide-react";
-import { Button, cx } from "@/components/ui";
+import { Button } from "@/components/ui";
 import type { FormState } from "@/lib/actions/profile";
 
 const Pending = createContext(false);
@@ -57,22 +57,27 @@ export function ActionForm({
   );
 }
 
+/** Success is announced politely (role=status); an error interrupts (role=alert). Both regions stay mounted so updates are read. */
 export function FormMessage({ state }: { state: FormState }) {
   return (
-    <p role="status" aria-live="polite" className={cx("flex min-h-0 items-start gap-1.5 text-[13px] empty:hidden", state?.ok ? "text-green" : "text-rose")}>
-      {state?.error && (
-        <>
-          <CircleAlert className="mt-px size-4 shrink-0" strokeWidth={1.7} aria-hidden />
-          <span key={state.at}>{state.error}</span>
-        </>
-      )}
-      {state?.ok && state.message && (
-        <>
-          <CircleCheck className="mt-px size-4 shrink-0" strokeWidth={1.7} aria-hidden />
-          <span key={state.at} className="animate-fade">{state.message}</span>
-        </>
-      )}
-    </p>
+    <>
+      <p role="alert" className="flex min-h-0 items-start gap-1.5 text-[13px] text-rose empty:hidden">
+        {state?.error && (
+          <>
+            <CircleAlert className="mt-px size-4 shrink-0" strokeWidth={1.7} aria-hidden />
+            <span key={state.at}>{state.error}</span>
+          </>
+        )}
+      </p>
+      <p role="status" aria-live="polite" className="flex min-h-0 items-start gap-1.5 text-[13px] text-green empty:hidden">
+        {state?.ok && state.message && (
+          <>
+            <CircleCheck className="mt-px size-4 shrink-0" strokeWidth={1.7} aria-hidden />
+            <span key={state.at} className="animate-fade">{state.message}</span>
+          </>
+        )}
+      </p>
+    </>
   );
 }
 

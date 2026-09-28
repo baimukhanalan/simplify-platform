@@ -2,12 +2,12 @@ import Link from "next/link";
 import { ArrowRight, ArrowUpRight, BadgeDollarSign, FileText, Mail, Mic, Search, Send, SkipForward, Sparkles } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ButtonLink, cx } from "@/components/ui";
-import { count } from "../../_components/ru";
+import { count, plural } from "../../_components/ru";
 
 const VAC = ["вакансия", "вакансии", "вакансий"] as const;
 import { STAGES, dayLabel, hhmm, type StageKey, type TimelineDay, type TimelineItem, type Totals } from "./today-data";
 
-// ——— Main progress bar: Career Goal → … → Hired ———
+// ——— Main progress bar: Цель → … → Работа ———
 
 export function StageBar({ stage, values }: { stage: number; values: Record<StageKey, string> }) {
   const value = values;
@@ -61,8 +61,8 @@ export function KeyNumbers({ t }: { t: Totals }) {
     { label: "Подошли", v: t.qualified },
     { label: "Подано", v: t.submitted },
     { label: "Ответов", v: t.responses },
-    { label: "Assessment", v: t.assessments },
-    { label: "Interviews", v: t.interviews, accent: true },
+    { label: "Тесты", v: t.assessments },
+    { label: "Интервью", v: t.interviews, accent: true },
   ];
   return (
     <dl className="grid grid-cols-3 gap-x-4 gap-y-5 sm:grid-cols-6">
@@ -77,23 +77,24 @@ export function KeyNumbers({ t }: { t: Totals }) {
 }
 
 export function TodayStrip({ d }: { d: { found: number; qualified: number; submitted: number; responses: number } }) {
+  // «+1 подошла», «+2 подошли», «+5 ответов»: the word agrees with the number.
   const items = [
-    { label: "найдено", v: d.found },
-    { label: "подошли", v: d.qualified },
-    { label: "подано", v: d.submitted },
-    { label: "ответов", v: d.responses },
-  ];
+    { key: "found", forms: ["найдена", "найдены", "найдено"], v: d.found },
+    { key: "qualified", forms: ["подошла", "подошли", "подошли"], v: d.qualified },
+    { key: "submitted", forms: ["подана", "поданы", "подано"], v: d.submitted },
+    { key: "responses", forms: ["ответ", "ответа", "ответов"], v: d.responses },
+  ] as const;
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-2xl bg-head/[.04] px-4 py-3">
       <span className="label !text-[10px] !text-head">Сегодня</span>
       {items.map((it) => (
-        <span key={it.label} className="text-[13px] text-ink-3"><span className={cx("num text-[15px]", it.v ? "text-head" : "text-ink-4")}>{it.v ? `+${it.v}` : "0"}</span> {it.label}</span>
+        <span key={it.key} className="text-[13px] text-ink-3"><span className={cx("num text-[15px]", it.v ? "text-head" : "text-ink-4")}>{it.v ? `+${it.v}` : "0"}</span> {plural(it.v, it.forms)}</span>
       ))}
     </div>
   );
 }
 
-// ——— Next action ———
+// ——— Следующий шаг ———
 
 export type NextAction = { eyebrow: string; title: string; sub?: string; href: string; cta: string; icon: LucideIcon } | null;
 
@@ -101,7 +102,7 @@ export type NextAction = { eyebrow: string; title: string; sub?: string; href: s
 export function NextActionCard({ action, also, paused, id = "next-h", className }: { action: NextAction; also: { label: string; href: string }[]; paused: boolean; id?: string; className?: string }) {
   return (
     <section aria-labelledby={id} className={cx("flex h-full flex-col gap-5 rounded-[var(--radius-card)] p-5 sm:p-6", action ? "glass-strong" : "glass", className)}>
-      <h2 id={id} className="label">Next action</h2>
+      <h2 id={id} className="label">Следующий шаг</h2>
       {action ? (
         <>
           <div className="flex items-start gap-3.5">
@@ -118,7 +119,7 @@ export function NextActionCard({ action, also, paused, id = "next-h", className 
         <div className="flex flex-1 flex-col justify-center gap-3 py-2">
           <span className="flex items-center gap-2.5">
             <span className={cx("size-2.5 rounded-full", paused ? "bg-amber" : "bg-green animate-pulse-dot")} aria-hidden />
-            <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-ink-3">{paused ? "Agent paused" : "All clear"}</span>
+            <span className="font-mono text-[10.5px] uppercase tracking-[.08em] text-ink-3">{paused ? "Агент на паузе" : "Всё спокойно"}</span>
           </span>
           {paused ? (
             <>
@@ -129,7 +130,7 @@ export function NextActionCard({ action, also, paused, id = "next-h", className 
           ) : (
             <>
               <p className="h-serif text-[26px] leading-tight">Nothing needed from you right now. Simplify is working.</p>
-              <p className="text-[14px] text-ink-3">Как только появится интервью, assessment или вопрос, который может решить только ты, — он будет здесь.</p>
+              <p className="text-[14px] text-ink-3">Как только появится интервью, тестовое задание или вопрос, который может решить только ты, — это будет здесь.</p>
             </>
           )}
         </div>
@@ -185,8 +186,8 @@ export function Timeline({ days, now }: { days: TimelineDay[]; now: number }) {
                     {it.match != null && <span className="num rounded-full bg-head/[.06] px-2 py-0.5 text-[11.5px] text-head">Match {it.match}%</span>}
                     {it.detail && <span className="font-mono text-[10px] uppercase tracking-[.06em] text-amber">{it.detail}</span>}
                     {it.cta && it.href && (
-                      <Link href={it.href} className="relative inline-flex items-center gap-1 rounded-full bg-cta px-3 py-1 text-[12px] after:absolute after:-inset-y-2 after:-inset-x-1 after:content-[''] font-medium text-white hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
-                        {it.cta}<ArrowRight className="size-3" aria-hidden />
+                      <Link href={it.href} className="group inline-flex min-h-10 items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-cta px-3 py-1 text-[12px] font-medium text-white group-hover:bg-[#2f2c2c]">{it.cta}<ArrowRight className="size-3" aria-hidden /></span>
                       </Link>
                     )}
                   </div>
@@ -208,7 +209,7 @@ export function Timeline({ days, now }: { days: TimelineDay[]; now: number }) {
 
 export function StatusDot({ status }: { status: string }) {
   const active = status === "active";
-  const label = { active: "Active", paused: "Paused", hired: "Hired", expired: "Ended" }[status] ?? status;
+  const label = { active: "Активна", paused: "На паузе", hired: "Работа найдена", expired: "Завершена" }[status] ?? status;
   return (
     <span className={cx("inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[10.5px] uppercase tracking-[.08em]", active || status === "hired" ? "border-green/20 bg-green-soft text-green" : status === "paused" ? "border-amber/20 bg-amber-soft text-[#6e4a0b]" : "border-stroke bg-white/70 text-ink-3")}>
       <span className={cx("size-2 rounded-full", active ? "bg-green animate-pulse-dot" : status === "hired" ? "bg-green" : status === "paused" ? "bg-amber" : "bg-ink-4")} aria-hidden />

@@ -1,4 +1,6 @@
-// Assessment Room: test format, topics, preparation plan and practice questions (pure).
+import { count } from "../../../../_components/ru";
+
+// Тестовое задание: test format, topics, preparation plan and practice questions (pure).
 
 export type AssessmentTopic = { key: string; label: string; short: string; weight: number; have: boolean };
 export type PracticeQ = { topic: string; q: string; a: string };
@@ -8,10 +10,10 @@ const PLATFORMS = ["TestGorilla", "HackerRank", "Codility", "CodeSignal", "SHL",
 const TOPIC_OF: [RegExp, string, string, string][] = [
   [/sql|postgres|mysql|bigquery|clickhouse|snowflake/i, "sql", "SQL", "SQL"],
   [/python|pandas|numpy|\br\b/i, "python", "Python", "Python"],
-  [/excel|google sheets|spreadsheet/i, "excel", "Excel / Spreadsheets", "Excel"],
-  [/a\/b|experiment|statistic/i, "stats", "Statistics & A/B", "Statistics"],
-  [/tableau|power bi|looker|metabase|visuali/i, "viz", "Data visualization", "Visualization"],
-  [/google analytics|amplitude|mixpanel/i, "analytics", "Product analytics", "Analytics"],
+  [/excel|google sheets|spreadsheet/i, "excel", "Excel / таблицы", "Excel"],
+  [/a\/b|experiment|statistic/i, "stats", "Статистика и A/B", "Статистика"],
+  [/tableau|power bi|looker|metabase|visuali/i, "viz", "Визуализация данных", "Визуализация"],
+  [/google analytics|amplitude|mixpanel/i, "analytics", "Продуктовая аналитика", "Аналитика"],
 ];
 
 export const PRACTICE: Record<string, PracticeQ[]> = {
@@ -21,13 +23,13 @@ export const PRACTICE: Record<string, PracticeQ[]> = {
     { topic: "SQL", q: "Второй по величине заказ каждого пользователя.", a: "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rn, затем WHERE rn = 2. Учти ничьи: DENSE_RANK." },
   ],
   analytics: [
-    { topic: "Analytics", q: "Конверсия в покупку упала с 4% до 3% за неделю. Твои первые три шага?", a: "1) Проверить данные и трекинг (релизы, баги). 2) Сегментировать: платформа, канал, страна, новый/старый. 3) Найти шаг воронки с падением и сопоставить с изменениями продукта/маркетинга." },
-    { topic: "Analytics", q: "Как посчитать retention D7?", a: "Когорта = пользователи с первым действием в день X. D7 = доля когорты, активная на 7-й день. Считать по когортам, сравнивать одинаковые дни." },
+    { topic: "Аналитика", q: "Конверсия в покупку упала с 4% до 3% за неделю. Твои первые три шага?", a: "1) Проверить данные и трекинг (релизы, баги). 2) Сегментировать: платформа, канал, страна, новый/старый. 3) Найти шаг воронки с падением и сопоставить с изменениями продукта/маркетинга." },
+    { topic: "Аналитика", q: "Как посчитать retention D7?", a: "Когорта = пользователи с первым действием в день X. D7 = доля когорты, активная на 7-й день. Считать по когортам, сравнивать одинаковые дни." },
   ],
   logic: [
-    { topic: "Logic", q: "Ряд: 2, 6, 12, 20, 30, … Следующее число?", a: "42 — разности растут на 2 (4, 6, 8, 10, 12); или n·(n+1)." },
-    { topic: "Logic", q: "Цена выросла на 20%, затем упала на 20%. Итог относительно исходной?", a: "−4%: 1.2 × 0.8 = 0.96." },
-    { topic: "Numerical", q: "Из 800 посетителей 5% оформили заказ, средний чек $40. Выручка?", a: "800 × 0.05 = 40 заказов × $40 = $1 600." },
+    { topic: "Логика", q: "Ряд: 2, 6, 12, 20, 30, … Следующее число?", a: "42 — разности растут на 2 (4, 6, 8, 10, 12); или n·(n+1)." },
+    { topic: "Логика", q: "Цена выросла на 20%, затем упала на 20%. Итог относительно исходной?", a: "−4%: 1.2 × 0.8 = 0.96." },
+    { topic: "Числа", q: "Из 800 посетителей 5% оформили заказ, средний чек $40. Выручка?", a: "800 × 0.05 = 40 заказов × $40 = $1 600." },
   ],
   excel: [
     { topic: "Excel", q: "Подтянуть цену товара из другого листа по артикулу.", a: "XLOOKUP(A2; Prices!A:A; Prices!B:B) или INDEX/MATCH; VLOOKUP — только если ключ в первом столбце." },
@@ -38,11 +40,11 @@ export const PRACTICE: Record<string, PracticeQ[]> = {
     { topic: "Python", q: "Удалить дубликаты по user_id, оставив последнюю запись.", a: "df.sort_values('created_at').drop_duplicates('user_id', keep='last')" },
   ],
   stats: [
-    { topic: "Statistics", q: "p-value = 0.03 при α = 0.05. Что это значит?", a: "Если бы эффекта не было, такой или более сильный результат встречался бы в 3% случаев. Отвергаем H0 — но это не «вероятность, что гипотеза верна»." },
-    { topic: "Statistics", q: "Почему нельзя останавливать A/B-тест, как только стало значимо?", a: "Peeking раздувает ошибку I рода. Размер выборки фиксируют заранее или используют sequential-методы." },
+    { topic: "Статистика", q: "p-value = 0.03 при α = 0.05. Что это значит?", a: "Если бы эффекта не было, такой или более сильный результат встречался бы в 3% случаев. Отвергаем H0 — но это не «вероятность, что гипотеза верна»." },
+    { topic: "Статистика", q: "Почему нельзя останавливать A/B-тест, как только стало значимо?", a: "Подглядывание в результаты (peeking) раздувает ошибку I рода. Размер выборки фиксируют заранее или используют последовательные методы." },
   ],
   viz: [
-    { topic: "Visualization", q: "Какой график для доли каналов в выручке по месяцам?", a: "Stacked bar (100%) по месяцам; pie — только для одного периода и 3–5 категорий." },
+    { topic: "Визуализация", q: "Какой график для доли каналов в выручке по месяцам?", a: "Столбцы с накоплением (100%) по месяцам; круговая диаграмма — только для одного периода и 3–5 категорий." },
   ],
 };
 
@@ -80,9 +82,9 @@ export function assessmentInfo(i: { technologies: string[]; skills: string[]; se
     const hit = TOPIC_OF.find(([re]) => re.test(t));
     if (hit && !topics.has(hit[1])) topics.set(hit[1], { key: hit[1], label: hit[2], short: hit[3], weight: 0, have: have.has(t.toLowerCase()) });
   }
-  if (/analyst|data|product/.test(i.roleFamily) && !topics.has("analytics")) topics.set("analytics", { key: "analytics", label: "Analytics / case", short: "Analytics", weight: 0, have: true });
+  if (/analyst|data|product/.test(i.roleFamily) && !topics.has("analytics")) topics.set("analytics", { key: "analytics", label: "Аналитика / кейс", short: "Аналитика", weight: 0, have: true });
   const main = [...topics.values()].slice(0, 4);
-  const list = [...main, { key: "logic", label: "Logic & numerical reasoning", short: "Logic", weight: 0, have: true }];
+  const list = [...main, { key: "logic", label: "Логика и числовые задачи", short: "Логика", weight: 0, have: true }];
   list.forEach((t) => (t.weight = t.key === "logic" ? (main.length ? 20 : 100) : Math.round(80 / Math.max(1, main.length))));
 
   const gaps = list.filter((t) => !t.have).length;
@@ -93,8 +95,8 @@ export function assessmentInfo(i: { technologies: string[]; skills: string[]; se
     level,
     label: ["", "лёгкая", "средняя", "высокая"][level],
     why: [
-      senior ? "уровень роли выше junior" : "junior-уровень роли",
-      gaps ? `${gaps} ${gaps === 1 ? "тема" : gaps < 5 ? "темы" : "тем"} вне твоего профиля` : "все темы есть в твоём профиле",
+      senior ? "уровень роли выше начального" : "начальный уровень роли",
+      gaps ? `${count(gaps, ["тема", "темы", "тем"])} вне твоего профиля` : "все темы есть в твоём профиле",
       i.massHiring ? "массовый найм — обычно стандартный тест" : "",
     ].filter(Boolean).join(" · "),
   };
@@ -112,13 +114,13 @@ export function assessmentInfo(i: { technologies: string[]; skills: string[]; se
         ]
       : [
           { when: "День 1", what: `${first}: 5–6 задач на время — ${drill}` },
-          { when: "День 1", what: weak ? `Закрой пробел: ${weak} — базовые задачи и шпаргалка` : "Analytics: разбор 2 кейсов «почему упала метрика»" },
-          { when: "День 2", what: "Logic & numerical: 15 минут задач на проценты и последовательности" },
+          { when: "День 1", what: weak ? `Закрой пробел: ${weak} — базовые задачи и шпаргалка` : "Аналитика: разбор 2 кейсов «почему упала метрика»" },
+          { when: "День 2", what: "Логика и числа: 15 минут задач на проценты и последовательности" },
           { when: "День 2", what: `Полная репетиция: ${durationMin} минут без пауз на практических вопросах ниже` },
           { when: "За час до теста", what: "Прочитай правила платформы: можно ли возвращаться к вопросам, есть ли штраф за ошибки" },
         ];
 
   const practice = [...main.flatMap((t) => (PRACTICE[t.key] ?? []).slice(0, 2)).slice(0, 6), ...PRACTICE.logic.slice(0, 2)];
-  const kind = `Online assessment · ${list.map((t) => t.short).join(" / ")}`;
+  const kind = `Онлайн-тест · ${list.map((t) => t.short).join(" / ")}`;
   return { platform, kind, durationMin, deadline: i.deadline, hoursLeft, topics: list, difficulty, plan, practice };
 }

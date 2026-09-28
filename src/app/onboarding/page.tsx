@@ -10,7 +10,7 @@ import { suggestAdjacentRoles } from "@/lib/engine/readiness";
 import { Label } from "@/components/ui";
 import { currentCampaign, runningCampaign } from "@/lib/ops-data";
 import { SiteHeader } from "../_components/site-header";
-import { PLAN_COOKIE, cleanPlan } from "../_components/plan-pref";
+import { PLAN_COOKIE, cleanPlan, fitPlan } from "../_components/plan-pref";
 import { RememberPlan } from "../_components/remember-plan";
 import { INTENT_USED_COOKIE, intentFromParams, intentToGoal } from "../_components/campaign-intent";
 import { loadReadiness } from "../app/readiness/_components/data";
@@ -80,7 +80,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
           relocation: override?.relocation ?? goal?.relocation ?? false,
           industries: j<string[]>(goal?.industries, []),
         }}
-        note={override ? "Обновил цель по твоим новым ответам — проверь и сохрани." : !done.has(STEP.goal) && !goalEmpty && jar.get(INTENT_USED_COOKIE) ? "Заполнил по твоим ответам на первом экране. Проверь — и дальше." : undefined}
+        note={override ? "Агент обновил цель по твоим новым ответам — проверь и сохрани." : !done.has(STEP.goal) && !goalEmpty && jar.get(INTENT_USED_COOKIE) ? "Агент заполнил цель по твоим ответам на первом экране. Проверь — и дальше." : undefined}
         years={years}
         suggestedSeniority={seniorityFromYears(years)}
         roleSuggestions={suggestions}
@@ -90,7 +90,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     const data = goalEmpty ? null : await loadReadiness(user.id);
     body = data ? <StepReadiness data={data} /> : <NeedGoal />;
   } else {
-    body = goalEmpty ? <NeedGoal /> : <StepPlan partner={user.referredByCode ?? ""} activeCampaign={Boolean(campaign)} ended={ended} preferred={plan} />;
+    body = goalEmpty ? <NeedGoal /> : <StepPlan partner={user.referredByCode ?? ""} activeCampaign={Boolean(campaign)} ended={ended} preferred={plan} fit={fitPlan(j<string[]>(goal?.countries, []))} />;
   }
 
   return (
@@ -131,9 +131,9 @@ const TITLES: Record<number, ReactNode> = {
   5: <>Запускаем <S>кампанию</S></>,
 };
 const SUBS: Record<number, string> = {
-  1: "CV, LinkedIn, GitHub, портфолио, сертификаты. Я сам всё разберу — ничего не нужно перепечатывать.",
+  1: "CV, LinkedIn, GitHub, портфолио, сертификаты. Агент сам всё разберёт — ничего не нужно перепечатывать.",
   2: "Короткие ответы помогают показать твой опыт в цифрах и понять, куда можно подаваться. 3–5 минут.",
-  3: "Проверь, что я правильно понял, что ищем. Это можно поменять в любой момент.",
-  4: "Насколько профиль готов к цели — и что я сделаю, чтобы усилить его.",
-  5: "60 дней я ищу вакансии, адаптирую CV, подаю заявки и готовлю тебя к интервью.",
+  3: "Проверь, что агент правильно понял, что искать. Цель можно поменять в любой момент.",
+  4: "Насколько профиль готов к цели — и что агент сделает, чтобы его усилить.",
+  5: "60 дней агент ищет вакансии, адаптирует CV, подаёт заявки и готовит тебя к интервью.",
 };

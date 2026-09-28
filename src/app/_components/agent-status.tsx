@@ -12,10 +12,25 @@ export type Need = { text: string; href?: string };
  * "Simplify is working." so the line never claims work that isn't happening. `working` adds screen context.
  * When this screen needs nothing but another one does (offer, questions, handoffs, an interview within 48 h), the line
  * says so instead: «Здесь ничего не нужно · ждут тебя: оффер, 1 вопрос →». `skip` drops kinds this screen already covers.
+ * `here` is optional work waiting on this very screen that the user may act on but doesn't have to (e.g. «3 вакансии
+ * ждут твоего решения — ниже»): with it the line never claims «Здесь ничего не нужно» or "Nothing needed".
  */
-export async function AgentStatus({ needs, working, idle = false, skip = [], className }: { needs: Need[]; working?: string; idle?: boolean; skip?: GlobalNeedKind[]; className?: string }) {
+export async function AgentStatus({ needs, working, idle = false, skip = [], here, className }: { needs: Need[]; working?: string; idle?: boolean; skip?: GlobalNeedKind[]; here?: string; className?: string }) {
   const userId = needs.length ? null : await currentUserId();
   const elsewhere = userId ? (await globalNeeds(userId)).filter((n) => !skip.includes(n.kind)) : [];
+  if (!needs.length && here) {
+    return (
+      <div role="status" className={cx("flex items-start gap-3 rounded-2xl border border-green/15 bg-green-soft/50 px-4 py-3 text-[14px] text-ink-2", className)}>
+        <span className={cx("mt-1.5 size-2 shrink-0 rounded-full", idle ? "bg-ink-4" : "bg-green animate-pulse-dot")} aria-hidden />
+        <p className="min-w-0">
+          <span className="font-medium text-head">{here}</span>
+          {working && <span className="text-ink-3"> {working}</span>}
+          {elsewhere.length > 0 && <span className="text-ink-3"> Ещё ждут тебя: </span>}
+          <ElsewhereLinks items={elsewhere} />
+        </p>
+      </div>
+    );
+  }
   if (!needs.length && elsewhere.length) {
     return (
       <div role="status" className={cx("flex items-start gap-3 rounded-2xl border border-amber/20 bg-amber-soft/40 px-4 py-3 text-[14px] text-ink-2", className)}>
@@ -23,14 +38,7 @@ export async function AgentStatus({ needs, working, idle = false, skip = [], cla
         <p className="min-w-0">
           <span className="font-medium text-head">Здесь ничего не нужно</span>
           <span className="text-ink-3"> · ждут тебя: </span>
-          {elsewhere.map((n, i) => (
-            <span key={n.kind}>
-              {i > 0 && <span className="text-ink-3">, </span>}
-              <Link href={n.href} className="group inline-flex min-h-10 items-center gap-1 rounded text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">
-                {n.text}{i === elsewhere.length - 1 && <ArrowRight className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden />}
-              </Link>
-            </span>
-          ))}
+          <ElsewhereLinks items={elsewhere} />
         </p>
       </div>
     );
@@ -62,4 +70,16 @@ export async function AgentStatus({ needs, working, idle = false, skip = [], cla
       </ul>
     </div>
   );
+}
+
+/** «оффер, 1 вопрос →» — links to what waits on other screens. */
+function ElsewhereLinks({ items }: { items: { kind: string; text: string; href: string }[] }) {
+  return items.map((n, i) => (
+    <span key={n.kind}>
+      {i > 0 && <span className="text-ink-3">, </span>}
+      <Link href={n.href} className="group inline-flex min-h-10 items-center gap-1 rounded text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">
+        {n.text}{i === items.length - 1 && <ArrowRight className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden />}
+      </Link>
+    </span>
+  ));
 }

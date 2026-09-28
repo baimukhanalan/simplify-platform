@@ -35,7 +35,7 @@ export async function setCareerMode(form: FormData) {
   const mode = form.get("mode") === "passive" ? "passive" : "active";
   if (mode === user.careerMode) return;
   await db.user.update({ where: { id: user.id }, data: { careerMode: mode } });
-  await logEvent(user.id, "career_mode", mode === "passive" ? "Включён Passive Career Mode" : "Включён активный поиск");
+  await logEvent(user.id, "career_mode", mode === "passive" ? "Включён фоновый режим Career" : "Включён активный поиск");
   revalidatePath("/app", "layout");
 }
 
@@ -56,5 +56,5 @@ export async function deleteAccount(_: FormState, form: FormData): Promise<FormS
   // Every user-owned relation cascades (profile, facts, campaigns → opportunities, events, …).
   await db.user.delete({ where: { id: user.id } });
   await destroySession();
-  redirect("/");
+  redirect("/?deleted=1"); // the landing shows «Аккаунт удалён»
 }

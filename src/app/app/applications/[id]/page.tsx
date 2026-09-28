@@ -1,17 +1,19 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, ChevronDown, Download, ExternalLink } from "lucide-react";
+import { realUrl } from "@/lib/links";
 import { currentUserId, requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import type { Answer } from "@/lib/engine/personalize";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
-import { REMOTE_LABEL, fmtDate, salaryLabel, statusTone } from "@/lib/ops";
+import { fmtDate, salaryLabel, statusTone } from "@/lib/ops";
 import { Card, Chip, Label, PageHeader, cx } from "@/components/ui";
 import { cleanRequirement, cvVersionLabel } from "../../opportunities/_lib/fit";
 import { StatusMover } from "../../opportunities/_components/bits";
 import { AgentStatus, type Need } from "../../../_components/agent-status";
 import { endSentence, shortDate, statusRu } from "../../../_components/ru";
 import { Timeline, type Step } from "./_components/timeline";
+import { placeRu } from "../../opportunities/_lib/when";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const [{ id }, userId] = await Promise.all([params, currentUserId()]);
@@ -66,7 +68,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   const steps: Step[] = [];
   // The package always precedes the submission, even if the rows were written in the same instant.
   const preparedAt = pkg ? new Date(Math.min(pkg.createdAt.getTime(), (opp.submittedAt ?? pkg.createdAt).getTime() - 1)) : null;
-  if (pkg && preparedAt) steps.push({ at: preparedAt, kind: "prepared", title: "CV и cover letter подготовлены", detail: cvVersionLabel(pkg.cvVersion, opp.job.company) });
+  if (pkg && preparedAt) steps.push({ at: preparedAt, kind: "prepared", title: "CV и сопроводительное письмо подготовлены", detail: cvVersionLabel(pkg.cvVersion, opp.job.company) });
   if (opp.submittedAt) steps.push({ at: opp.submittedAt, kind: "submitted", title: "Заявка отправлена", detail: pkg?.submitMethod ? sentVia(pkg.submitMethod) || undefined : undefined });
   for (const m of opp.inbox) {
     steps.push({ at: m.receivedAt, kind: MAIL[m.classification] ? m.classification : "inbox", title: MAIL[m.classification] ?? "Письмо от работодателя", detail: m.subject, href: `/app/inbox?m=${m.id}`, tag: m.simulated ? "симуляция" : undefined });
@@ -90,6 +92,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   const hasCyrillic = pkg ? /[Ѐ-ӿ]/.test(pkg.cvText) : false;
   const salary = salaryLabel(job.salaryMin, job.salaryMax, job.currency);
   const isDemo = job.source === "demo";
+  const place = placeRu(job.location, job.remote);
   const pendingAnswers = answers.filter((a) => a.status === "pending").length;
   const needs: Need[] = [];
   if (opp.status === "offer") needs.push({ text: "Оффер ждёт твоего решения", href: "/app/offers" });
@@ -98,17 +101,17 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex flex-col gap-5">
-      <Link href="/app/applications" className="inline-flex w-fit items-center gap-1.5 rounded text-[13px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">
+      <Link href="/app/applications" className="inline-flex min-h-10 w-fit items-center gap-1.5 rounded text-[13px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">
         <ArrowLeft className="size-3.5" aria-hidden />Applications
       </Link>
       <PageHeader
-        eyebrow={`Application · ${job.company}`}
+        eyebrow={`Заявка · ${job.company}`}
         title={job.title}
         sub={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <Chip tone={statusTone(opp.status)}>{statusRu(opp.status)}</Chip>
             <span>Подано <span className="num text-head">{shortDate(opp.submittedAt)}</span></span>
-                        {isDemo && <span className="text-ink-3">демо-вакансия: ответы работодателя симулируются</span>}
+            {isDemo && <span className="text-ink-3">демо-вакансия: ответы работодателя симулируются</span>}
           </span>
         }
       />
@@ -163,7 +166,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
 
           {pkg && (
             <Card className="flex flex-col gap-3">
-              <Label>Cover Letter</Label>
+              <Label>Сопроводительное письмо</Label>
               <div className="whitespace-pre-line break-words text-[14.5px] leading-relaxed text-ink-2">{pkg.coverLetter}</div>
             </Card>
           )}
@@ -193,16 +196,16 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Label>Вакансия</Label>
               <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">
-                <Chip tone={job.remote === "remote" ? "green" : "neutral"}>{REMOTE_LABEL[job.remote] ?? job.remote}</Chip>
+                {place.showMode && <Chip tone={job.remote === "remote" ? "green" : "neutral"}>{place.mode}</Chip>}
                 {salary && <span className="num text-head">{salary}</span>}
-                {job.location && <span>{job.location}</span>}
+                {place.location && <span>{place.location}</span>}
               </span>
             </div>
             {requirements.length > 0 && (
               <ul className="flex list-disc flex-col gap-1 pl-5 text-[14px] text-ink-2 marker:text-teal">{requirements.map((r) => <li key={r}>{r}</li>)}</ul>
             )}
             <details className="group rounded-2xl border border-stroke bg-white/50">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-[14px] text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-[14px] text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
                 Исходное описание вакансии
                 <ChevronDown className="size-4 text-teal transition-transform group-open:rotate-180" aria-hidden />
               </summary>
@@ -210,8 +213,8 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             </details>
             <div className="flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
               <Link href={`/app/opportunities/${opp.id}`} className="inline-flex min-h-10 items-center text-teal hover:text-head">Почему агент выбрал эту вакансию</Link>
-              {job.url && !isDemo && (
-                <a href={job.url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-1.5 text-teal hover:text-head">
+              {realUrl(job.url) && !isDemo && (
+                <a href={realUrl(job.url)!} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-1.5 text-teal hover:text-head">
                   Оригинал<ExternalLink className="size-3.5" aria-hidden /><span className="sr-only">(откроется в новой вкладке)</span>
                 </a>
               )}

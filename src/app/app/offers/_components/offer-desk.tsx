@@ -6,7 +6,7 @@ import { SubmitButton } from "@/components/client";
 import { benchmarkOffer, negotiationPlan, type Aggressiveness } from "@/lib/engine/offer";
 import { fxToUsd } from "@/lib/engine/fx";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
-import { regionsRu } from "../../../_components/ru";
+import { WORK_MODE_RU, count, regionsRu } from "../../../_components/ru";
 import { markHired } from "@/lib/actions/campaign";
 import { declineOffer, recordFinal, saveNegotiation } from "@/lib/actions/offer";
 import { CopyButton } from "../../interviews/_components/copy-button";
@@ -74,7 +74,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
 
         <div className="mt-8 flex flex-col gap-6 border-t border-white/10 pt-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <span className="font-mono text-[10.5px] uppercase tracking-[.1em] text-white/50">Base, в год</span>
+            <span className="font-mono text-[10.5px] uppercase tracking-[.1em] text-white/50">Оклад в год</span>
             <div className="num mt-1 text-[clamp(52px,13vw,112px)] leading-[.9] tracking-tight">{c.money(o.base)}</div>
             {o.finalBase != null && o.finalBase !== o.base && (
               <p className="mt-2 text-[14px] text-[#7fe3b6]">
@@ -83,7 +83,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
             )}
           </div>
           <div className="flex flex-col gap-1 sm:items-end sm:text-right">
-            <span className="font-mono text-[10.5px] uppercase tracking-[.1em] text-white/50">Total Comp</span>
+            <span className="font-mono text-[10.5px] uppercase tracking-[.1em] text-white/50">Общий доход</span>
             <span className="num text-[30px] leading-none text-white">{c.money(c.total)}</span>
             <span className="text-[12px] text-white/50">первый год</span>
           </div>
@@ -96,38 +96,38 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
         <Card className="animate-rise" style={{ animationDelay: "60ms" }}>
           <Label className="mb-4">Компенсация</Label>
           <dl className="grid grid-cols-2 gap-x-5 gap-y-5">
-            <Money label="Base" value={c.money(o.base)} />
-            <Money label="Bonus" value={o.bonus ? k(o.bonus) : "—"} hint={o.bonus && o.base ? `${Math.round((o.bonus / o.base) * 100)}% of base` : undefined} />
+            <Money label="Оклад" value={c.money(o.base)} />
+            <Money label="Бонус" value={o.bonus ? k(o.bonus) : "—"} hint={o.bonus && o.base ? `${Math.round((o.bonus / o.base) * 100)}% от оклада` : undefined} />
             <Money
-              label="Equity"
+              label="Акции / опционы"
               value={c.equityYear != null ? `${k(c.equityYear)}/год` : o.equity || "—"}
               hint={c.equityYear != null ? o.equity : undefined}
               small={c.equityYear == null && Boolean(o.equity)}
             />
-            <Money label="Signing bonus" value={o.signingBonus ? k(o.signingBonus) : "—"} hint={o.signingBonus ? "разово" : undefined} />
+            <Money label="Бонус за подписание" value={o.signingBonus ? k(o.signingBonus) : "—"} hint={o.signingBonus ? "разово" : undefined} />
           </dl>
           <div className="mt-5 flex items-end justify-between gap-4 rounded-2xl bg-green-soft px-4 py-3.5">
             <div>
-              <div className="label !text-green">Total Comp</div>
-              <div className="mt-0.5 text-[12px] text-ink-3">base + bonus + signing{c.equityYear != null ? " + equity/год" : ""}</div>
+              <div className="label !text-green">Общий доход</div>
+              <div className="mt-0.5 text-[12px] text-ink-3">оклад + бонус + бонус за подписание{c.equityYear != null ? " + акции/год" : ""}</div>
             </div>
             <div className="num text-[28px] leading-none text-green">{c.money(c.total)}</div>
           </div>
           <div className="mt-5">
-            <div className="label mb-2">Benefits</div>
+            <div className="label mb-2">Бонусы и льготы</div>
             {c.benefits.length ? (
               <ul className="flex flex-wrap gap-1.5">{c.benefits.map((b) => <li key={b}><Chip>{b}</Chip></li>)}</ul>
             ) : (
-              <p className="text-[13.5px] text-ink-3">Не указаны — уточни у рекрутера страховку, отпуск и learning budget.</p>
+              <p className="text-[13.5px] text-ink-3">Не указаны — уточни у рекрутера страховку, отпуск и бюджет на обучение.</p>
             )}
           </div>
           <dl className="mt-5 grid grid-cols-2 gap-x-5 gap-y-2.5 border-t border-line pt-4 text-[13px] sm:grid-cols-3">
             {([
-              ["Формат", o.remote === "remote" ? "Remote" : o.remote === "hybrid" ? "Hybrid" : "Onsite"],
-              ["Отпуск", o.vacationDays ? `${o.vacationDays} дн.` : "—"],
-              ["Испытательный", o.probationMonths ? `${o.probationMonths} мес.` : "—"],
-              ["Relocation", o.relocation || "—"],
-              ["Notice", o.noticePeriod || "—"],
+              ["Формат", WORK_MODE_RU[o.remote] ?? o.remote],
+              ["Отпуск", o.vacationDays ? count(o.vacationDays, ["день", "дня", "дней"]) : "—"],
+              ["Испытательный срок", o.probationMonths ? count(o.probationMonths, ["месяц", "месяца", "месяцев"]) : "—"],
+              ["Релокация", o.relocation || "—"],
+              ["Срок уведомления", o.noticePeriod || "—"],
             ] as const).map(([kk, v]) => (
               <div key={kk} className="flex min-w-0 flex-col">
                 <dt className="text-ink-3">{kk}</dt>
@@ -136,7 +136,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
             ))}
           </dl>
           <details className="mt-4">
-            <summary className="w-fit cursor-pointer rounded text-[13.5px] font-medium text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">Редактировать условия</summary>
+            <summary className="inline-flex min-h-10 w-fit cursor-pointer items-center rounded text-[13.5px] font-medium text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">Редактировать условия</summary>
             <EditTermsForm offer={o} />
           </details>
         </Card>
@@ -144,16 +144,16 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
         <Card className="flex animate-rise flex-col" style={{ animationDelay: "120ms" }}>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <Label>Сравнение с рынком</Label>
-            <Chip tone={negotiate ? "amber" : "green"} dot>{negotiate ? "Negotiate" : "Accept / at market"}</Chip>
+            <Chip tone={negotiate ? "amber" : "green"} dot>{negotiate ? "Стоит торговаться" : "На уровне рынка"}</Chip>
           </div>
           <p className="flex flex-col gap-0.5 rounded-2xl border border-line bg-white/60 px-4 py-3.5 text-[14.5px] leading-relaxed text-ink-2 sm:block">
-            <Verdict k="Your offer" v={k(o.base)} />
+            <Verdict k="Твой оффер" v={k(o.base)} />
             <Sep />
-            <Verdict k="Market" v={kRange(range.low, range.high, o.currency)} />
+            <Verdict k="Рынок" v={kRange(range.low, range.high, o.currency)} />
             <Sep />
-            <Verdict k="Recommendation" v={negotiate ? "Negotiate" : "Accept / at market"} tone={negotiate ? "amber" : "green"} />
+            <Verdict k="Рекомендация" v={negotiate ? "торговаться" : "можно принимать"} tone={negotiate ? "amber" : "green"} />
             <Sep />
-            <Verdict k="Potential upside" v={upside} tone="green" />
+            <Verdict k="Можно добавить" v={upside} tone="green" />
           </p>
           <div className="mt-6">
             <RangeBar low={range.low} mid={range.mid} high={range.high} offer={o.base} final={o.finalBase ?? undefined} currency={o.currency} />
@@ -171,11 +171,11 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
       {/* ── Decision: one block with all three outcomes ───────── */}
       <div id={ids.decide} className="scroll-mt-24 rounded-[24px] bg-[#0c1512] px-5 py-7 text-white sm:px-8" role="group" aria-labelledby={`${ids.decide}-h`}>
         <span className="font-mono text-[10.5px] uppercase tracking-[.12em] text-[#8fc7ad]">Решение</span>
-        <h3 id={`${ids.decide}-h`} className="h-serif mt-2 text-[clamp(24px,3vw,34px)] !text-white">Принимаем <span className="script !text-[#7fe3b6]">оффер</span>?</h3>
+        <h3 id={`${ids.decide}-h`} className="h-serif mt-2 text-[clamp(24px,3vw,34px)] !text-white">Принять <span className="script !text-[#7fe3b6]">оффер</span>?</h3>
         <p className="mt-2 max-w-2xl text-[14px] text-white/65">
           {negotiate
             ? <>Оффер ниже медианы рынка — есть смысл сначала поторговаться. Когда условия устроят, прими оффер здесь.</>
-            : <>Оффер на уровне рынка или выше. Можно принимать — или всё равно попробовать поднять base.</>}
+            : <>Оффер на уровне рынка или выше. Можно принимать — или всё равно попробовать поднять оклад.</>}
           {" "}Принятие завершает кампанию статусом HIRED: агент перестаёт подавать заявки.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
@@ -188,7 +188,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
             confirmLabel="Да, принимаю"
             pendingLabel="Завершаем кампанию…"
           >
-            {o.role}, base <span className="num text-white">{c.money(o.finalBase ?? o.base)}</span>. Кампания закроется, история и Career Profile сохранятся.
+            {o.role}, оклад <span className="num text-white">{c.money(o.finalBase ?? o.base)}</span>. Кампания закроется, история и Career Profile сохранятся.
           </ConfirmAction>
           <a href={`#${ids.neg}`} className="inline-flex h-13 w-fit items-center gap-2 rounded-full border border-white/20 px-6 text-[15px] text-white transition hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]">
             Сначала поторговаться<ArrowDown className="size-4" strokeWidth={1.8} aria-hidden />
@@ -228,7 +228,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
         />
         <form action={recordFinal} className="mt-6 flex flex-col gap-3 border-t border-line pt-5 sm:flex-row sm:items-end">
           <input type="hidden" name="offerId" value={o.id} />
-          <Field label="Итог переговоров: финальная base" hint="Зафиксируй цифру, согласованную письменно" className="sm:max-w-xs sm:flex-1">
+          <Field label="Итог переговоров: финальный оклад" hint="Зафиксируй цифру, согласованную письменно" className="sm:max-w-xs sm:flex-1">
             <input name="finalBase" type="number" inputMode="numeric" min={1000} step={500} required defaultValue={o.finalBase ?? ""} className="field num" placeholder={String(plans.balanced.target)} />
           </Field>
           <SubmitButton size="md" variant="glass" pendingText="Сохраняем…" className="sm:mb-6">Записать итог</SubmitButton>
@@ -253,27 +253,27 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
     <div className="flex flex-col gap-6">
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-2xl border border-green/20 bg-green-soft px-4 py-4 sm:px-5">
-          <div className="label !text-green">Counteroffer</div>
+          <div className="label !text-green">Контрпредложение</div>
           <div className="num mt-1.5 text-[clamp(32px,5vw,44px)] leading-none text-green">{money(plan.ask)}</div>
           <div className="mt-1.5 text-[12.5px] text-ink-3">первая цифра · {delta(plan.ask)} · цель {money(plan.target)}</div>
         </div>
         <div className="rounded-2xl border border-line bg-white/60 px-4 py-4 sm:px-5">
-          <div className="label">Fallback</div>
+          <div className="label">Запасной вариант</div>
           <div className="num mt-1.5 text-[clamp(32px,5vw,44px)] leading-none text-head">{money(plan.walkaway)}</div>
-          <div className="mt-1.5 text-[12.5px] text-ink-3">нижняя граница base · ниже — только с компенсацией</div>
+          <div className="mt-1.5 text-[12.5px] text-ink-3">нижняя граница оклада · ниже — только с компенсацией</div>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
           <div>
-            <div className="label mb-2.5">Аргументы</div>
+            <div className="label mb-2.5">Аргументы · на английском</div>
             <ul className="flex flex-col gap-2">
               {plan.args.map((a) => (
                 <li key={a} className="flex gap-2.5 text-[14px] text-ink-2"><Check className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />{a}</li>
               ))}
             </ul>
-            <p className="mt-2.5 text-[12.5px] text-ink-3">Совет: сначала покажи, что хочешь присоединиться, — переговоры про fit, а не про давление.</p>
+            <p className="mt-2.5 text-[12.5px] text-ink-3">Совет: сначала покажи, что хочешь присоединиться, — переговоры про взаимный интерес, а не про давление.</p>
             {strengths === 0 && <p className="mt-1 text-[12.5px] text-ink-3">Добавь измеримые результаты в Career Profile — аргументы станут сильнее.</p>}
           </div>
           <div>
@@ -285,13 +285,13 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
             </ol>
           </div>
           <div>
-            <div className="label mb-2.5">Если base не двигается</div>
+            <div className="label mb-2.5">Если оклад не двигается</div>
             <ul className="flex flex-wrap gap-1.5">{plan.fallback.map((f) => <li key={f}><Chip tone="teal">{f}</Chip></li>)}</ul>
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="label">Email · {label}</div>
+            <div className="label">Письмо · {label}</div>
             <CopyButton text={plan.email} label="Копировать письмо" />
           </div>
           <pre tabIndex={0} aria-label={`Письмо с контрпредложением, стиль ${label}`} className="scroll-thin max-h-[400px] overflow-auto whitespace-pre-wrap rounded-2xl border border-line bg-white/65 p-4 font-sans text-[13.5px] leading-relaxed text-ink-2 focus-visible:outline-2 focus-visible:outline-green">{plan.email}</pre>
@@ -309,7 +309,7 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
               {saved.savedAt && (
                 <span className={cx("text-[12px]", saved.level === level ? "text-green" : "text-ink-3")}>
                   Сохранён {new Date(saved.savedAt).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short" })}
-                  {saved.ask ? <> · ask <span className="num">{money(saved.ask)}</span></> : null}
+                  {saved.ask ? <> · запрос <span className="num">{money(saved.ask)}</span></> : null}
                 </span>
               )}
             </div>

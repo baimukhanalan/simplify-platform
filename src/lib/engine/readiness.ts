@@ -43,7 +43,7 @@ export function assessReadiness(input: ReadinessInput): Readiness {
   const need = fam.skills;
   const covered = need.filter((s) => have.has(s.toLowerCase()));
   const skillScore = need.length ? Math.round((covered.length / Math.min(need.length, 5)) * 100) : 60;
-  push({ key: "skills", label: "Hard skills под роль", score: Math.min(100, skillScore), weight: 1.4, note: need.length ? `Есть: ${covered.join(", ") || "—"}` : "Роль не распознана" });
+  push({ key: "skills", label: "Навыки под роль", score: Math.min(100, skillScore), weight: 1.4, note: need.length ? `Есть: ${covered.join(", ") || "—"}` : "Роль не распознана" });
   const missing = need.filter((s) => !have.has(s.toLowerCase())).slice(0, 3);
   if (missing.length && skillScore < 75) suggestions.push(`Закрой пробел в навыках: ${missing.join(", ")} — подойдёт короткий portfolio-проект.`);
 
@@ -83,7 +83,7 @@ export function assessReadiness(input: ReadinessInput): Readiness {
 
   // Interview readiness — the same function as Career Score's component and the Readiness page parameter.
   const interview = interviewReadiness({ stories: input.stories, mockScores: input.mockScores ?? [] });
-  push({ key: "interview", label: "Interview readiness", score: interview.score, weight: 0.6, note: interview.note });
+  push({ key: "interview", label: "Готовность к интервью", score: interview.score, weight: 0.6, note: interview.note });
 
   const wsum = checks.reduce((a, c) => a + c.weight, 0);
   const score = Math.round(checks.reduce((a, c) => a + c.score * c.weight, 0) / wsum);

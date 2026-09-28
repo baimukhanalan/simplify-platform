@@ -107,9 +107,39 @@ function splitTitleOrg(s: string): [string, string] {
   return [s.trim(), ""];
 }
 
+const UNIT = String.raw`(?:%|x|k|m|\$|€|₸|days?|hours?|hrs?|h|weeks?|wks?|months?|minutes?|mins?|min|seconds?|secs?|sec|s|ms|pp|p\.p\.|дн(?:ей|я|ь)?|час(?:ов|а)?|ч|недел(?:ь|и|я)|месяц(?:ев|а)?|минут|мин|сек|секунд|п\.п\.)`;
+const NUM = String.raw`[$€₸]?\s?\d+(?:[.,]\d+)?\s?(?:[kKmM](?![\p{L}]))?`;
+/** Sentence patterns that carry a measurable result. */
+const METRIC_PATTERNS: RegExp[] = [
+  // "from 3 days to 4 hours", "с 3 дней до 4 часов", "from $1.2M to $2M"
+  new RegExp(String.raw`(?<![\p{L}])(?:from|с|со)\s+${NUM}\s*${UNIT}?\s+(?:to|до|→)\s+${NUM}\s*${UNIT}?(?![\p{L}])`, "iu"),
+  // "18% → 26%", "3 days -> 4 hours", "40 → 12 min"
+  new RegExp(String.raw`${NUM}\s*${UNIT}?\s*(?:→|->|—>|=>)\s*${NUM}\s*${UNIT}?`, "iu"),
+  // "reduced churn by 12%", "cut costs by $40k", "increased retention by 3 pp", "сократил время на 30%"
+  new RegExp(String.raw`(?<![\p{L}])(?:reduc|cut|decreas|lower|increas|grew|grow|boost|improv|rais|sav|shrank|shrunk|accelerat|speed|sped|halv|doubl|tripl|сократ|снизи|увелич|ускор|вырос|подня|сэконом)\p{L}*[^.\n]{0,60}?(?:by|на)\s+${NUM}\s*${UNIT}?(?![\p{L}])`, "iu"),
+  // "halved", "doubled", "3x faster"
+  /(?<![\p{L}])(?:halved|doubled|tripled|вдвое|втрое)(?![\p{L}])|\d+(?:[.,]\d+)?\s?[xх](?![\p{L}\p{N}])/iu,
+  // bare figures: "12%", "$40k", "3.5k tickets", "10 000 users"
+  /\d+(?:[.,]\d+)?\s?%|\d+(?:[.,]\d+)?[kK]\+?(?![\p{L}\p{N}])|[$€]\s?\d[\d,.]*[kKmM]?|\d[\d\s]{2,}\s?(?:users|клиентов|пользователей|customers|clients|orders|заказов)/iu,
+];
+
+/** "from 2019 to 2021", "2019 → 2021" are dates, not results. */
+const isYearSpan = (m: string) => {
+  const nums = m.match(/\d+(?:[.,]\d+)?/g) ?? [];
+  return nums.length >= 2 && nums.every((n) => /^(19|20)\d{2}$/.test(n)) && !/[%$€₸]|\d\s?[kKmM](?![\p{L}])/u.test(m);
+};
+
+/** The first sentence (or bullet) with a measurable result — "Cut monthly reporting from 3 days to 4 hours". Decimals don't split sentences. */
 export function extractMetric(text: string): string {
-  const m = text.match(/[^.\n]*(\d+(?:[.,]\d+)?\s?%|\$\s?\d[\d,.]*[kKmM]?|\d+x\b|\d[\d\s]{2,}\s?(?:users|клиентов|пользователей|customers))[^.\n]*/);
-  return m ? m[0].trim().slice(0, 160) : "";
+  const sentences = text.split(/\n|(?<!\d)[.!?](?!\d)/).map((x) => x.replace(/^[-•*·]\s*/, "").trim()).filter(Boolean);
+  for (const re of METRIC_PATTERNS) {
+    const hit = sentences.find((x) => {
+      const m = x.match(re);
+      return m != null && !isYearSpan(m[0]);
+    });
+    if (hit) return hit.slice(0, 160);
+  }
+  return "";
 }
 
 export async function parseCV(text: string) {
@@ -124,7 +154,7 @@ export async function parseCV(text: string) {
 /** AI mini-interview: questions that turn thin CV bullets into concrete, quantified facts. */
 export function miniInterviewQuestions(fact: { kind: string; title: string; org: string; details: string; metrics: string; teamSize: number | null; ownership: string; tech: string }) {
   const qs: string[] = [];
-  const where = fact.org ? `${fact.title} (${fact.org})` : fact.title;
+  const where = fact.org ? `${fact.org} (${fact.title})` : fact.title;
   if (fact.kind === "employment" || fact.kind === "project") {
     qs.push(`Какие задачи были у тебя в «${where}»? Опиши 2–3 ключевые.`);
     if (!fact.metrics) qs.push(`Был ли измеримый результат в «${where}»? Какие метрики изменились (было → стало)?`);

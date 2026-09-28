@@ -8,12 +8,12 @@ import { SiteHeader } from "../_components/site-header";
 import { LegalLinks } from "../_components/legal-page";
 import { CheckForm } from "./_components/check-form";
 
-export const metadata: Metadata = { title: "Бесплатный Career Check", description: "Загрузи CV — узнай Readiness, сильные и слабые стороны, подходящие роли и реальную вакансию с Match и Eligibility." };
+export const metadata: Metadata = { title: "Бесплатная проверка CV", description: "Загрузи CV — узнай Readiness, сильные и слабые стороны, подходящие роли и реальную вакансию с Match и проверкой требований." };
 
 const GETS = [
-  { icon: Gauge, title: "Readiness score", text: "Насколько реалистична цель — по опыту, навыкам, языку, географии и зарплате." },
-  { icon: Search, title: "Реальная вакансия", text: "Лучшее совпадение из базы с Match %, причинами ✓/✕ и проверкой Eligibility." },
-  { icon: Sparkles, title: "Пример позиционирования", text: "Как агент переформулирует summary и порядок навыков под вакансию." },
+  { icon: Gauge, title: "Оценка Readiness", text: "Насколько реалистична цель — по опыту, навыкам, языку, географии и зарплате." },
+  { icon: Search, title: "Реальная вакансия", text: "Лучшее совпадение из базы с Match %, причинами ✓/✕ и проверкой требований." },
+  { icon: Sparkles, title: "Пример позиционирования", text: "Как агент переформулирует вступление CV и порядок навыков под вакансию." },
   { icon: ShieldCheck, title: "Сильные и слабые стороны", text: "Что работает в твоём CV, чего не хватает и какие роли тебе подходят." },
 ];
 
@@ -26,7 +26,7 @@ export default async function CheckPage() {
       <main className="mx-auto grid w-full max-w-[1180px] gap-8 px-4 pb-20 pt-4 sm:px-8 lg:grid-cols-[1.15fr_.85fr] lg:gap-12 lg:pt-10">
         <section className="flex min-w-0 flex-col gap-7">
           <div className="flex flex-col gap-3 animate-rise">
-            <Label>Free Career Check · без регистрации</Label>
+            <Label>Бесплатная проверка CV · без регистрации</Label>
             <h1 className="h-serif text-[clamp(34px,5vw,58px)]">Узнай, где ты <Script>сейчас</Script></h1>
             <p className="max-w-xl text-[15.5px] text-ink-2">Загрузи CV — за несколько секунд покажем Readiness под целевую роль, сильные и слабые стороны, подходящие роли и одну реальную вакансию с разбором.</p>
           </div>

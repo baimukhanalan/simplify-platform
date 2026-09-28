@@ -2,7 +2,7 @@
 import { db, s } from "./db";
 import { hashPassword } from "./auth-hash";
 import { parseCVHeuristic } from "./engine/profile";
-import { runTick, simulateResponses, createInterview, ingestEmail, logEvent, notify, NOTIFY_TITLE, SENSITIVE_DECLINE } from "./engine/agent";
+import { runTick, simulateResponses, createInterview, ingestEmail, logEvent, notify, rescheduleInterview, NOTIFY_TITLE, SENSITIVE_DECLINE } from "./engine/agent";
 import { patchPackageAnswer } from "./engine/approvals";
 import { renormalizeDemoJobs } from "./engine/ingest";
 import { PLANS } from "./engine/taxonomy";
@@ -42,7 +42,8 @@ async function shiftSince(userId: string, campaignId: string, mark: Date, at: nu
     await db.approval.update({ where: { id: r.id }, data: { ...(r.createdAt >= mark ? { createdAt: mv(r.createdAt) } : {}), ...(r.resolvedAt && r.resolvedAt >= mark ? { resolvedAt: mv(r.resolvedAt) } : {}) } });
   }
   for (const r of await db.approval.findMany({ where: { userId, status: { not: "pending" }, resolvedAt: null }, select: { id: true } })) await db.approval.update({ where: { id: r.id }, data: { resolvedAt: new Date(at) } });
-  for (const r of await db.inboxMessage.findMany({ where: { userId, receivedAt: since }, select: { id: true, receivedAt: true } })) await db.inboxMessage.update({ where: { id: r.id }, data: { receivedAt: mv(r.receivedAt) } });
+  // A message's deadline moves with it (it equals its Interview's scheduledAt, which moves below).
+  for (const r of await db.inboxMessage.findMany({ where: { userId, receivedAt: since }, select: { id: true, receivedAt: true, deadline: true } })) await db.inboxMessage.update({ where: { id: r.id }, data: { receivedAt: mv(r.receivedAt), ...(r.deadline ? { deadline: mv(r.deadline) } : {}) } });
   for (const r of await db.interview.findMany({ where: { userId, createdAt: since }, select: { id: true, createdAt: true, scheduledAt: true } })) {
     await db.interview.update({ where: { id: r.id }, data: { createdAt: mv(r.createdAt), ...(r.scheduledAt ? { scheduledAt: mv(r.scheduledAt) } : {}) } });
   }
@@ -206,9 +207,9 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
   if (inviteOpp) {
     const mark = new Date();
     const domain = `${inviteOpp.job.company.toLowerCase().replace(/[^a-z]/g, "")}.example`;
-    await ingestEmail(user.id, { from: `talent@${domain}`, subject: `Interview invitation — ${inviteOpp.job.title} at ${inviteOpp.job.company}`, body: `Hi,\n\nWe reviewed your application and would like to invite you to a 30-minute call with our recruiter to learn more about your background. Please pick a time here: calendly.com/${domain}/intro\n\nBest regards,\n${inviteOpp.job.company}`, simulated: true, opportunityId: inviteOpp.id });
+    await ingestEmail(user.id, { from: `talent@${domain}`, subject: `Interview invitation — ${inviteOpp.job.title} at ${inviteOpp.job.company}`, body: `Hi,\n\nWe reviewed your application and would like to invite you to a 30-minute call with our recruiter to learn more about your background. Please reply with a few time slots that work for you and we will schedule a call.\n\nBest regards,\n${inviteOpp.job.company}`, simulated: true, opportunityId: inviteOpp.id });
     await shiftSince(user.id, campaign.id, mark, realNow - 3 * HOUR);
-    await db.interview.updateMany({ where: { opportunityId: inviteOpp.id, round: { not: "assessment" } }, data: { scheduledAt: new Date(realNow + 2 * DAY) } });
+    for (const iv of await db.interview.findMany({ where: { opportunityId: inviteOpp.id, round: { not: "assessment" } }, select: { id: true } })) await rescheduleInterview(iv.id, new Date(realNow + 2 * DAY));
   }
   const assessOpp = (await db.interview.count({ where: { userId: user.id, round: "assessment" } })) ? null : pool.find((o) => o.id !== inviteOpp?.id);
   if (assessOpp) {
@@ -216,7 +217,8 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
     const domain = `${assessOpp.job.company.toLowerCase().replace(/[^a-z]/g, "")}.example`;
     await ingestEmail(user.id, { from: `talent@${domain}`, subject: `${assessOpp.job.company} — online assessment`, body: `Hi,\n\nThanks for your interest in ${assessOpp.job.title}. As a next step, please complete this online assessment on TestGorilla within 5 days.\n\nGood luck!\n${assessOpp.job.company} Recruiting`, simulated: true, opportunityId: assessOpp.id });
     await shiftSince(user.id, campaign.id, mark, realNow - DAY - 2 * HOUR);
-    await db.interview.updateMany({ where: { opportunityId: assessOpp.id, round: "assessment" }, data: { scheduledAt: new Date(realNow + 4 * DAY) } });
+    // Interview date and the email's deadline move together (one source of truth).
+    for (const iv of await db.interview.findMany({ where: { opportunityId: assessOpp.id, round: "assessment" }, select: { id: true } })) await rescheduleInterview(iv.id, new Date(realNow + 4 * DAY));
   }
   const offerOpp = pool.find((o) => o.id !== assessOpp?.id && o.id !== inviteOpp?.id && o.submittedAt && o.submittedAt.getTime() < realNow - 5 * DAY) ?? pool.find((o) => o.id !== inviteOpp?.id && o.id !== assessOpp?.id);
   if (offerOpp) {

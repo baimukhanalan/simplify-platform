@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { startTransition, useActionState, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
 import { ArrowRight, Eye, EyeOff, AlertCircle, Sparkles, Check, TicketPercent, Target } from "lucide-react";
-import { login, signup, type AuthState } from "@/lib/actions/auth";
+import { checkReferral, login, signup, type AuthState, type ReferralCheck } from "@/lib/actions/auth";
 import { Logo, Script, cx } from "@/components/ui";
 import { Atmosphere } from "./atmosphere";
 import { AgentPreview } from "./agent-preview";
@@ -43,6 +43,8 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
   const [analytics, setAnalytics] = useState(false);
   const [ref, setRef] = useState(refCode);
   const [refOpen, setRefOpen] = useState(Boolean(refCode));
+  // The badge reflects the server's answer for exactly the code in the field; anything else shows nothing yet.
+  const [refCheck, setRefCheck] = useState<(ReferralCheck & { code: string }) | null>(null);
   const [showPw, setShowPw] = useState(false);
   const [caps, setCaps] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<FieldKey, boolean>>>({});
@@ -65,6 +67,20 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
   const done = required.filter((k) => !errors[k]).length;
   const progress = pending ? 1 : (done / required.length) * 0.9;
   const pw = strength(password);
+
+  // Check the partner code with the server (debounced) — «применён» only for a real partner's code.
+  useEffect(() => {
+    const code = ref.trim();
+    if (!refOpen || code.length < 2) return;
+    let alive = true;
+    const t = window.setTimeout(() => {
+      checkReferral(code)
+        .then((r) => { if (alive) setRefCheck({ ...r, code }); })
+        .catch(() => { if (alive) setRefCheck(null); });
+    }, 400);
+    return () => { alive = false; window.clearTimeout(t); };
+  }, [ref, refOpen]);
+  const refStatus = refCheck && refCheck.code === ref.trim() && ref.trim().length >= 2 ? refCheck : null;
 
   // The signup action always redirects to /onboarding — keep the first-screen answers for it.
   useEffect(() => { if (intent) storeIntent(intent); }, [intent]);
@@ -126,7 +142,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
       <header className="mx-auto flex w-full max-w-[1240px] items-center justify-between gap-3 px-4 py-5 sm:px-8">
         <Link href="/" aria-label="Simplify — на главную" className="inline-flex min-h-10 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
         <Link href="/check" className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
-          Бесплатный Career Check
+          Бесплатная проверка CV
         </Link>
       </header>
 
@@ -134,7 +150,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
         {/* Story + live preview */}
         <section className="flex min-w-0 flex-col gap-5 lg:gap-8" aria-label="О Simplify">
           <div className="flex flex-col gap-3 animate-rise">
-            <span className="label">AI Career Agent</span>
+            <span className="label">Карьерный ИИ-агент</span>
             <h1 className="h-serif text-[clamp(34px,5vw,64px)]">Задай цель. Simplify доведёт до <Script>оффера</Script>.</h1>
             <p className="max-w-md text-[15.5px] text-ink-2">Скажи, какую работу ищешь, — остальное агент сделает сам: поиск, адаптация CV, заявки, трекинг и подготовка к интервью.</p>
           </div>
@@ -172,7 +188,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
 
               <TextField
                 id={`${uid}-email`} field="email" label="Email" name="email" type="email" inputMode="email" autoComplete="email" value={email} onChange={setEmail}
-                onBlur={() => setTouched((t) => ({ ...t, email: true }))} error={show("email")} errId={errId("email")} valid={!errors.email} placeholder="you@example.com"
+                onBlur={() => setTouched((t) => ({ ...t, email: true }))} error={show("email")} errId={errId("email")} valid={!errors.email} placeholder="name@example.com"
               />
 
               <div className="flex flex-col gap-1.5">
@@ -219,9 +235,12 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                       <label htmlFor={`${uid}-ref`} className="label">Код партнёра</label>
                       <div className="relative">
                         <TicketPercent className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-teal" strokeWidth={1.7} aria-hidden />
-                        <input id={`${uid}-ref`} name="ref" value={ref} onChange={(e) => setRef(e.target.value.toUpperCase().replace(/\s/g, ""))} maxLength={32} autoComplete="off" className="field !pl-10 font-mono uppercase tracking-[.06em]" />
-                        {refCode && ref === refCode && <span className="absolute right-3 top-1/2 -translate-y-1/2"><span className="inline-flex items-center gap-1 rounded-full bg-green-soft px-2 py-0.5 font-mono text-[10px] uppercase text-green"><Check className="size-3" strokeWidth={2.4} />применён</span></span>}
+                        <input id={`${uid}-ref`} name="ref" value={ref} onChange={(e) => setRef(e.target.value.toUpperCase().replace(/\s/g, ""))} maxLength={32} autoComplete="off" aria-describedby={`${uid}-ref-status`} aria-invalid={refStatus && !refStatus.valid ? true : undefined} className="field !pl-10 font-mono uppercase tracking-[.06em]" />
                       </div>
+                      <p id={`${uid}-ref-status`} role="status" aria-live="polite" className="min-h-[18px] text-[12.5px]">
+                        {refStatus?.valid && <span className="inline-flex items-center gap-1 text-green"><Check className="size-3.5" strokeWidth={2.4} aria-hidden />Код применён: {refStatus.partnerName}</span>}
+                        {refStatus && !refStatus.valid && <span className="text-amber">Код не найден — проверь написание или оставь поле пустым</span>}
+                      </p>
                     </div>
                   ) : (
                     <>
@@ -271,7 +290,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                 {pending ? (
                   <><span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />{mode === "signup" ? "Создаём аккаунт…" : "Входим…"}</>
                 ) : (
-                  <>{mode === "signup" ? "Start your campaign" : "Войти"}<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" /></>
+                  <>{mode === "signup" ? "Начать кампанию" : "Войти"}<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" /></>
                 )}
               </button>
             </form>

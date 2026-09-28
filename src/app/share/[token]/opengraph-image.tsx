@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { notFound } from "next/navigation";
 import { headline, loadShare } from "./data";
-import { plural } from "@/app/app/hired/_lib/journey";
+import { plural } from "../../_components/ru";
 
 export const alt = "HIRED. — история поиска с Simplify";
 export const size = { width: 1200, height: 630 };

@@ -15,9 +15,6 @@ import { AutonomyForm } from "./_components/autonomy-form";
 import { AgentStatus } from "../../_components/agent-status";
 import { endSentence, handoffsWaiting, questionsWaiting } from "../../_components/ru";
 
-/** Row copy in the product's «ты» voice (engine labels stay the source of keys and English names). */
-const HINT_OVERRIDE: Record<string, string> = { changeSalary: "Отклоняться от твоей зарплатной вилки в ответах" };
-
 export const metadata: Metadata = { title: "Agent" };
 
 export default async function AgentPage() {
@@ -25,7 +22,7 @@ export default async function AgentPage() {
   const autonomy = readAutonomy(user.autonomy);
   const [campaign, approvals, handoffs] = await Promise.all([runningCampaign(user.id), pendingApprovalsCount(user.id), pendingHandoffsCount(user.id)]);
   const demo = demoToolsEnabled(user);
-  const rows = AUTONOMY_LABELS.map((r) => (HINT_OVERRIDE[r.key] ? { ...r, hint: HINT_OVERRIDE[r.key] } : r));
+  const rows = AUTONOMY_LABELS; // Russian labels and hints live in the engine (src/lib/engine/autonomy.ts)
   // The agent submits on its own only with the auto-submit consent; a running campaign carries it as campaign.autoSubmit.
   const autoSubmitConsent = campaign ? campaign.autoSubmit : j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false;
   const paused = campaign?.status === "paused";
@@ -56,11 +53,11 @@ export default async function AgentPage() {
         <div className="flex flex-col gap-6 lg:sticky lg:top-6">
           <Card strong className="flex flex-col gap-5">
             <div className="flex items-center justify-between gap-3">
-              <Label>Campaign</Label>
+              <Label>Кампания</Label>
               {campaign && (
                 <span className={cx("inline-flex items-center gap-2 font-mono text-[10.5px] uppercase tracking-[.08em]", paused ? "text-amber" : "text-green")}>
                   <span className={cx("size-2 rounded-full", paused ? "bg-amber" : "bg-green animate-pulse-dot")} aria-hidden />
-                  {paused ? "Paused" : "Active"}
+                  {paused ? "На паузе" : "Активна"}
                 </span>
               )}
             </div>
@@ -93,7 +90,7 @@ export default async function AgentPage() {
             ) : (
               <>
                 <p className="text-[14px] text-ink-2">Кампания не запущена. Настройки автономии сохранятся и применятся с первого цикла.</p>
-                <ButtonLink href="/app/campaign" size="sm" className="self-start">Start your campaign</ButtonLink>
+                <ButtonLink href="/app/campaign" size="sm" className="self-start">Начать кампанию</ButtonLink>
               </>
             )}
           </Card>
@@ -101,10 +98,10 @@ export default async function AgentPage() {
           <Card className="flex flex-col gap-3">
             <Label>Когда агент спрашивает тебя</Label>
             <p className="text-[13.5px] leading-relaxed text-ink-2">
-              Sensitive questions — пол, инвалидность, статус ветерана и похожие — агент по умолчанию оставляет тебе. Сам он отвечает на них, только если выбран вариант «prefer not to say».
+              Деликатные вопросы — пол, инвалидность, статус ветерана и похожие — агент по умолчанию оставляет тебе. Сам он отвечает на них, только если выбран вариант «Предпочитаю не указывать».
             </p>
             <p className="text-[13.5px] leading-relaxed text-ink-2">
-              Юридические декларации, спонсорство визы и нестандартные вопросы агент сам не решает: в первый раз они ждут тебя в <Link href="/app/approvals" className="text-teal underline-offset-2 hover:underline">Подтверждениях</Link>. Когда такой юридический вопрос или вопрос о спонсорстве повторится, агент повторит твой прошлый ответ.
+              Юридические декларации, спонсорство визы и нестандартные вопросы агент сам не решает: в первый раз они ждут тебя в <Link href="/app/approvals" className="inline-flex min-h-10 items-center rounded text-teal underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">Подтверждениях</Link>. Когда такой юридический вопрос или вопрос о спонсорстве повторится, агент повторит твой прошлый ответ.
             </p>
           </Card>
         </div>

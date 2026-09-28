@@ -9,7 +9,10 @@ import { cx } from "@/components/ui";
 
 type Row = { key: string; label: string; hint: string };
 
-/** Accessible on/off switch: a real checkbox (role=switch) with a visual track. */
+/**
+ * Accessible on/off switch: a real checkbox (role=switch) with a visual track.
+ * The invisible input fills a 48×44 hit area around the 48×28 track, so the tap target is ≥44px without a bigger visual.
+ */
 function Switch({ name, label, hint, checked, onChange, note }: { name: string; label: string; hint: string; checked: boolean; onChange: (v: boolean) => void; note?: string }) {
   const id = `sw-${name}`;
   return (
@@ -19,7 +22,7 @@ function Switch({ name, label, hint, checked, onChange, note }: { name: string; 
         <span id={`${id}-hint`} className="text-[13px] text-ink-3">{hint}</span>
         {note && <span className="text-[12.5px] text-amber">{note}</span>}
       </label>
-      <span className="relative mt-0.5 inline-flex shrink-0">
+      <span className="relative -mb-2 -mt-1.5 inline-flex h-11 w-12 shrink-0 items-center">
         <input
           id={id}
           name={name}
@@ -31,7 +34,7 @@ function Switch({ name, label, hint, checked, onChange, note }: { name: string; 
           className="peer absolute inset-0 z-10 cursor-pointer opacity-0"
         />
         <span aria-hidden className="h-7 w-12 rounded-full bg-head/15 transition-colors peer-checked:bg-green peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-green" />
-        <span aria-hidden className="pointer-events-none absolute left-1 top-1 size-5 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
+        <span aria-hidden className="pointer-events-none absolute left-1 top-3 size-5 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5" />
       </span>
     </div>
   );
@@ -74,8 +77,8 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
       </fieldset>
 
       <fieldset id="auto-apply" className="glass scroll-mt-24 p-5 sm:p-6">
-        <legend className="sr-only">Auto-apply</legend>
-        <div className="label mb-1" aria-hidden>Auto-apply</div>
+        <legend className="sr-only">Автоотклик</legend>
+        <div className="label mb-1" aria-hidden>Автоотклик</div>
         <p className="mb-1 text-[13px] text-ink-3">
           Здесь — какие роли агент отправляет сам. Отправлять вообще ему разрешает согласие{" "}
           <Link href="/app/settings#autosubmit" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">«Автоподача заявок» в Приватности</Link>
@@ -83,7 +86,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
         </p>
         <Switch
           name="submitApplications"
-          label={`Auto-apply all jobs above ${threshold}% match`}
+          label={`Автоотклик на все вакансии с Match от ${threshold}%`}
           hint={
             autoOn
               ? `Агент сам подаёт на вакансии с Match ≥ ${threshold}%. Ниже порога пакет готов, а заявка ждёт твоего Apply или Auto в Opportunities.`
@@ -126,12 +129,12 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
       </fieldset>
 
       <fieldset className="glass p-5 sm:p-6" aria-describedby="sensitive-help">
-        <legend className="label mb-1 float-left w-full">Sensitive questions</legend>
+        <legend className="label mb-1 float-left w-full">Деликатные вопросы</legend>
         <p id="sensitive-help" className="clear-both mb-4 pt-1 text-[13px] text-ink-3">Пол, этническая принадлежность, инвалидность, статус ветерана — добровольные вопросы в анкетах.</p>
         <div className="grid gap-2.5 sm:grid-cols-2">
           {([
-            { value: "ask", title: "ASK ME", sub: "Агент остановится и спросит тебя в «Подтверждениях»." },
-            { value: "decline", title: "Отвечать «prefer not to say»", sub: "Агент сам ответит «I don't wish to answer» и продолжит." },
+            { value: "ask", title: "Спросить меня", sub: "Агент остановится и спросит тебя в «Подтверждениях»." },
+            { value: "decline", title: "Отвечать «Предпочитаю не указывать»", sub: "Агент сам выберет вариант «Предпочитаю не указывать» и продолжит." },
           ] as const).map((o) => (
             <label
               key={o.value}
@@ -168,10 +171,9 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
             {pending ? "Сохраняем…" : "Сохранить настройки"}
           </button>
         )}
+        <span role="alert" id="autonomy-error" className="text-[13px] text-rose empty:hidden">{state.error}</span>
         <span role="status" aria-live="polite" className="text-[13px]">
-          {state.error ? (
-            <span id="autonomy-error" className="text-rose">{state.error}</span>
-          ) : dirty && !pending ? (
+          {state.error ? null : dirty && !pending ? (
             <span className="text-ink-3">Есть несохранённые изменения</span>
           ) : state.ok && !pending ? (
             <span className="inline-flex items-center gap-1.5 text-green"><Check className="size-4" aria-hidden />Сохранено. Агент применит это в следующем цикле.</span>

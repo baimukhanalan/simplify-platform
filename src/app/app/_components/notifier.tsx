@@ -1,5 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Bell, BellOff, BellRing } from "lucide-react";
 
@@ -25,14 +25,19 @@ export function Notifier() {
   const permission = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const router = useRouter();
   const seen = useRef<Set<string> | null>(null);
+  // The live Copilot hides pushes (src/lib/push.ts); the API applies the same rule for the current path.
+  const pathname = usePathname();
+  const path = useRef(pathname);
+  useEffect(() => { path.current = pathname; }, [pathname]);
 
   useEffect(() => {
     let alive = true;
     const poll = async () => {
       try {
-        const r = await fetch("/api/notifications", { cache: "no-store" });
+        const r = await fetch(`/api/notifications?path=${encodeURIComponent(path.current ?? "")}`, { cache: "no-store" });
         if (!r.ok || !alive) return;
-        const { items } = (await r.json()) as { items: Item[] };
+        const { items, hidden } = (await r.json()) as { items: Item[]; hidden?: boolean };
+        if (hidden) return; // mid-interview: nothing fires, nothing is marked as seen
         if (!seen.current) {
           seen.current = new Set(items.map((i) => i.id));
           return;

@@ -12,13 +12,13 @@ const VERDICT: Record<string, { label: string; tone: "green" | "teal" | "rose" }
   unrealistic: { label: "Цель стоит поправить", tone: "rose" },
 };
 
-/** "Career Readiness — 78/100" headline card. */
+/** "Readiness — 78/100" headline card. */
 export function ReadinessHero({ score, verdict, goal, children }: { score: number; verdict: string; goal: ReactNode; children?: ReactNode }) {
   const v = VERDICT[verdict] ?? VERDICT.stretch;
   return (
-    <section aria-label={`Career Readiness: ${score} из 100`} className="glass-strong flex flex-col gap-5 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-7">
+    <section aria-label={`Readiness: ${score} из 100`} className="glass-strong flex flex-col gap-5 p-5 sm:flex-row sm:items-end sm:justify-between sm:p-7">
       <div className="flex flex-col gap-2">
-        <span className="label">Career Readiness</span>
+        <span className="label">Readiness</span>
         <div className="flex items-baseline gap-1.5" aria-hidden>
           <span className="num text-[clamp(56px,9vw,84px)] leading-[.9] text-head">{score}</span>
           <span className="num text-[22px] text-ink-4">/100</span>
@@ -36,7 +36,7 @@ export function ReadinessHero({ score, verdict, goal, children }: { score: numbe
   );
 }
 
-/** Six parameters as a table: Skills, Experience, CV quality, Interview readiness, Market demand, International eligibility. */
+/** Six parameters as a table: навыки, опыт, качество CV, готовность к интервью, спрос, право на работу за рубежом. */
 export function ParamTable({ params }: { params: Param[] }) {
   return (
     <section aria-labelledby="params-h" className="glass p-5 sm:p-6">

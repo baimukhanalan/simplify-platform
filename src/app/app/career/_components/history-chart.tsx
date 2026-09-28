@@ -63,7 +63,7 @@ export function HistoryChart({ points }: { points: { at: Date; score: number; ma
       </div>
       <figcaption className="sr-only">История Career Score</figcaption>
       <table className="sr-only">
-        <thead><tr><th>Дата</th><th>Career Score</th><th>Market value, USD</th></tr></thead>
+        <thead><tr><th>Дата</th><th>Career Score</th><th>Market Value, USD</th></tr></thead>
         <tbody>
           {points.map((p, i) => <tr key={i}><td>{p.live ? "сейчас" : p.at.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}</td><td>{p.score}</td><td>{Math.round(p.marketValue).toLocaleString("ru-RU")}</td></tr>)}
         </tbody>

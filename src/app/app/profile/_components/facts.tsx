@@ -84,7 +84,7 @@ function FactRow({ fact: f }: { fact: Fact }) {
             </ActionForm>
             <form action={deleteFact} className="mt-4 flex flex-wrap items-center gap-3 border-t border-line pt-4">
               <input type="hidden" name="id" value={f.id} />
-              <SubmitButton size="sm" variant="ghost" className="!text-rose" pendingText="Удаляем…"><Trash2 className="size-3.5" strokeWidth={1.7} aria-hidden />Удалить</SubmitButton>
+              <SubmitButton size="sm" variant="ghost" className="!h-10 !text-rose" pendingText="Удаляем…"><Trash2 className="size-3.5" strokeWidth={1.7} aria-hidden />Удалить</SubmitButton>
             </form>
           </div>
         </Disclosure>
@@ -102,14 +102,14 @@ export function FactFields({ fact }: { fact?: Fact }) {
           {KINDS.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
         </select>
       </Field>
-      <Field label="Название *"><input name="title" required minLength={2} defaultValue={fact?.title} className="field" placeholder="Data Analyst / BSc / Сертификат" /></Field>
+      <Field label="Название *"><input name="title" required minLength={2} defaultValue={fact?.title} className="field" placeholder="Data Analyst / бакалавриат / сертификат" /></Field>
       <Field label="Организация"><input name="org" defaultValue={fact?.org} className="field" placeholder="Компания или вуз" /></Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Начало"><input name="startDate" defaultValue={fact?.startDate} className="field" placeholder="Mar 2023" /></Field>
-        <Field label="Конец"><input name="endDate" defaultValue={fact?.endDate} className="field" placeholder="Present" /></Field>
+        <Field label="Начало"><input name="startDate" defaultValue={fact?.startDate} className="field" placeholder="март 2023" /></Field>
+        <Field label="Конец"><input name="endDate" defaultValue={fact?.endDate} className="field" placeholder="по настоящее время" /></Field>
       </div>
       <Field label="Задачи и вклад" className="sm:col-span-2"><textarea name="details" rows={3} defaultValue={fact?.details} className="field resize-y" /></Field>
-      <Field label="Результат в цифрах" hint="Было → стало. Нет цифры — оставь пустым."><input name="metrics" defaultValue={fact?.metrics} className="field" placeholder="churn −9%" /></Field>
+      <Field label="Результат в цифрах" hint="Было → стало. Нет цифры — оставь пустым."><input name="metrics" defaultValue={fact?.metrics} className="field" placeholder="отток −9%" /></Field>
       <Field label="Технологии" hint="Через запятую"><input name="tech" defaultValue={tech.join(", ")} className="field" placeholder="SQL, Python" /></Field>
       <Field label="Размер команды"><input name="teamSize" type="number" min={1} inputMode="numeric" defaultValue={fact?.teamSize ?? ""} className="field" /></Field>
       <Field label="Твоя роль">

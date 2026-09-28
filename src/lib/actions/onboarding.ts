@@ -7,8 +7,8 @@ import { db, j, s, noNul } from "../db";
 import { parseCV } from "../engine/profile";
 import { count } from "../ru";
 import { marketRange } from "../engine/market";
-import { REGIONS, SENIORITY, classifyRole, extractSkills, seniorityFromYears } from "../engine/taxonomy";
-import { buildCareerCheck, chatTurnsFor, intlAuthRegions, markStepDone, readinessForUser, LAST_STEP, STEP } from "../onboarding";
+import { REGIONS, SENIORITY, classifyRole, cleanRoleTitle, extractSkills } from "../engine/taxonomy";
+import { buildCareerCheck, chatTurnsFor, confirmSeniority, intlAuthRegions, markStepDone, readinessForUser, syncSeniorityFromYears, LAST_STEP, STEP } from "../onboarding";
 import { cleanIntent, intentToGoal } from "../../app/_components/campaign-intent";
 
 export type FormState = { error?: string; ok?: boolean; message?: string; fields?: Record<string, string> } | undefined;
@@ -61,7 +61,7 @@ export async function saveSources(_: FormState, form: FormData): Promise<FormSta
   const fields: Record<string, string> = {};
   for (const [k, v] of Object.entries(links)) if (v && !URLISH.test(v)) fields[k] = "Похоже на некорректную ссылку";
   const hasText = cvText.trim().length >= 120;
-  if (!hasText && !prev?.cvText && !noCv) fields.cvText = "Загрузи PDF или вставь текст CV — я разберу его сам.";
+  if (!hasText && !prev?.cvText && !noCv) fields.cvText = "Загрузи PDF или вставь текст CV — агент разберёт его сам.";
   if (Object.keys(fields).length) return { error: fields.cvText ?? "Проверь отмеченные поля", fields };
 
   await db.profile.upsert({ where: { userId: user.id }, create: { userId: user.id }, update: {} });
@@ -104,6 +104,8 @@ export async function saveSources(_: FormState, form: FormData): Promise<FormSta
     }
     factCount = add.length;
     skillCount = cv.skills.length;
+    // The goal level follows the parsed experience unless the user already chose it (goal_seniority_confirmed).
+    await syncSeniorityFromYears(user.id, cv.yearsExperience || prev?.yearsExperience || 0);
   } else {
     await db.profile.update({
       where: { userId: user.id },
@@ -216,14 +218,11 @@ export async function applyIntent(raw: { role?: string; where?: string[] | strin
   const existing = await db.goal.findUnique({ where: { userId: user.id } });
   if (existing?.primaryRole) return { ok: false as const };
   const g = intentToGoal(intent);
-  const years = user.profile?.yearsExperience ?? 0;
-  const data = {
-    primaryRole: g.primaryRole, countries: s(g.countries), workModes: s(g.workModes), relocation: g.relocation, minSalary: g.minSalary, currency: g.currency,
-    ...(years > 0 ? { seniority: seniorityFromYears(years) } : {}),
-  };
+  const data = { primaryRole: cleanRoleTitle(g.primaryRole), countries: s(g.countries), workModes: s(g.workModes), relocation: g.relocation, minSalary: g.minSalary, currency: g.currency };
   await db.goal.upsert({ where: { userId: user.id }, create: { userId: user.id, ...data }, update: data });
+  await syncSeniorityFromYears(user.id, user.profile?.yearsExperience ?? 0);
   if (g.relocation) await db.profile.updateMany({ where: { userId: user.id }, data: { relocation: true } });
-  await db.event.create({ data: { userId: user.id, type: "goal_intent", message: `Цель со стартового экрана: ${g.primaryRole}` } });
+  await db.event.create({ data: { userId: user.id, type: "goal_intent", message: `Цель со стартового экрана: ${data.primaryRole}` } });
   revalidatePath("/onboarding");
   return { ok: true as const };
 }
@@ -252,6 +251,7 @@ export async function saveGoal(_: FormState, form: FormData): Promise<FormState>
   if (form.has("industries")) data.industries = s(list(form, "industries", 8));
   if (form.has("extraRoles")) data.extraRoles = s(list(form, "extraRoles", 4).filter((r) => r.toLowerCase() !== primaryRole.toLowerCase()));
   await db.goal.upsert({ where: { userId: user.id }, create: { userId: user.id, ...data }, update: data });
+  await confirmSeniority(user.id, seniority); // the user saw and chose the level: a later CV no longer overrides it
   await db.profile.updateMany({ where: { userId: user.id }, data: { relocation } });
   await syncSponsorship(user.id);
   await markStepDone(user.id, STEP.goal);
@@ -269,6 +269,7 @@ export async function applyAdjustment(form: FormData) {
   const countries = j<string[]>(g.countries, []);
   if (kind === "seniority") {
     await db.goal.update({ where: { userId: user.id }, data: { seniority: r.suggestedSeniority } });
+    await confirmSeniority(user.id, r.suggestedSeniority);
   } else if (kind === "salary") {
     const range = marketRange(classifyRole(g.primaryRole), g.seniority, countries);
     await db.goal.update({ where: { userId: user.id }, data: { minSalary: range.mid } });

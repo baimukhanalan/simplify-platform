@@ -26,7 +26,7 @@ export function IntentSync({ goalEmpty, urlIntent }: { goalEmpty: boolean; urlIn
         await applyIntent(intent);
         // Only now is the intent safely in the Goal; on failure it stays in sessionStorage for the next attempt.
         clearStoredIntent();
-        // Lets the Goal step say «Заполнил по твоим ответам на первом экране» only when that is what happened.
+        // Lets the Goal step say «Агент заполнил цель по твоим ответам на первом экране» only when that is what happened.
         document.cookie = `${INTENT_USED_COOKIE}=1; path=/onboarding; max-age=${7 * 86400}; samesite=lax`;
         if (urlIntent) router.replace("/onboarding"); else router.refresh();
       } catch { /* the Goal step still lets the user enter it by hand */ }
@@ -35,7 +35,7 @@ export function IntentSync({ goalEmpty, urlIntent }: { goalEmpty: boolean; urlIn
 
   return saving ? (
     <p role="status" className="fixed inset-x-0 top-3 z-50 mx-auto w-fit rounded-full border border-green/20 bg-white/90 px-4 py-2 text-[13px] text-head shadow-(--shadow-glass) animate-fade">
-      Сохраняю твою цель…
+      Цель сохраняется…
     </p>
   ) : null;
 }

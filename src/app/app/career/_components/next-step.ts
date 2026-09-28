@@ -2,29 +2,29 @@ import { ROLE_FAMILIES, SENIORITY, SENIORITY_LABEL, seniorityFromYears, type Sen
 
 /** The five components shown in Career Mode (careerScore keys → UI labels). */
 export const BREAKDOWN: { key: "skillStrength" | "experience" | "marketDemand" | "compensationPosition" | "interviewReadiness"; label: string }[] = [
-  { key: "skillStrength", label: "Skills" },
-  { key: "experience", label: "Experience" },
-  { key: "marketDemand", label: "Market Demand" },
-  { key: "compensationPosition", label: "Compensation" },
-  { key: "interviewReadiness", label: "Interview Readiness" },
+  { key: "skillStrength", label: "Навыки" },
+  { key: "experience", label: "Стаж в профессии" },
+  { key: "marketDemand", label: "Спрос на рынке" },
+  { key: "compensationPosition", label: "Компенсация" },
+  { key: "interviewReadiness", label: "Готовность к интервью" },
 ];
 
 /** The skill that typically unlocks the next level in each role family. */
 const UNLOCK: Record<string, string> = {
-  data_analyst: "experimentation analytics (A/B testing)",
-  product_analyst: "causal inference и дизайн экспериментов",
-  data_scientist: "MLOps и вывод моделей в production",
-  data_engineer: "data modeling и streaming (Kafka)",
-  software_engineer: "system design",
-  qa: "test automation (Playwright)",
-  product_manager: "product analytics и pricing",
-  designer: "design systems и research ops",
-  marketing: "lifecycle и marketing analytics",
-  sales: "enterprise sales и forecasting",
-  support: "customer success и retention metrics",
-  operations: "автоматизацию процессов (SQL, no-code)",
-  annotation: "AI evaluation и QA для моделей",
-  other: "ключевой hard skill твоей роли",
+  data_analyst: "аналитику экспериментов (A/B-тесты)",
+  product_analyst: "причинно-следственный анализ и дизайн экспериментов",
+  data_scientist: "MLOps и вывод моделей в прод",
+  data_engineer: "моделирование данных и потоковую обработку (Kafka)",
+  software_engineer: "проектирование систем",
+  qa: "автоматизацию тестирования (Playwright)",
+  product_manager: "продуктовую аналитику и ценообразование",
+  designer: "дизайн-системы и организацию исследований",
+  marketing: "удержание клиентов и маркетинговую аналитику",
+  sales: "корпоративные продажи и прогнозирование",
+  support: "работу с клиентами и метрики удержания",
+  operations: "автоматизацию процессов (SQL и инструменты без кода)",
+  annotation: "оценку качества AI-моделей",
+  other: "ключевой профессиональный навык твоей роли",
 };
 
 const SENIORITY_WORD: [RegExp, Seniority][] = [
@@ -91,13 +91,13 @@ export function recommendation(opts: {
     case "experience":
       return { key: weakest.key, text: `Фиксируй измеримые результаты каждый квартал — опыт с цифрами быстрее всего ведёт к ${toLevel}.`, href: "/app/profile", cta: "Career Profile" };
     case "marketDemand":
-      return { key: weakest.key, text: known ? `Спрос на ${fam.label} сейчас узкий — добавь в Goal смежные роли или регионы.` : "Спрос по твоей роли сейчас узкий — добавь в Goal смежные роли или регионы.", href: "/app/goal", cta: "Goal" };
+      return { key: weakest.key, text: known ? `Спрос на ${fam.label} сейчас узкий — добавь в цель смежные роли или регионы.` : "Спрос по твоей роли сейчас узкий — добавь в цель смежные роли или регионы.", href: "/app/goal", cta: "Цель" };
     case "compensationPosition":
       return { key: weakest.key, text: "Твоя компенсация ниже рыночной оценки — это аргумент для пересмотра зарплаты или следующей кампании.", href: "#better-roles", cta: "Роли дороже" };
     default:
       return {
         key: weakest.key,
-        text: opts.mockCount ? `Ещё пара mock-интервью подтянет Interview Readiness — сейчас это самый слабый компонент.` : "Пройди первое mock-интервью — Interview Readiness сейчас самый слабый компонент.",
+        text: opts.mockCount ? "Ещё пара пробных интервью подтянет готовность к интервью — сейчас это самый слабый компонент." : "Пройди первое пробное интервью — готовность к интервью сейчас самый слабый компонент.",
         href: "/app/readiness",
         cta: "Readiness",
       };

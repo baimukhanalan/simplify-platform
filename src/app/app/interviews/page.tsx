@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { ROUND_CHAIN, ROUND_LABEL, ROUND_TONE, IV_STATUS_LABEL, IV_STATUS_TONE } from "@/lib/rounds";
+import { count, plural } from "../../_components/ru";
 import { nowMs, relDays } from "./_components/format";
 
 export const metadata = { title: "Интервью" };
@@ -26,7 +27,7 @@ export default async function InterviewsPage() {
   const now = nowMs();
   const upcoming = all.filter((i) => i.status === "upcoming");
   const past = all.filter((i) => i.status !== "upcoming").sort((a, b) => (b.scheduledAt?.getTime() ?? 0) - (a.scheduledAt?.getTime() ?? 0));
-  // Interviews whose time has passed but that still wait for "How did it go?".
+  // Interviews whose time has passed but that still wait for «Как прошло?».
   const needDebrief = upcoming.filter((i) => i.round !== "assessment" && i.scheduledAt && i.scheduledAt.getTime() < now - 30 * 60000);
   const future = upcoming.filter((i) => !needDebrief.includes(i));
   const next = future.find((i) => i.round !== "assessment") ?? future[0];
@@ -42,14 +43,14 @@ export default async function InterviewsPage() {
       <PageHeader
         eyebrow="Интервью"
         title={<>Твои <Script>интервью</Script></>}
-        sub="Каждое приглашение — отдельная комната подготовки: brief о компании, вероятные вопросы, Mock Interview и разбор после звонка."
+        sub="Каждое приглашение — отдельная комната подготовки: обзор компании, вероятные вопросы, пробное интервью и разбор после звонка."
       />
 
       {all.length === 0 ? (
         <Empty
           title="Интервью пока нет"
-          sub="Как только работодатель пригласит на звонок или тест, агент сам создаст Interview Room — письмо распознаётся в Inbox."
-          action={<ButtonLink href="/app/inbox" variant="glass" size="sm">Открыть Inbox</ButtonLink>}
+          sub="Как только работодатель пригласит на звонок или тест, агент сам создаст Interview Room — письмо распознаётся во входящих."
+          action={<ButtonLink href="/app/inbox" variant="glass" size="sm" className="!h-10">Открыть входящие</ButtonLink>}
         />
       ) : (
         <div className="flex flex-col gap-10">
@@ -62,7 +63,7 @@ export default async function InterviewsPage() {
               <MessageSquareText className="size-5 shrink-0 text-green" strokeWidth={1.7} aria-hidden />
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="text-[15px] font-medium text-head">Как прошло интервью с {iv.opportunity.job.company}?</span>
-                <span className="text-[13px] text-ink-3">Расскажи за минуту — получишь разбор, план подготовки и follow-up письмо.</span>
+                <span className="text-[13px] text-ink-3">Расскажи за минуту — получишь разбор, план подготовки и письмо после интервью.</span>
               </span>
               <ArrowRight className="size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />
             </Link>
@@ -104,7 +105,7 @@ export default async function InterviewsPage() {
                 const n = r === "offer" ? offers : reached(r);
                 return (
                   <li key={r} className="flex flex-col gap-1.5 bg-white/40 px-4 py-3.5">
-                    <span className="label !text-[9.5px]">{r === "offer" ? "Offer" : ROUND_LABEL[r]}</span>
+                    <span className="label !text-[9.5px]">{r === "offer" ? "Оффер" : ROUND_LABEL[r]}</span>
                     <span className={cx("num text-[26px] leading-none", n ? (r === "offer" ? "text-green" : "text-head") : "text-ink-4")}>{n}</span>
                   </li>
                 );
@@ -141,7 +142,7 @@ function NextUp({ iv, now }: { iv: Row; now: number }) {
   const isAssessment = iv.round === "assessment";
   const ms = at ? at.getTime() - now : null;
   const hours = ms != null ? Math.max(0, Math.round(ms / 3600000)) : null;
-  const big = hours == null ? null : hours < 48 ? { n: hours, u: hours === 1 ? "час" : "ч" } : { n: Math.round(hours / 24), u: "дн." };
+  const big = hours == null ? null : hours < 48 ? { n: hours, u: plural(hours, ["час", "часа", "часов"]) } : { n: Math.round(hours / 24), u: plural(Math.round(hours / 24), ["день", "дня", "дней"]) };
   return (
     <section aria-labelledby="h-next" className="animate-rise overflow-hidden rounded-[26px] bg-cta text-white shadow-(--shadow-cta)">
       <div className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-end">
@@ -162,7 +163,7 @@ function NextUp({ iv, now }: { iv: Row; now: number }) {
                 {isAssessment ? "до " : ""}{day(at)}, <span className="num">{time(at)}</span>
               </span>
             )}
-            {iv._count.mocks > 0 && <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/70">Mock: {iv._count.mocks}</span>}
+            {iv._count.mocks > 0 && <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/70">{count(iv._count.mocks, ["пробное интервью", "пробных интервью", "пробных интервью"])}</span>}
           </div>
         </div>
         <div className="flex flex-col gap-4 lg:items-end">
@@ -178,7 +179,7 @@ function NextUp({ iv, now }: { iv: Row; now: number }) {
             href={`/app/interviews/${iv.id}`}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-6 text-[15px] font-medium text-[#141414] transition hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]"
           >
-            {isAssessment ? "Открыть Assessment Room" : "Prepare"}<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
+            {isAssessment ? "Открыть тестовое задание" : "Prepare"}<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </Link>
         </div>
       </div>

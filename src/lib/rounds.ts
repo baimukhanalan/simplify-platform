@@ -37,10 +37,10 @@ export const isAhead = (next: string, current: string) => OPP_ORDER.indexOf(next
 /** Mock Interview personas. The first three mirror real rounds; Behavioral and Final are practice-only sets. */
 export const PERSONAS = [
   { key: "recruiter", label: "HR", sub: "мотивация, ожидания, логистика" },
-  { key: "hiring_manager", label: "Hiring Manager", sub: "глубина проектов, приоритеты" },
-  { key: "technical", label: "Technical", sub: "SQL, эксперименты, кейсы" },
-  { key: "behavioral", label: "Behavioral", sub: "STAR: конфликты, ошибки, лидерство" },
-  { key: "final", label: "Final round", sub: "ценности, амбиции, вопросы к лидерам" },
+  { key: "hiring_manager", label: "Нанимающий менеджер", sub: "глубина проектов, приоритеты" },
+  { key: "technical", label: "Техническое", sub: "SQL, эксперименты, кейсы" },
+  { key: "behavioral", label: "Поведенческое", sub: "STAR: конфликты, ошибки, лидерство" },
+  { key: "final", label: "Финальный раунд", sub: "ценности, амбиции, вопросы к лидерам" },
 ] as const;
 export type PersonaKey = (typeof PERSONAS)[number]["key"];
 export const PERSONA_KEYS: string[] = PERSONAS.map((p) => p.key);

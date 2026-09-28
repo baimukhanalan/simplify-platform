@@ -35,11 +35,5 @@ export async function latestHiredCampaign(userId: string) {
 
 export const firstName = (name: string) => clampText(name.trim().split(/\s+/)[0], 32) || "Кандидат";
 
-/** Russian plural: plural(5, ["заявка", "заявки", "заявок"]). */
-export function plural(n: number, [one, few, many]: [string, string, string]) {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
+/** Russian plural — the shared helper, re-exported for the public share page. */
+export { plural } from "@/app/_components/ru";

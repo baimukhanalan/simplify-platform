@@ -11,7 +11,7 @@ import { logout } from "@/lib/actions/auth";
 
 type Item = { href: string; label: string; icon: LucideIcon; badge?: "approvals" | "responses" | "interviews"; also?: string[] };
 
-const OFFERS: Item = { href: "/app/offers", label: "Offers", icon: BadgeDollarSign };
+const OFFERS: Item = { href: "/app/offers", label: "Офферы", icon: BadgeDollarSign };
 
 /** Six primary destinations: one agent, one story. Offers joins them (after Interviews) once an offer exists. */
 const PRIMARY: Item[] = [
@@ -54,7 +54,7 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
 
   const extra: Item[] = [
     ...(role === "partner" || role === "admin" ? [{ href: "/partners", label: "Партнёрам", icon: Handshake }] : []),
-    ...(role === "admin" ? [{ href: "/admin", label: "Operations", icon: Wrench }] : []),
+    ...(role === "admin" ? [{ href: "/admin", label: "Операции", icon: Wrench }] : []),
   ];
 
   const badge = (it: Item) => (it.badge ? counts[it.badge] ?? 0 : 0);
@@ -125,14 +125,14 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
     <Link href="/app/agent" className="glass flex flex-col gap-1.5 !rounded-2xl p-3.5 transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-green">
       <span className="flex items-center gap-2">
         <span className={cx("size-2 rounded-full", campaign.status === "active" ? "bg-green animate-pulse-dot" : campaign.status === "paused" ? "bg-amber" : "bg-ink-4")} aria-hidden />
-        <span className="label !text-[10px] !text-head">{campaign.status === "active" ? "Agent · Active" : campaign.status === "paused" ? "Agent · Paused" : campaign.status === "hired" ? "Hired" : "Campaign ended"}</span>
+        <span className="label !text-[10px] !text-head">{campaign.status === "active" ? "Агент · работает" : campaign.status === "paused" ? "Агент · на паузе" : campaign.status === "hired" ? "Работа найдена" : "Кампания завершена"}</span>
       </span>
       {campaign.day != null && (
-        <span className="text-[12.5px] text-ink-3">Campaign Day <span className="num text-head">{campaign.day}</span> / {campaign.total}</span>
+        <span className="text-[12.5px] text-ink-3">День кампании <span className="num text-head">{campaign.day}</span> / {campaign.total}</span>
       )}
     </Link>
   ) : (
-    <Link href="/app/campaign" className="flex h-11 items-center justify-center rounded-full bg-cta text-[14px] font-medium text-white shadow-(--shadow-cta) focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">Start your campaign</Link>
+    <Link href="/app/campaign" className="flex h-11 items-center justify-center rounded-full bg-cta text-[14px] font-medium text-white shadow-(--shadow-cta) focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">Начать кампанию</Link>
   );
 
   return (
@@ -160,7 +160,7 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
           <div className="mt-6">{status}</div>
           <form action={logout} className="mt-4 flex items-center justify-between rounded-2xl border border-line px-4 py-3">
             <span className="text-[13px] text-ink-3">{userName}</span>
-            <button className="inline-flex items-center gap-2 text-[13px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green"><LogOut className="size-4" aria-hidden />Выйти</button>
+            <button className="inline-flex min-h-10 items-center gap-2 text-[13px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green"><LogOut className="size-4" aria-hidden />Выйти</button>
           </form>
         </div>
       )}

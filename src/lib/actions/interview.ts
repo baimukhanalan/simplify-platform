@@ -31,12 +31,17 @@ export async function setCopilotAllowed(form: FormData) {
   revalidatePath("/app/interviews");
 }
 
-/** Regenerate the Interview Pack + Company/Role Brief with Claude (falls back to the deterministic engine without an API key). */
-export async function regeneratePack(form: FormData) {
+export type RegeneratePackResult = { ok: boolean; by: "claude" | "engine" | null; limited: boolean };
+
+/**
+ * Regenerate the Interview Pack + Company/Role Brief with Claude (falls back to the deterministic engine without an API key).
+ * Returns what happened: `limited` = the hourly cap was hit (nothing changed); `by` = who wrote the new materials.
+ */
+export async function regeneratePack(form: FormData): Promise<RegeneratePackResult> {
   const user = await requireUser();
   const iv = await ownInterview(user.id, String(form.get("id")));
   // Two Claude calls per run: cap per user (durable via the interview_pack events each run logs).
-  if (!(await rateLimitUser("interview-pack", user.id, 10, HOUR, { eventTypes: ["interview_pack"] })).ok) return;
+  if (!(await rateLimitUser("interview-pack", user.id, 10, HOUR, { eventTypes: ["interview_pack"] })).ok) return { ok: false, by: null, limited: true };
   const { profile, facts, stories, user: u } = await loadCandidate(user.id);
   const teamSize = new Map(u.facts.map((f) => [f.id, f.teamSize]));
   const job = iv.opportunity.job;
@@ -74,8 +79,14 @@ export async function regeneratePack(form: FormData) {
     }),
   ]);
   await db.interview.update({ where: { id: iv.id }, data: { pack: s({ ...data, generatedBy: by, generatedAt: new Date().toISOString(), brief: { ...brief.data, by: brief.by, at: new Date().toISOString() } }) } });
-  await logEvent(user.id, "interview_pack", `Interview Pack и Brief обновлены (${by === "claude" ? "Claude" : "engine"}): ${job.company} — ${ROUND_LABEL[iv.round] ?? iv.round}`, iv.opportunityId);
+  await logEvent(user.id, "interview_pack", `Материалы к интервью обновлены: ${job.company} — ${ROUND_LABEL[iv.round] ?? iv.round}`, iv.opportunityId, { by });
   revalidatePath(room(iv.id));
+  return { ok: true, by, limited: false };
+}
+
+/** The same, for a plain `<form action>` (no-JS fallback): form actions must resolve to void. */
+export async function regeneratePackForm(form: FormData): Promise<void> {
+  await regeneratePack(form);
 }
 
 export type MockPayload = {

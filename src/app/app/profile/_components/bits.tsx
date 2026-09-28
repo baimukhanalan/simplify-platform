@@ -8,7 +8,7 @@ export function Disclosure({ summary, children, className, open, tone = "glass" 
     <details className={cx("group/d open:w-full", className)} open={open}>
       <summary
         className={cx(
-          "inline-flex h-9 cursor-pointer list-none items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium text-head transition-colors select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden",
+          "inline-flex h-10 cursor-pointer list-none items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium text-head transition-colors select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden",
           tone === "glass" && "glass !rounded-full hover:bg-white",
           tone === "ghost" && "hover:bg-white/60",
           tone === "dark" && "bg-cta text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c]",

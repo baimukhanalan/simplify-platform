@@ -1,19 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, BadgeDollarSign, CalendarClock, ClipboardCheck, ExternalLink, Mail, MailX, Mic, Sparkles } from "lucide-react";
+import { ArrowRight, BadgeDollarSign, CalendarClock, ClipboardCheck, ExternalLink, Mail, MailX, Mic } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { simulateEmployers } from "@/lib/actions/campaign";
+import { roundDate } from "@/lib/engine/agent";
+import { realUrl } from "@/lib/links";
 import { demoToolsEnabled } from "@/lib/demo";
-import { INBOX_CLASS, ago, fmtDate, fmtDateTime } from "@/lib/ops";
+import { INBOX_CLASS, fmtDate, fmtDateTime } from "@/lib/ops";
+import { agoRu } from "../opportunities/_lib/when";
 import { ButtonLink, Chip, Empty, PageHeader, cx } from "@/components/ui";
-import { SubmitButton } from "@/components/client";
+import { SimulateButton } from "../_components/demo-tools";
 import { PasteEmail } from "./_components/paste-email";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { plural, statusRu } from "../../_components/ru";
 
-export const metadata: Metadata = { title: "Responses" };
+export const metadata: Metadata = { title: "Ответы работодателей" };
 
 type SP = Record<string, string | string[] | undefined>;
 
@@ -96,9 +98,9 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        eyebrow="Responses"
+        eyebrow="Ответы"
         title="Ответы работодателей"
-        sub="Simplify читает каждый ответ, понимает, что это, и сам двигает заявку дальше. Здесь — что пришло и что с этим сделать."
+        sub="Агент читает каждый ответ, понимает, что это, и сам двигает заявку дальше. Здесь — что пришло и что с этим сделать."
       />
 
       <AgentStatus needs={uniqueNeeds} working="Ответы работодателей агент разбирает сам." className="-mt-3" />
@@ -139,7 +141,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
               <details className="group glass !rounded-2xl !bg-white/45">
                 <summary className="flex min-h-10 cursor-pointer list-none items-center gap-3 px-5 py-4 text-[14px] text-ink-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
                   <span className="grid size-8 shrink-0 place-items-center rounded-full bg-rose-soft text-rose"><MailX className="size-4" strokeWidth={1.7} aria-hidden /></span>
-                  <span className="flex-1"><span className="num text-head">{declined.length}</span> {plural(declined.length, ["отказ", "отказа", "отказов"])}. Simplify сам поменял статусы и учтёт их при выборе следующих вакансий.</span>
+                  <span className="flex-1"><span className="num text-head">{declined.length}</span> {plural(declined.length, ["отказ", "отказа", "отказов"])}. Агент сам поменял статусы и учтёт их при выборе следующих вакансий.</span>
                   <span className="shrink-0 text-[12.5px] text-teal"><span className="group-open:hidden">Показать</span><span className="hidden group-open:inline">Скрыть</span></span>
                 </summary>
                 <ul className="flex flex-col divide-y divide-line border-t border-line px-5">
@@ -147,7 +149,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
                     <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3 text-[13.5px]">
                       <span className="font-medium text-head">{m.opportunity?.job.company ?? m.fromAddr}</span>
                       {m.opportunity && <span className="min-w-0 text-ink-3">{m.opportunity.job.title}</span>}
-                      <time dateTime={m.receivedAt.toISOString()} className="ml-auto text-[12px] text-ink-3">{ago(m.receivedAt)}</time>
+                      <time dateTime={m.receivedAt.toISOString()} className="ml-auto text-[12px] text-ink-3">{agoRu(m.receivedAt)}</time>
                       {m.opportunity && <Link href={`/app/applications/${m.opportunity.id}`} className="inline-flex min-h-10 items-center text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Заявка</Link>}
                     </li>
                   ))}
@@ -169,7 +171,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
 
       {/* Tools: still here, deliberately quiet. */}
       <details className="group rounded-[var(--radius-card)] border border-dashed border-line bg-white/30">
-        <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4 text-[13.5px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4 text-[13.5px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
           <span className="label !text-[10px]">Инструменты</span>
           <span>{demo ? "Вставить письмо вручную · демо-симуляция ответов" : "Вставить письмо вручную"}</span>
           <span className="ml-auto font-mono text-[11px] text-ink-3 group-open:hidden">показать</span>
@@ -177,14 +179,12 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
         </summary>
         <div className="flex flex-col gap-6 border-t border-line px-5 pb-6 pt-5">
           <div className="flex flex-col gap-2">
-            <p className="text-[13.5px] text-ink-2">Пока почта не подключена, перешли письмо сюда — Simplify разберёт его так же, как будет делать автоматически.</p>
+            <p className="text-[13.5px] text-ink-2">Пока почта не подключена, перешли письмо сюда — агент разберёт его так же, как будет делать автоматически.</p>
             <PasteEmail sample={sampleOpp ? { company: sampleOpp.job.company, title: sampleOpp.job.title } : null} />
           </div>
           {demo ? (
             <div className="flex flex-wrap items-center gap-3 border-t border-line pt-5">
-              <form action={simulateEmployers}>
-                <SubmitButton variant="glass" size="sm" pendingText="Симулируем…" className="!h-10"><Sparkles className="size-4 text-amber" aria-hidden />Симулировать ответы</SubmitButton>
-              </form>
+              <SimulateButton className="glass !rounded-full !px-4 !text-[13px] text-head" />
               <span className="text-[12.5px] text-ink-3">Демо-инструмент: только для демо-вакансий.</span>
             </div>
           ) : (
@@ -211,8 +211,9 @@ function ResponseCard({ m }: { m: Msg }) {
   const o = m.opportunity;
   const company = o?.job.company ?? m.fromAddr;
   const iv = o?.interviews.find((i) => (m.classification === "assessment" ? i.round === "assessment" : i.round !== "assessment"));
-  const booking = m.classification === "interview" ? bookingLink(m.body) : null;
-  const deadline = m.deadline ?? (m.classification === "assessment" ? iv?.scheduledAt ?? null : null);
+  const booking = m.classification === "interview" ? realUrl(bookingLink(m.body)) : null;
+  // One date for the round everywhere: the Interview row wins (it is what the Interview Room shows), the email's own date second.
+  const deadline = roundDate(iv) ?? m.deadline;
   const big = m.classification === "interview" || m.classification === "assessment" || m.classification === "offer";
   const quiet = m.classification === "rejection" || m.classification === "confirmation";
   const titleId = `resp-${m.id}`;
@@ -227,7 +228,7 @@ function ResponseCard({ m }: { m: Msg }) {
           <div className="flex flex-wrap items-center gap-2">
             <Chip tone={meta.tone} dot={big}>{meta.eyebrow}</Chip>
             {m.simulated && <span className="font-mono text-[9.5px] uppercase tracking-[.06em] text-amber">демо</span>}
-            <time dateTime={m.receivedAt.toISOString()} className="ml-auto shrink-0 text-[12px] text-ink-3">{ago(m.receivedAt)}</time>
+            <time dateTime={m.receivedAt.toISOString()} className="ml-auto shrink-0 text-[12px] text-ink-3">{agoRu(m.receivedAt)}</time>
           </div>
           <h2 id={titleId} className={cx(big ? "h-serif text-[22px] sm:text-[24px]" : "text-[15px] text-head")}>
             {m.classification === "interview" && <>Интервью с {company}</>}
@@ -243,7 +244,7 @@ function ResponseCard({ m }: { m: Msg }) {
       </div>
 
       {m.classification === "rejection" && (
-        <p className="text-[13.5px] text-ink-2">Работодатель отказал. Simplify сам поменял статус и учтёт этот ответ при выборе следующих вакансий.</p>
+        <p className="text-[13.5px] text-ink-2">Работодатель отказал. Агент сам поменял статус и учтёт этот ответ при выборе следующих вакансий.</p>
       )}
       {m.classification === "confirmation" && <p className="text-[13.5px] text-ink-3">Заявку получили. Статус обновлён автоматически, ждём решения.</p>}
 

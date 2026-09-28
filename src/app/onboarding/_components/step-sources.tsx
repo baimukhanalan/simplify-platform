@@ -27,7 +27,7 @@ export function StepSources({ hasCv, cvFileName, factCount, skillCount, links, c
   return (
     <form action={formAction} onSubmit={onSubmit} noValidate aria-busy={pending} className="relative flex flex-col gap-4">
       <fieldset disabled={pending} className="contents">
-        <Block icon={<FileText className="size-[18px]" strokeWidth={1.7} />} title="CV" hint="PDF или текст. Я вытащу опыт, достижения, навыки и контакты.">
+        <Block icon={<FileText className="size-[18px]" strokeWidth={1.7} />} title="CV" hint="PDF или текст. Агент вытащит опыт, достижения, навыки и контакты.">
           {!replace ? (
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl border border-green/20 bg-green-soft/50 p-3.5">
@@ -47,7 +47,7 @@ export function StepSources({ hasCv, cvFileName, factCount, skillCount, links, c
           )}
         </Block>
 
-        <Block icon={<Link2 className="size-[18px]" strokeWidth={1.7} />} title="Ссылки" hint="Многие формы заявок требуют LinkedIn — я подставлю его сам.">
+        <Block icon={<Link2 className="size-[18px]" strokeWidth={1.7} />} title="Ссылки" hint="Многие формы заявок требуют LinkedIn — агент подставит его сам.">
           <div className="grid gap-3 sm:grid-cols-3">
             {LINKS.map((l) => {
               const Icon = l.icon;
@@ -106,7 +106,7 @@ function Block({ icon, title, hint, children }: { icon: ReactNode; title: string
   );
 }
 
-const LINES = ["Читаю CV", "Нахожу места работы и проекты", "Ищу результаты в цифрах", "Собираю навыки", "Готовлю вопросы"];
+const LINES = ["Агент читает CV", "Находит места работы и проекты", "Ищет результаты в цифрах", "Собирает навыки", "Готовит вопросы"];
 
 /** The agent-is-reading moment while the CV is parsed. */
 function Reading() {

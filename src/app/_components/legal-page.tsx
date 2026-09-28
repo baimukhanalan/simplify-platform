@@ -2,8 +2,10 @@ import Link from "next/link";
 import { Logo } from "@/components/ui";
 
 export const LEGAL_EDITION = "Редакция от 28.09.2026";
+/** One support address for every legal page, the reset page and refund requests. */
+export const SUPPORT_EMAIL = "support@simplify.kz";
 
-export function LegalPage({ eyebrow, title, sections }: { eyebrow: string; title: string; sections: { h: string; p: string[] }[] }) {
+export function LegalPage({ eyebrow, title, notice, sections }: { eyebrow: string; title: string; notice?: string; sections: { h: string; p: string[] }[] }) {
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 sm:py-16">
       <Link href="/" className="inline-flex min-h-10 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green" aria-label="Simplify — на главную"><Logo /></Link>
@@ -11,6 +13,7 @@ export function LegalPage({ eyebrow, title, sections }: { eyebrow: string; title
         <div className="label">{eyebrow}</div>
         <h1 className="h-serif mt-3 text-[clamp(34px,5vw,54px)]">{title}</h1>
         <p className="mt-3 text-[13px] text-ink-3">{LEGAL_EDITION}</p>
+        {notice && <p className="mt-4 rounded-2xl border border-amber/25 bg-amber-soft px-4 py-3 text-[14px] font-medium text-head">{notice}</p>}
       </div>
       <div className="glass mt-10 flex flex-col gap-8 p-6 sm:p-9">
         {sections.map((s) => (

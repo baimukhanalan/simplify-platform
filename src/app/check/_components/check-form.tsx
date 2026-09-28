@@ -6,7 +6,7 @@ import { cx } from "@/components/ui";
 import { CvInput } from "./cv-input";
 import { useActionForm } from "../../_components/use-action-form";
 
-const STAGES = ["Читаем CV и извлекаем факты", "Считаем Readiness под цель", "Ищем лучшую вакансию и проверяем Eligibility", "Готовим пример позиционирования"];
+const STAGES = ["Читаем CV и извлекаем факты", "Считаем Readiness под цель", "Ищем лучшую вакансию и проверяем требования", "Готовим пример позиционирования"];
 
 export function CheckForm({ roles }: { roles: string[] }) {
   const { state, pending, formAction, onSubmit } = useActionForm<FormState>(runCareerCheck, undefined);

@@ -21,18 +21,18 @@ import { handoffsWaiting, plural, questionsWaiting } from "../../_components/ru"
 export const metadata: Metadata = { title: "Career Campaign" };
 
 const INCLUDED = [
-  "Career Profile", "Career Goal Builder", "Поиск вакансий (discovery)", "Matching и Eligibility", "Ранжирование по вероятности интервью",
-  "Персонализация CV под вакансию", "Cover letters", "Подача заявок", "Ответы на вопросы анкет", "Трекинг в Applications",
-  "Оптимизация стратегии по откликам", "Подготовка к assessment", "Interview Pack", "Mock interviews", "AI Interview Copilot",
+  "Career Profile", "Настройка цели", "Поиск вакансий", "Оценка Match и проверка требований", "Ранжирование по вероятности интервью",
+  "Адаптация CV под вакансию", "Сопроводительные письма", "Подача заявок", "Ответы на вопросы анкет", "Трекинг в Applications",
+  "Оптимизация стратегии по откликам", "Подготовка к тестовым заданиям", "Материалы к каждому интервью", "Пробные интервью", "Copilot во время интервью",
   "Разбор после интервью", "Базовая помощь с оффером и переговорами",
 ];
 const PLAN_COPY = {
   local: { regions: "Казахстан и СНГ", perDay: PLANS.local.dailyLimit },
-  international: { regions: "Европа, UK, США, Канада, ОАЭ, remote worldwide + СНГ", perDay: PLANS.international.dailyLimit },
+  international: { regions: "Европа, Великобритания, США, Канада, ОАЭ, удалённо по всему миру + СНГ", perDay: PLANS.international.dailyLimit },
 };
 const STATUS_LABEL: Record<string, { label: string; tone: "green" | "amber" | "teal" | "rose" | "neutral" }> = {
-  active: { label: "Active", tone: "green" }, paused: { label: "Paused", tone: "amber" }, hired: { label: "Hired", tone: "green" },
-  expired: { label: "Завершена", tone: "neutral" }, draft: { label: "Draft", tone: "neutral" },
+  active: { label: "Активна", tone: "green" }, paused: { label: "На паузе", tone: "amber" }, hired: { label: "HIRED", tone: "green" },
+  expired: { label: "Завершена", tone: "neutral" }, draft: { label: "Черновик", tone: "neutral" },
 };
 const DAY = 86400000;
 /** Request-time clock for a campaign window (server-rendered per request). */
@@ -205,7 +205,7 @@ function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch, demo }: { c
     ? "автоподача выключена — нет согласия в настройках, агент только готовит пакеты"
     : autoApply
       ? `автоподача включена: агент сам подаёт на вакансии с Match ≥ ${minMatch}% и на отмеченные Apply / Auto`
-      : "автоподача только для отмеченных Apply / Auto — Auto-apply по Match выключен";
+      : "автоподача только для отмеченных Apply / Auto — автоотклик по Match выключен";
   const plan = PLANS[c.plan as keyof typeof PLANS] ?? PLANS.local;
   const { total, elapsed, left } = campaignClock(c.startedAt, c.endsAt, plan.days);
   const paused = c.status === "paused";
@@ -217,7 +217,7 @@ function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch, demo }: { c
             <span className={cx("size-2.5 rounded-full", paused ? "bg-amber" : "bg-green animate-pulse-dot")} aria-hidden />
             <span className="label !text-head">{plan.label} · {paused ? "на паузе" : "активна"}</span>
           </div>
-          <Chip tone={paused ? "amber" : "green"}>{paused ? "Paused" : "Active"}</Chip>
+          <Chip tone={paused ? "amber" : "green"}>{paused ? "На паузе" : "Активна"}</Chip>
         </div>
         <div className="flex flex-wrap items-end gap-x-10 gap-y-5">
           <div>
@@ -264,13 +264,13 @@ function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch, demo }: { c
             Сейчас: до <span className="num text-head">{Math.min(c.dailyLimit, plan.dailyLimit)}</span> {plural(Math.min(c.dailyLimit, plan.dailyLimit), ["заявки", "заявок", "заявок"])} в день, {autoLine}.
             Что агент делает сам, а что — только с твоего разрешения, настраивается в Agent.
           </p>
-          <Link href="/app/agent" className="mt-4 inline-flex items-center gap-1.5 text-[13.5px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">Открыть Agent <ArrowRight className="size-3.5" aria-hidden /></Link>
+          <Link href="/app/agent" className="mt-3 inline-flex min-h-10 items-center gap-1.5 rounded text-[13.5px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">Открыть Agent <ArrowRight className="size-3.5" aria-hidden /></Link>
         </Card>
         <Card className="animate-rise" style={{ animationDelay: "140ms" }}>
-          <Label className="mb-3">Fair usage</Label>
+          <Label className="mb-3">Честное использование</Label>
           <div className="flex flex-col gap-2 text-[13.5px] text-ink-2">
             <p>Тариф {plan.label} — до <span className="num text-head">{plan.dailyLimit}</span> {plural(plan.dailyLimit, ["заявки", "заявок", "заявок"])} в день. Лимит защищает качество: каждая заявка персонализирована, а не разослана массово.</p>
-            <p>Агент никогда не подаёт дважды в одну вакансию и пропускает вакансии с hard blockers по Eligibility.</p>
+            <p>Агент никогда не подаёт дважды в одну вакансию и пропускает вакансии, где ты не проходишь по обязательным требованиям.</p>
             <p className="text-ink-3">Пауза не продлевает 60 дней кампании.</p>
           </div>
         </Card>

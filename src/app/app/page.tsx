@@ -1,17 +1,17 @@
 import Link from "next/link";
-import { ArrowRight, BadgeDollarSign, CalendarClock, ClipboardCheck, Play, ShieldCheck, Sparkles, X } from "lucide-react";
+import { ArrowRight, BadgeDollarSign, CalendarClock, ClipboardCheck, ShieldCheck, X } from "lucide-react";
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
-import { runAgentNow, simulateEmployers } from "@/lib/actions/campaign";
 import { demoToolsEnabled } from "@/lib/demo";
 import { currentCampaign } from "@/lib/ops-data";
 import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Chip, Label, Script, cx } from "@/components/ui";
-import { SubmitButton } from "@/components/client";
+import { RunAgentButton, SimulateButton } from "./_components/demo-tools";
 import { dayKey, greeting, hhmm, loadToday, type Today } from "./_components/today-data";
 import { KeyNumbers, NextActionCard, StageBar, StatusDot, Timeline, TodayStrip, type NextAction } from "./_components/today";
-import { handoffsWaiting, plural, questionsWaiting } from "../_components/ru";
+import { STRONG_MATCH } from "@/lib/engine/matching";
+import { count, handoffsWaiting, plural, questionsWaiting } from "../_components/ru";
 
 export const metadata: Metadata = { title: "Today" };
 
@@ -24,11 +24,44 @@ function relDay(d: Date, now: number) {
   return d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" });
 }
 
+/**
+ * Today's finds in one consistent split (todayBreakdown, src/app/app/_components/today-data.ts):
+ * found = qualified + weaker + blocked + setAside, qualified = queued + prepared + applied + waiting.
+ * Submissions today are a separate number (they include roles found earlier) and are said separately.
+ */
+function todayStory(d: Today) {
+  const b = d.todayBreakdown;
+  const t = d.today;
+  const parts: string[] = [];
+  if (b.found) {
+    parts.push(`Сегодня агент нашёл ${count(b.found, ["вакансию", "вакансии", "вакансий"])}.`);
+    if (b.qualified) {
+      const split = [
+        b.applied && `${b.applied} уже ${plural(b.applied, ["подана", "поданы", "подано"])}`,
+        b.prepared && `${b.prepared} ${plural(b.prepared, ["готова", "готовы", "готовы"])} к отправке`,
+        b.queued && `${b.queued} в очереди на подготовку`,
+        b.waiting && `${b.waiting} ${plural(b.waiting, ["ждёт", "ждут", "ждут"])} твоего решения`,
+      ].filter(Boolean).join(", ");
+      parts.push(`${b.qualified} ${plural(b.qualified, ["подходит", "подходят", "подходят"])} (Match ≥ ${STRONG_MATCH}%)${split ? `: ${split}` : ""}.`);
+    }
+    const rest = [
+      b.weaker && `${b.weaker} слабее по Match`,
+      b.blocked && `${b.blocked} не ${plural(b.blocked, ["проходит", "проходят", "проходят"])} по требованиям`,
+      b.setAside && `${b.setAside} ${plural(b.setAside, ["отложена", "отложены", "отложено"])}`,
+    ].filter(Boolean).join(", ");
+    if (rest) parts.push(`Остальные: ${rest}.`);
+  } else if (t.submitted) {
+    parts.push("Новых вакансий сегодня пока нет.");
+  }
+  if (t.submitted) parts.push(`Всего за сегодня ${plural(t.submitted, ["отправлена", "отправлено", "отправлено"])} ${count(t.submitted, ["заявка", "заявки", "заявок"])}.`);
+  return parts.join(" ");
+}
+
 /** One thing the user should do next — or nothing at all. */
 function pickNext(d: Today): { action: NextAction; also: { label: string; href: string }[] } {
   const cands: NonNullable<NextAction>[] = [];
   const offer = d.offers[0];
-  if (offer) cands.push({ eyebrow: "Offer", title: `Оффер от ${offer.company}`, sub: `${offer.role}. Разберём цифры и переговоры вместе.`, href: "/app/offers", cta: "Посмотреть оффер", icon: BadgeDollarSign });
+  if (offer) cands.push({ eyebrow: "Оффер", title: `Оффер от ${offer.company}`, sub: `${offer.role}. Агент разобрал цифры и подготовил переговоры.`, href: "/app/offers", cta: "Посмотреть оффер", icon: BadgeDollarSign });
 
   const interviews = d.upcoming.filter((i) => i.round !== "assessment");
   const assessments = d.upcoming.filter((i) => i.round === "assessment");
@@ -36,14 +69,14 @@ function pickNext(d: Today): { action: NextAction; also: { label: string; href: 
   const iv = (i: (typeof interviews)[number], eyebrow: string): NonNullable<NextAction> => ({
     eyebrow,
     title: i.scheduledAt ? `Интервью ${relDay(i.scheduledAt, d.now)} — ${i.opportunity.job.company}` : `Интервью — ${i.opportunity.job.company}`,
-    sub: `${i.opportunity.job.title}${i.scheduledAt ? ` · ${hhmm(i.scheduledAt)}` : ""}. Interview Pack уже готов.`,
+    sub: `${i.opportunity.job.title}${i.scheduledAt ? ` · ${hhmm(i.scheduledAt)}` : ""}. Материалы для подготовки уже готовы.`,
     href: `/app/interviews/${i.id}`, cta: "Prepare", icon: CalendarClock,
   });
-  if (soonIv) cands.push(iv(soonIv, "Interview"));
+  if (soonIv) cands.push(iv(soonIv, "Интервью"));
   const a = assessments[0];
   if (a) cands.push({
-    eyebrow: "Assessment",
-    title: `Assessment от ${a.opportunity.job.company}`,
+    eyebrow: "Тестовое задание",
+    title: `Тестовое задание от ${a.opportunity.job.company}`,
     sub: a.scheduledAt ? `Дедлайн: ${a.scheduledAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" })}. Ты на следующем этапе.` : "Ты на следующем этапе.",
     href: `/app/interviews/${a.id}`, cta: "Подготовиться", icon: ClipboardCheck,
   });
@@ -78,19 +111,10 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const status = campaign.status;
   const isActive = status === "active";
   const t = d.today;
-  const tagline = { active: "Your agent is working.", paused: "Your agent is paused.", hired: "You got hired.", expired: "Your campaign is complete." }[status] ?? "Your agent is working.";
+  const tagline = { active: "Your agent is working.", paused: "Агент на паузе.", hired: "Работа найдена.", expired: "Кампания завершена." }[status] ?? "Your agent is working.";
   const demo = demoToolsEnabled(user);
 
-  const story = t.found || t.submitted
-    ? [
-        t.found ? `Сегодня агент нашёл ${t.found} ${plural(t.found, ["вакансию", "вакансии", "вакансий"])}.` : "Новых вакансий сегодня пока нет.",
-        t.found ? `${t.qualified} ${plural(t.qualified, ["подошла", "подошли", "подошли"])}.` : "",
-        t.strong ? `${t.strong} ${plural(t.strong, ["была достаточно сильной", "были достаточно сильными", "были достаточно сильными"])} (Match ≥ ${d.strongThreshold}%).` : "",
-        t.submitted ? `${t.submitted} ${plural(t.submitted, ["заявка уже отправлена", "заявки уже отправлены", "заявок уже отправлены"])}.` : "",
-      ].filter(Boolean).join(" ")
-    : isActive
-      ? "Сегодня агент ещё не нашёл новых вакансий — он проверяет рынок по расписанию."
-      : "";
+  const story = todayStory(d) || (isActive ? "Сегодня агент ещё не нашёл новых вакансий — он проверяет рынок по расписанию." : "");
 
   return (
     <div className="flex flex-col gap-5">
@@ -106,25 +130,25 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
               <span className="font-mono text-[10.5px] uppercase tracking-[.1em] text-green">Kaspi Pay · оплачено</span>
               <h2 id="started-h" className="h-serif mt-1.5 text-[clamp(26px,3vw,34px)]">Кампания <Script>запущена</Script>.</h2>
               <p className="mt-2 max-w-2xl text-[14.5px] text-ink-2">
-                Агент уже провёл первый цикл{t.found ? <>: нашёл <span className="num text-head">{t.found}</span> {plural(t.found, ["вакансию", "вакансии", "вакансий"])}</> : ""}
+                Агент уже провёл первый цикл{d.todayBreakdown.found ? <>: нашёл <span className="num text-head">{d.todayBreakdown.found}</span> {plural(d.todayBreakdown.found, ["вакансию", "вакансии", "вакансий"])}</> : ""}
                 {t.submitted ? <> и отправил <span className="num text-head">{t.submitted}</span> {plural(t.submitted, ["заявку", "заявки", "заявок"])}</> : ""}.
-                Дальше он работает сам — каждый день, до {campaign.dailyLimit} {plural(campaign.dailyLimit, ["заявки", "заявок", "заявок"])}. Мы позовём тебя, только когда без тебя нельзя.
+                Дальше он работает сам — каждый день, до {campaign.dailyLimit} {plural(campaign.dailyLimit, ["заявки", "заявок", "заявок"])}. Агент позовёт тебя, только когда без тебя нельзя.
               </p>
             </div>
-            <Link href="/app" scroll={false} className="grid size-9 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-white hover:text-head focus-visible:outline-2 focus-visible:outline-green" aria-label="Скрыть сообщение"><X className="size-4" aria-hidden /></Link>
+            <Link href="/app" scroll={false} className="grid size-10 shrink-0 place-items-center rounded-full text-ink-3 hover:bg-white hover:text-head focus-visible:outline-2 focus-visible:outline-green" aria-label="Скрыть сообщение"><X className="size-4" aria-hidden /></Link>
           </div>
         </section>
       )}
 
       {/*
-        Mobile order: greeting → Next action → what the agent is doing. On desktop the greeting and the details are two
-        halves of one card in the left column (joined edges), and Next action sits on the right spanning both rows.
+        Mobile order: greeting → «Следующий шаг» → what the agent is doing. On desktop the greeting and the details are two
+        halves of one card in the left column (joined edges), and «Следующий шаг» sits on the right spanning both rows.
       */}
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)] lg:grid-rows-[auto_1fr]">
         <section aria-label="Статус кампании" className="glass-strong relative flex animate-rise flex-col gap-6 p-5 sm:p-8 lg:col-start-1 lg:row-start-1 lg:!rounded-b-none lg:!border-b-0 lg:pb-3 lg:!shadow-none">
           <div className="flex flex-wrap items-center gap-2.5">
             <StatusDot status={status} />
-            <span className="label">Campaign Day <span className="num text-head">{d.clock.day}</span> / {d.clock.total}</span>
+            <span className="label">День кампании <span className="num text-head">{d.clock.day}</span> / {d.clock.total}</span>
           </div>
           <div className="flex flex-col gap-2">
             <p className="h-serif text-[clamp(32px,4.6vw,54px)]">{greeting()}, <Script>{firstName}</Script>.</p>
@@ -137,7 +161,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         <section aria-label="Что делает агент" className="glass-strong flex animate-rise flex-col gap-6 p-5 sm:p-8 lg:col-start-1 lg:row-start-2 lg:-mt-5 lg:!rounded-t-none lg:!border-t-0 lg:pt-4">
           {d.goalLine && (
             <Link href="/app/goal" className="group inline-flex w-fit max-w-full items-center gap-2 font-mono text-[11.5px] uppercase tracking-[.08em] text-ink-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
-              <span className="text-ink-4">Goal</span><span className="min-w-0 break-words">{d.goalLine}</span>
+              <span className="text-ink-4">Цель</span><span className="min-w-0 break-words">{d.goalLine}</span>
             </Link>
           )}
           <div className="flex flex-col gap-3 border-t border-line pt-5">
@@ -153,12 +177,12 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       <Card className="flex animate-rise flex-col gap-7">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <Label>Где ты сейчас</Label>
-          <Link href="/app/applications" className="inline-flex items-center gap-1 text-[13px] text-teal hover:text-head">Applications <ArrowRight className="size-3.5" aria-hidden /></Link>
+          <Link href="/app/applications" className="inline-flex min-h-10 items-center gap-1 text-[13px] text-teal hover:text-head">Applications <ArrowRight className="size-3.5" aria-hidden /></Link>
         </div>
         <StageBar stage={d.stage} values={d.stageValues} />
         <div className="flex flex-col gap-4 border-t border-line pt-6">
           <KeyNumbers t={d.totals} />
-          <TodayStrip d={t} />
+          <TodayStrip d={{ found: d.todayBreakdown.found, qualified: d.todayBreakdown.qualified, submitted: t.submitted, responses: t.responses }} />
         </div>
       </Card>
 
@@ -172,16 +196,10 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
       {/* Demo tools (demo account, staff, local dev): available, not advertised. */}
       {demo && (
-        <div className="flex flex-wrap items-center gap-2 px-1 pt-2 text-[12.5px] text-ink-3">
-          <span className="label mr-1 !text-[9.5px] !text-ink-3">Демо-инструменты</span>
-          {isActive && (
-            <form action={runAgentNow}>
-              <SubmitButton variant="ghost" size="sm" pendingText="Агент работает…" className="!h-10 !px-3 !text-[12.5px] text-ink-3"><Play className="size-3.5" strokeWidth={1.7} aria-hidden />Запустить цикл агента</SubmitButton>
-            </form>
-          )}
-          <form action={simulateEmployers}>
-            <SubmitButton variant="ghost" size="sm" pendingText="Симулируем…" className="!h-10 !px-3 !text-[12.5px] text-ink-3"><Sparkles className="size-3.5 text-amber" strokeWidth={1.7} aria-hidden />Симулировать ответы</SubmitButton>
-          </form>
+        <div className="flex flex-wrap items-start gap-2 px-1 pt-2 text-[12.5px] text-ink-3">
+          <span className="label mr-1 pt-3 !text-[9.5px] !text-ink-3">Демо-инструменты</span>
+          {isActive && <RunAgentButton />}
+          <SimulateButton />
         </div>
       )}
     </div>
@@ -196,7 +214,7 @@ async function NoCampaign({ userId, firstName, hasGoal, hasCv }: { userId: strin
   const openInvoice = invoice?.externalId && new Date(j<{ expiresAt?: string }>(invoice.meta, {}).expiresAt ?? 0).getTime() > (await nowMs()) ? invoice.externalId : null;
   const steps = [
     { n: "01", title: "Career Profile", sub: "Загрузи CV — агент разберёт опыт, навыки и достижения.", href: "/app/profile", done: hasCv || facts > 0 },
-    { n: "02", title: "Career Goal", sub: "Роль, страны, формат работы и минимальная зарплата.", href: "/app/goal", done: hasGoal },
+    { n: "02", title: "Цель", sub: "Роль, страны, формат работы и минимальная зарплата.", href: "/app/goal", done: hasGoal },
     { n: "03", title: "План и запуск", sub: "60 дней кампании. Оплата через Kaspi Pay — и агент начинает работать.", href: "/app/campaign", done: false },
   ];
   const next = steps.find((s) => !s.done)!;
@@ -204,10 +222,10 @@ async function NoCampaign({ userId, firstName, hasGoal, hasCv }: { userId: strin
     <div className="flex flex-col gap-6">
       <Card strong className="flex animate-rise flex-col gap-8 p-6 sm:p-10">
         <div className="flex max-w-2xl flex-col gap-3">
-          <span className="flex items-center gap-2"><span className="size-2 rounded-full bg-ink-4" aria-hidden /><Label>Agent · not started</Label></span>
+          <span className="flex items-center gap-2"><span className="size-2 rounded-full bg-ink-4" aria-hidden /><Label>Агент · не запущен</Label></span>
           <h1 className="h-serif text-[clamp(32px,4.4vw,52px)]">{greeting()}, <Script>{firstName}</Script>.</h1>
           <p className="h-serif text-[clamp(20px,2.4vw,28px)] !text-teal">Задай цель — остальное сделает твой агент.</p>
-          <p className="text-[15px] text-ink-2">60 дней Simplify ищет вакансии, адаптирует CV, отправляет заявки, разбирает ответы и готовит тебя к интервью. Ты видишь прогресс и отвечаешь только там, где без тебя нельзя.</p>
+          <p className="text-[15px] text-ink-2">60 дней агент Simplify ищет вакансии, адаптирует CV, отправляет заявки, разбирает ответы и готовит тебя к интервью. Ты видишь прогресс и отвечаешь только там, где без тебя нельзя.</p>
         </div>
         {openInvoice && (
           <div className="flex flex-col gap-3 rounded-2xl border border-amber/20 bg-amber-soft px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
@@ -230,7 +248,7 @@ async function NoCampaign({ userId, firstName, hasGoal, hasCv }: { userId: strin
           ))}
         </ol>
         <div className="flex flex-wrap items-center gap-3">
-          <ButtonLink href={next.href} size="lg">{next.href === "/app/campaign" ? "Start your campaign" : `Дальше: ${next.title}`}<ArrowRight className="size-4" aria-hidden /></ButtonLink>
+          <ButtonLink href={next.href} size="lg">{next.href === "/app/campaign" ? "Начать кампанию" : `Дальше: ${next.title}`}<ArrowRight className="size-4" aria-hidden /></ButtonLink>
         </div>
       </Card>
     </div>

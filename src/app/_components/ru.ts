@@ -38,7 +38,7 @@ export const regionRu = (k: string) => REGION_RU[k.toUpperCase()] ?? k;
 export const regionsRu = (ks: string[]) => [...new Set(ks.map(regionRu))].join(", ");
 
 /** Work format, one naming everywhere. */
-export const WORK_MODE_RU: Record<string, string> = { remote: "Удалённо", hybrid: "Гибрид", onsite: "Офис", any: "Любой формат" };
+export const WORK_MODE_RU: Record<string, string> = { remote: "Удалённо", hybrid: "Гибрид", onsite: "В офисе", any: "Любой формат" };
 
 /** Campaign mode (Goal). */
 export const CAMPAIGN_MODE_RU: Record<string, string> = { autonomous: "Автономный", target: "Точечный — компании мечты", mass: "Массовый найм" };
@@ -50,3 +50,6 @@ export const STATUS_RU: Record<string, string> = {
   final: "Финальное интервью", offer: "Оффер", hired: "HIRED", rejected: "Отказ", skipped: "Пропущено", blocked: "Недоступно",
 };
 export const statusRu = (s: string) => STATUS_RU[s] ?? s;
+
+/** Years of experience: "1 год", "2 года", "5 лет", "2,5 года" (same wording as the engine). */
+export { fmtYearsRu as yearsRu } from "@/lib/ru";

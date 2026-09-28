@@ -33,7 +33,7 @@ export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggest
     <form action={formAction} onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
       {/* Live read-out of the goal */}
       <section aria-live="polite" className="glass-strong flex flex-col gap-2 p-5 sm:p-7">
-        <span className="label">Моя цель</span>
+        <span className="label">Цель</span>
         <div className="h-serif text-[clamp(28px,4vw,42px)]">{role.trim() ? goalTitle(role.trim(), countries) : <span className="text-ink-4">Роль не указана</span>}</div>
         <div className="font-mono text-[11.5px] uppercase tracking-[.06em] text-teal">
           {[SENIORITY_LABEL[seniority], where, sal ? `от $${sal.toLocaleString("en-US")}` : ""].filter(Boolean).join(" · ")}
@@ -98,7 +98,7 @@ export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggest
               {sal > 0 && sal <= range.mid && <span className="text-green"> · реалистично</span>}
             </span>
           </div>
-          <Toggle name="relocation" defaultChecked={initial.relocation} title="Переезд возможен" hint="Иначе onsite за рубежом не рассматриваем" />
+          <Toggle name="relocation" defaultChecked={initial.relocation} title="Переезд возможен" hint="Иначе агент не рассматривает работу в офисе за рубежом" />
         </div>
         {initial.industries.map((x) => <input key={x} type="hidden" name="industries" value={x} />)}
       </section>

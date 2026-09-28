@@ -1,7 +1,7 @@
 import { MOCK_QUESTIONS, detectIntent, scaffold, type FactLite, type StoryLite, type scoreAnswer } from "@/lib/engine/interview";
 
-// Local Mock Interview question sets: the engine ships recruiter / hiring_manager / technical;
-// Behavioral and Final round live here.
+// Local mock-interview question sets (English: the interview language). The engine ships recruiter /
+// hiring_manager / technical; behavioral and final live here.
 
 export const MOCK_SETS: Record<string, string[]> = {
   recruiter: MOCK_QUESTIONS.recruiter,
@@ -23,7 +23,7 @@ export const MOCK_SETS: Record<string, string[]> = {
   ],
 };
 
-export type MockCtx = { stories: StoryLite[]; facts: FactLite[]; skills: string[]; yearsExperience: number; company: string; role: string };
+export type MockCtx = { stories: StoryLite[]; facts: FactLite[]; skills: string[]; yearsExperience: number; company: string; role: string; currentTitle?: string; salary?: { low: number; high: number; source?: "floor" | "published" | "market" | "none" } };
 type Score = ReturnType<typeof scoreAnswer>;
 
 /** What the answer lacks, in plain words — beyond the engine's generic tips. */
@@ -32,17 +32,27 @@ export function missingPoints(question: string, answer: string, s: Score, ctx: M
   const out: string[] = [];
   const low = answer.toLowerCase();
   if (intent === "behavioral" || intent === "leadership") {
-    const names = { s: "контекст (Situation)", t: "твоя задача (Task)", a: "твои конкретные действия (Action)", r: "результат (Result)" } as const;
+    const names = { s: "контекст: где и когда", t: "твоя задача", a: "твои конкретные действия", r: "результат" } as const;
     (Object.keys(names) as (keyof typeof names)[]).forEach((k) => !s.star[k] && out.push(names[k]));
     if (!/(learn|lesson|next time|вывод|научил|понял)/i.test(answer)) out.push("чему это научило");
   }
   if (!/\d/.test(answer)) out.push("цифра результата (было → стало)");
   if ((intent === "motivation" || /why .*compan/i.test(question)) && !low.includes(ctx.company.toLowerCase())) out.push(`конкретика о ${ctx.company}`);
-  if (intent === "intro" && !/(now|currently|сейчас)/i.test(answer)) out.push("кто ты сейчас (Present)");
+  if (intent === "intro" && !/(now|currently|сейчас)/i.test(answer)) out.push("кто ты сейчас");
   if (intent === "technical" && !/(first|then|step|сначала|затем)/i.test(answer)) out.push("пошаговый подход");
   if (intent === "closing" && !answer.includes("?")) out.push("1–2 твоих вопроса");
   return [...new Set(out)].slice(0, 4);
 }
+
+/** Interviewer personas in Russian (the lib labels are English). */
+export const PERSONA_RU: Record<string, string> = {
+  recruiter: "Рекрутер",
+  hiring_manager: "Нанимающий менеджер",
+  technical: "Техническое",
+  behavioral: "Поведенческое",
+  final: "Финальный раунд",
+};
+export const personaRu = (k: string) => PERSONA_RU[k] ?? k;
 
 /** A stronger skeleton built from the candidate's own stories and facts. */
 export function suggestion(question: string, ctx: MockCtx) {

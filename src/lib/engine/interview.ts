@@ -24,22 +24,65 @@ export function detectIntent(q: string): Intent {
   return "experience";
 }
 
+/** How to structure the answer — Russian coaching for the user (the spoken opener stays English). */
 export const INTENT_STRATEGY: Record<Intent, string> = {
-  intro: "Present → Past → Future, 60–90 sec",
-  behavioral: "STAR: Situation · Task · Action · Result",
-  experience: "Context → your part → result with number",
-  technical: "Clarify → approach → trade-offs → example",
-  motivation: "Company fact → role fit → your proof",
-  leadership: "STAR, emphasize your decision and the people outcome",
-  salary: "Range anchored on market, flexible on package",
-  strengths: "One strength + proof story + relevance",
-  weakness: "Real, non-core weakness + what you do about it",
-  case: "Structure → hypotheses → metrics → recommendation",
-  closing: "Ask 2 questions about team, success metrics",
+  intro: "Настоящее → прошлое → будущее, 60–90 секунд",
+  behavioral: "STAR: ситуация · задача · действие · результат",
+  experience: "Контекст → твоя часть → результат с цифрой",
+  technical: "Уточни → подход → компромиссы → пример",
+  motivation: "Факт о компании → совпадение с ролью → твоё доказательство",
+  leadership: "STAR с акцентом на твоё решение и результат для людей",
+  salary: "Твоя собственная вилка, гибкость по пакету",
+  strengths: "Одна сильная сторона + история-доказательство + связь с ролью",
+  weakness: "Настоящая, но не ключевая слабость + что ты с ней делаешь",
+  case: "Структура → гипотезы → метрики → рекомендация",
+  closing: "Задай 2 вопроса: о команде и о критериях успеха",
 };
 
 export type StoryLite = { id: string; title: string; situation: string; task: string; action: string; result: string; metric: string; tags: string[] };
-export type FactLite = { kind: string; title: string; org: string; details: string; metrics: string; tech: string[]; teamSize: number | null };
+export type FactLite = { kind: string; title: string; org: string; details: string; metrics: string; tech: string[]; teamSize: number | null; startDate?: string; endDate?: string };
+
+const CURRENT_END = /present|now|current|today|настоящ|н\.?\s?в\.?|сейчас|по н/i;
+const yearOf = (d?: string) => Number(d?.match(/(19|20)\d{2}/)?.[0] ?? 0);
+/** Ongoing roles (end "present" or no end but a start) first, then by the year they ended. */
+function endRank(f: FactLite) {
+  const end = (f.endDate ?? "").trim();
+  if (end && !CURRENT_END.test(end)) return yearOf(end);
+  return end || f.startDate ? 1e6 + yearOf(f.startDate) : -1;
+}
+
+/**
+ * The user's current (latest) job: an ongoing employment fact, else the one that ended last, else the first listed
+ * (facts come in CV order, newest first). Never the target vacancy.
+ */
+export function latestEmployment<T extends FactLite>(facts: T[]): T | undefined {
+  const jobs = facts.filter((f) => f.kind === "employment");
+  if (!jobs.some((f) => f.startDate || f.endDate)) return jobs[0];
+  return jobs.map((f, i) => ({ f, i, r: endRank(f) })).sort((a, b) => b.r - a.r || a.i - b.i)[0]?.f;
+}
+
+const ACRONYMS = new Map(["BI", "SQL", "QA", "PM", "UX", "UI", "ML", "AI", "SEO", "CRM", "SDR", "BDR", "HR", "IT", "CX", "ETL", "API", "SDET", "DWH", "B2B", "B2C", "SaaS", "iOS", "DevOps", "FinTech"].map((a) => [a.toLowerCase(), a]));
+
+/**
+ * A job title as a noun inside a sentence: "Senior BI Analyst" → "senior BI analyst", "Qa engineer" → "QA engineer".
+ * Known acronyms get their canonical casing; other words with inner capitals (DevOps, iOS) are kept; the rest go lower-case.
+ */
+export function titleInSentence(title: string) {
+  return title.trim().split(/(\s+|\/|-|,)/).map((w) => {
+    if (!/\p{L}/u.test(w)) return w;
+    const known = ACRONYMS.get(w.toLowerCase());
+    if (known) return known;
+    return /\p{Lu}/u.test(w.slice(1)) ? w : w.toLowerCase();
+  }).join("");
+}
+
+/** "a" / "an" before a title in a sentence: "an analyst", "a BI analyst"… "an SQL developer", "an ML engineer". */
+export function withArticle(noun: string) {
+  const first = noun.split(/\s+/)[0] ?? "";
+  const acronym = first.length > 1 && first === first.toUpperCase() && /\p{Lu}/u.test(first);
+  const an = acronym ? /^[AEFHILMNORSX]/.test(first) : /^[aeiou]/i.test(first) && !/^(uni|use|usu|eu|one)/i.test(first);
+  return `${an ? "an" : "a"} ${noun}`;
+}
 
 const tokenize = (s: string) => s.toLowerCase().match(/[a-zа-я0-9%+#.]{3,}/g) ?? [];
 const THEME: Record<string, string[]> = {
@@ -72,31 +115,50 @@ export function retrieveStories(q: string, stories: StoryLite[], k = 2) {
 export type Scaffold = { intent: Intent; strategy: string; opener: string; bullets: string[]; keyNumber: string; storyId: string | null };
 
 /** Build the on-screen scaffold: 3–5 bullets, one number, one opener. Deterministic → instant. */
-export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite[]; skills: string[]; yearsExperience: number; company: string; role: string; salary?: { low: number; high: number } }): Scaffold {
+export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite[]; skills: string[]; yearsExperience: number; company: string; role: string; currentTitle?: string; salary?: { low: number; high: number; source?: "floor" | "published" | "market" | "none" } }): Scaffold {
   const intent = detectIntent(q);
   const [story] = retrieveStories(q, ctx.stories, 1);
-  const topFact = ctx.facts.find((f) => f.kind === "employment" && f.metrics) ?? ctx.facts.find((f) => f.kind === "employment");
+  const current = latestEmployment(ctx.facts);
+  const topFact = ctx.facts.find((f) => f.kind === "employment" && f.metrics) ?? current;
+  // Who the candidate is NOW: their latest job title, not the vacancy they are interviewing for.
+  const nowTitle = (ctx.currentTitle || current?.title || "").trim();
   const short = (s: string, n = 70) => (s.length > n ? `${s.slice(0, n - 1).trim()}…` : s);
   let bullets: string[] = [];
   let opener = "";
   let keyNumber = story?.metric || topFact?.metrics || "";
   switch (intent) {
     case "intro":
-      opener = `I'm a ${ctx.role.toLowerCase()} with ${yearsForEmployer(ctx.yearsExperience) ?? "hands-on project"} of hands-on experience.`;
-      bullets = [`Now: ${topFact ? `${topFact.title} at ${topFact.org}` : "current role"}`, `Proof: ${short(keyNumber || topFact?.details.split("\n")[0] || "one concrete result")}`, `Tools: ${ctx.skills.slice(0, 4).join(", ")}`, `Why here: ${ctx.role} at ${ctx.company}`];
+      opener = nowTitle
+        ? `I'm ${withArticle(titleInSentence(nowTitle))} with ${yearsForEmployer(ctx.yearsExperience) ?? "hands-on project"} of hands-on experience.`
+        : `I have ${yearsForEmployer(ctx.yearsExperience) ?? "hands-on project"} of hands-on experience with ${ctx.skills.slice(0, 2).join(" and ") || "this kind of work"}.`;
+      bullets = [`Сейчас: ${current ? `${current.title}${current.org ? ` в ${current.org}` : ""}` : "твоя текущая роль"}`, `Доказательство: ${short(keyNumber || topFact?.details.split("\n")[0] || "один конкретный результат")}`, `Инструменты: ${ctx.skills.slice(0, 4).join(", ")}`, `Почему сюда: ${ctx.role} в ${ctx.company}`];
       break;
-    case "salary":
-      opener = "Based on the scope and market data, I'm targeting…";
-      bullets = ctx.salary ? [`Range: $${Math.round(ctx.salary.low / 1000)}k–$${Math.round(ctx.salary.high / 1000)}k base`, "Flexible on the full package", "Ask about their band first if possible"] : ["Ask for their budgeted range first", "Anchor on market, flexible on package"];
-      keyNumber = ctx.salary ? `$${Math.round(ctx.salary.high / 1000)}k` : "";
+    case "salary": {
+      // The same number the agent put in the screening answer (./salary.ts salaryTarget), never a lower market range.
+      const sal = ctx.salary && ctx.salary.high > 0 ? ctx.salary : null;
+      const k = (n: number) => `$${Math.round(n / 1000)}k`;
+      const range = sal ? (sal.low === sal.high ? k(sal.low) : `${k(sal.low)}–${k(sal.high)}`) : "";
+      if (sal && sal.source === "market") {
+        opener = "Could you share the budgeted range for this role first?";
+        bullets = ["Сначала спроси их бюджетную вилку", `Ориентир рынка: ${range} base (оценка) — своя вилка не указана в цели`, "Покажи гибкость по всему пакету"];
+        keyNumber = "";
+      } else if (sal) {
+        opener = sal.source === "published" ? `In line with the published range, I'm targeting around ${range} base.` : `I'm targeting ${range} base, depending on the full package.`;
+        bullets = [sal.source === "published" ? `Цель: ${range} base — по опубликованной вилке` : `Вилка: ${range} base — твоё ожидание, как в заявке`, "Покажи гибкость по всему пакету", "Если можно, сначала узнай их вилку"];
+        keyNumber = range;
+      } else {
+        bullets = ["Сначала спроси их бюджетную вилку", "Назови свою вилку, оставь гибкость по пакету"];
+        keyNumber = "";
+      }
       break;
+    }
     case "motivation":
       opener = `What draws me to ${ctx.company} is…`;
-      bullets = [`Company: one specific fact about ${ctx.company}`, `Role: ${ctx.role} scope matches your experience`, `Proof: ${short(story?.title ?? topFact?.title ?? "your best project")}`, "Future: what you want to learn/own there"];
+      bullets = [`Компания: один конкретный факт о ${ctx.company}`, `Роль: чем задачи ${ctx.role} совпадают с твоим опытом`, `Доказательство: ${short(story?.title ?? topFact?.title ?? "твой лучший проект")}`, "Будущее: чему хочешь научиться и за что отвечать"];
       break;
     case "weakness":
       opener = "One thing I've been actively working on is…";
-      bullets = ["Real but non-core weakness", "Concrete example where it showed", "What you changed (system/habit)", "Evidence it's improving"];
+      bullets = ["Настоящая, но не ключевая для роли слабость", "Конкретный пример, где она проявилась", "Что поменялось: система или привычка", "Доказательство, что становится лучше"];
       break;
     case "closing":
       opener = "Yes — a couple of questions.";
@@ -106,7 +168,7 @@ export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite
     case "technical":
     case "case":
       opener = intent === "case" ? "Let me structure this first…" : "Let me clarify the context first…";
-      bullets = intent === "case" ? ["Clarify goal & constraints", "Break into 2–3 drivers", "Hypotheses → which metric proves each", "Recommend + next step"] : ["Clarify the requirement", "Explain the approach step by step", "Mention one trade-off", story ? `Example: ${short(story.title)}` : `Example from ${topFact?.org ?? "your work"}`];
+      bullets = intent === "case" ? ["Уточни цель и ограничения", "Разбей на 2–3 драйвера", "Гипотезы → какая метрика подтвердит каждую", "Рекомендация + следующий шаг"] : ["Уточни требование", "Объясни подход по шагам", "Назови один компромисс (trade-off)", story ? `Пример: ${short(story.title)}` : `Пример из ${topFact?.org ?? "твоей работы"}`];
       break;
     default:
       if (story) {
@@ -114,9 +176,9 @@ export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite
         bullets = [`S: ${short(story.situation)}`, `T: ${short(story.task)}`, `A: ${short(story.action)}`, `R: ${short(story.result)}`];
       } else if (topFact) {
         opener = `At ${topFact.org || "my last role"}, …`;
-        bullets = [`Context: ${short(topFact.title)}`, `Your part: ${short(topFact.details.split("\n")[0] ?? "")}`, `Result: ${short(topFact.metrics || "state the outcome")}`];
-      } else bullets = ["Pick your strongest real example", "Your specific action", "Outcome + lesson"];
-      if (intent === "behavioral" || intent === "leadership") bullets.push("Close with the lesson learned");
+        bullets = [`Контекст: ${short(topFact.title)}`, `Твоя часть: ${short(topFact.details.split("\n")[0] ?? "")}`, `Результат: ${short(topFact.metrics || "назови итог")}`];
+      } else bullets = ["Выбери свой самый сильный реальный пример", "Твоё конкретное действие", "Итог + вывод"];
+      if (intent === "behavioral" || intent === "leadership") bullets.push("Закончи выводом: чему это научило");
   }
   return { intent, strategy: INTENT_STRATEGY[intent], opener, bullets: bullets.slice(0, 5), keyNumber, storyId: story?.id ?? null };
 }
@@ -142,7 +204,7 @@ const ROUND_TOPICS: Record<string, string[]> = {
 };
 
 export function buildPackHeuristic(ctx: { name: string; role: string; company: string; round: string; jd: string; technologies: string[]; skills: string[]; yearsExperience: number; stories: StoryLite[]; facts: FactLite[] }): Pack {
-  const top = ctx.facts.find((f) => f.kind === "employment");
+  const top = latestEmployment(ctx.facts);
   const metric = ctx.facts.find((f) => f.metrics)?.metrics;
   const behavioralQs = ["Tell me about a time you had a disagreement with a stakeholder.", "Tell me about a failure and what you learned.", "Describe a project where your work influenced a business decision.", "Tell me about a time you worked under a tight deadline."];
   return {
@@ -186,7 +248,8 @@ export function scoreAnswer(question: string, answer: string, ctx: { skills: str
   const overall = Math.round((content * 0.3 + structure * 0.2 + clarity * 0.15 + lengthScore * 0.15 + confidence * 0.1 + Math.min(100, relevance * 25) * 0.1));
   const tips: string[] = [];
   if (!hasNumber) tips.push("Добавь одну цифру результата (было → стало).");
-  if ((intent === "behavioral" || intent === "leadership") && starScore < 0.75) tips.push(`STAR неполный: не хватает ${Object.entries(star).filter(([, v]) => !v).map(([k]) => k.toUpperCase()).join(", ")}.`);
+  const STAR_RU: Record<string, string> = { s: "ситуации", t: "задачи", a: "действия", r: "результата" };
+  if ((intent === "behavioral" || intent === "leadership") && starScore < 0.75) tips.push(`STAR неполный — не хватает: ${Object.entries(star).filter(([, v]) => !v).map(([k]) => STAR_RU[k]).join(", ")}.`);
   if (n > 220) tips.push("Слишком длинно — уложись в 60–120 секунд.");
   if (n < 40) tips.push("Слишком коротко — раскрой своё конкретное действие.");
   if (fillers > 2) tips.push(`Слова-паразиты: ${fillers}. Делай паузу вместо «um/like».`);

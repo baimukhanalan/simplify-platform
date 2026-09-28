@@ -47,7 +47,7 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
       {open.length > 0 && <h1 className="sr-only">Offer Desk</h1>}
 
       {offers.length === 0 ? (
-        <Empty title="Офферов пока нет" sub="Агент добавит оффер сюда автоматически, как только он придёт в Inbox. Оффер пришёл напрямую — внеси его ниже." />
+        <Empty title="Офферов пока нет" sub="Агент добавит оффер сюда автоматически, как только он придёт во входящие. Оффер пришёл напрямую — внеси его ниже." />
       ) : (
         <div className="flex flex-col gap-14">
           {open.map((o) => (

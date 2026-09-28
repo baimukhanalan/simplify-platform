@@ -1,5 +1,6 @@
 import { Check, Hourglass, ListChecks, Timer } from "lucide-react";
 import { Card, Chip, Label, cx } from "@/components/ui";
+import { daysWord } from "../../_components/format";
 import { assessmentInfo } from "./assessment";
 
 type Props = {
@@ -14,19 +15,19 @@ type Props = {
 export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
   const a = assessmentInfo({ technologies: job.technologies, skills, seniority: job.seniority, massHiring: job.massHiring, emails, deadline, now, roleFamily: job.roleFamily });
   const left = a.hoursLeft;
-  const leftText = left == null ? "не указан" : left <= 0 ? "истёк" : left < 48 ? `${left} ч` : `${Math.round(left / 24)} дн.`;
+  const leftText = left == null ? "не указан" : left <= 0 ? "истёк" : left < 48 ? `${left} ч` : daysWord(Math.round(left / 24));
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <Card strong className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">
-          <Label>Assessment Room</Label>
+          <Label>Тестовое задание</Label>
           <h2 className="h-serif text-[clamp(24px,2.8vw,34px)]">{a.kind}</h2>
           <p className="text-[14px] text-ink-3">{a.platform ? `Платформа: ${a.platform}` : "Платформа в письме не указана"} · темы выведены из требований вакансии {job.company}.</p>
         </div>
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { icon: Hourglass, k: "Дедлайн", v: leftText, hint: deadline ? deadline.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short" }) : "", warn: left != null && left > 0 && left < 24 },
+            { icon: Hourglass, k: "Дедлайн", v: leftText, hint: deadline ? deadline.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", weekday: "long", day: "numeric", month: "short" }).toLowerCase() : "", warn: left != null && left > 0 && left < 24 },
             { icon: Timer, k: "Длительность", v: `${a.durationMin} мин`, hint: "без пауз" },
             { icon: ListChecks, k: "Темы", v: String(a.topics.length), hint: a.topics.map((t) => t.short).join(", ") },
           ].map(({ icon: Icon, k, v, hint, warn }) => (
@@ -82,7 +83,7 @@ export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
 
       <Card>
         <div className="mb-4 flex flex-col gap-1">
-          <Label>Mock questions</Label>
+          <Label>Тренировочные вопросы</Label>
           <p className="text-[13px] text-ink-3">Сначала реши задачу, потом открой разбор. Засекай ~2 минуты на вопрос.</p>
         </div>
         <ol className="flex flex-col divide-y divide-line">
@@ -94,7 +95,7 @@ export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
                   <span className="font-mono text-[10px] uppercase tracking-[.08em] text-teal">{p.topic}</span>
                   <p className="text-[14.5px] text-head">{p.q}</p>
                   <details className="group">
-                    <summary className="inline-flex cursor-pointer list-none items-center rounded-full border border-line bg-white/60 px-3 py-1 text-[12.5px] text-ink-2 transition hover:bg-white focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+                    <summary className="inline-flex min-h-10 cursor-pointer list-none items-center rounded-full border border-line bg-white/60 px-4 text-[12.5px] text-ink-2 transition hover:bg-white focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
                       <span className="group-open:hidden">Показать разбор</span><span className="hidden group-open:inline">Скрыть разбор</span>
                     </summary>
                     <p className="mt-2 whitespace-pre-wrap break-words rounded-xl bg-green-soft/60 px-3.5 py-2.5 font-mono text-[12.5px] leading-relaxed text-ink-2">{p.a}</p>

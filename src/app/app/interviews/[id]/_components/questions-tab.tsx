@@ -1,15 +1,14 @@
-import { Clock, Lightbulb, Sparkles } from "lucide-react";
+import { Clock, Lightbulb } from "lucide-react";
 import { ButtonLink, Card, Chip, Label } from "@/components/ui";
-import { SubmitButton } from "@/components/client";
-import { regeneratePack } from "@/lib/actions/interview";
 import { aiEnabled } from "@/lib/ai";
 import type { Pack, StoryLite } from "@/lib/engine/interview";
 import { buildLikely, type LikelyCtx } from "./likely";
 import { StarLibrary } from "./star-library";
+import { DebugLine, RegenerateForm } from "./regenerate-form";
 
-type Props = { id: string; pack: Pack | null; generatedBy?: string; ctx: LikelyCtx; stories: StoryLite[] };
+type Props = { id: string; pack: Pack | null; generatedBy?: string; generatedAt?: string; debug?: boolean; ctx: LikelyCtx; stories: StoryLite[] };
 
-export function QuestionsTab({ id, pack, generatedBy, ctx, stories }: Props) {
+export function QuestionsTab({ id, pack, generatedBy, generatedAt, debug, ctx, stories }: Props) {
   const likely = buildLikely(pack, ctx);
   // Claude's list is written for this user; the engine fallback is replaced with «ты»-copy.
   const redFlags = generatedBy === "claude" && pack
@@ -20,17 +19,13 @@ export function QuestionsTab({ id, pack, generatedBy, ctx, stories }: Props) {
       <section aria-labelledby="likely-h" className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-1.5">
-            <Label>Most likely</Label>
+            <Label>Скорее всего спросят</Label>
             <h2 id="likely-h" className="h-serif text-[clamp(24px,2.6vw,32px)]">Вопросы, которые почти наверняка зададут</h2>
             <p className="text-[13.5px] text-ink-3">Ответы на английском собраны из твоего опыта и историй. Это опора, а не текст для заучивания.</p>
           </div>
-          <form action={regeneratePack} className="shrink-0">
-            <input type="hidden" name="id" value={id} />
-            <SubmitButton size="sm" variant="glass" pendingText={aiEnabled() ? "Claude готовит ответы…" : "Обновляем…"}>
-              <Sparkles className="size-3.5" strokeWidth={1.7} aria-hidden />Обновить с AI{generatedBy === "claude" ? " · Claude" : ""}
-            </SubmitButton>
-          </form>
+          <RegenerateForm id={id} aiOn={aiEnabled()} by={generatedBy} stamp={generatedAt} pendingText="Claude готовит ответы…" className="shrink-0" />
         </div>
+        {debug && <DebugLine>pack: {generatedBy ?? "нет"}{generatedAt ? ` · ${generatedAt}` : ""} · ai={aiEnabled() ? "on" : "off"}</DebugLine>}
 
         <ol className="glass divide-y divide-line overflow-hidden !p-0">
           {likely.map((l, i) => (
@@ -53,7 +48,7 @@ export function QuestionsTab({ id, pack, generatedBy, ctx, stories }: Props) {
                   <ul className="flex flex-col gap-2">
                     {l.points.map((p, k) => (
                       <li key={k} className="flex gap-3 text-[14.5px] leading-relaxed text-ink-2">
-                        {p.k ? <span className="label mt-[5px] w-[82px] shrink-0 !text-[10px] !text-teal">{p.k}</span> : <span aria-hidden className="mt-[9px] size-1.5 shrink-0 rounded-full bg-teal/60" />}
+                        {p.k ? <span className="label mt-[5px] w-[108px] shrink-0 break-words !text-[10px] !text-teal">{p.k}</span> : <span aria-hidden className="mt-[9px] size-1.5 shrink-0 rounded-full bg-teal/60" />}
                         <span>{p.v}</span>
                       </li>
                     ))}
@@ -73,7 +68,7 @@ export function QuestionsTab({ id, pack, generatedBy, ctx, stories }: Props) {
           ))}
         </ol>
         <div>
-          <ButtonLink href={`/app/interviews/${id}?tab=mock`} scroll={false} variant="primary" size="sm">Отрепетировать вслух в Mock Interview</ButtonLink>
+          <ButtonLink href={`/app/interviews/${id}?tab=mock`} scroll={false} variant="primary" size="sm" className="!h-10">Отрепетировать вслух в пробном интервью</ButtonLink>
         </div>
       </section>
 

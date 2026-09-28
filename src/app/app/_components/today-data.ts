@@ -4,6 +4,7 @@ import { readAutonomy } from "@/lib/engine/autonomy";
 import { regionsFor } from "@/lib/regions";
 import { currentCampaign, isQualified, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, reachedAssessment, reachedInterviewRound, runningCampaign, windowNumbers } from "@/lib/ops-data";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
+import { blockerRu } from "@/lib/engine/matching";
 import { APP_TZ as TZ, startOfToday } from "@/lib/time";
 import { regionsRu } from "@/app/_components/ru";
 
@@ -60,26 +61,26 @@ export function goalLine(goal: { primaryRole: string; countries: string; minSala
 }
 
 export function doingNow(status: string, regions: string[], findJobs: boolean, personalize: boolean) {
-  if (status === "paused") return "Кампания на паузе — Simplify не ищет и не отправляет новые заявки.";
-  if (status === "hired") return "Кампания завершена оффером. Simplify следит за рынком в Passive Career Mode.";
+  if (status === "paused") return "Кампания на паузе — агент не ищет и не отправляет новые заявки.";
+  if (status === "hired") return "Кампания завершена оффером. Агент продолжает следить за рынком в фоне — это видно в Career.";
   if (status === "expired") return "60 дней кампании прошли. Вся история сохранена ниже.";
-  if (!findJobs) return personalize ? "Поиск новых вакансий выключен — Simplify готовит заявки из уже найденных." : "Поиск и персонализация выключены в настройках агента.";
+  if (!findJobs) return personalize ? "Поиск новых вакансий выключен — агент готовит заявки из уже найденных." : "Поиск и персонализация выключены в настройках агента.";
   const inList = regions.filter((r) => r !== "WORLD").map((r) => REGION_IN[r] ?? r);
   const world = regions.includes("WORLD");
-  const where = inList.length ? `в ${joinRu(inList)}${world ? ", а также remote по всему миру" : ""}` : world ? "remote по всему миру" : "по твоей цели";
-  return `Simplify сейчас ищет новые вакансии ${where}${personalize ? " и адаптирует CV под самые сильные из них" : ""}.`;
+  const where = inList.length ? `в ${joinRu(inList)}${world ? ", а также удалённо по всему миру" : ""}` : world ? "удалённо по всему миру" : "по твоей цели";
+  return `Агент сейчас ищет новые вакансии ${where}${personalize ? " и адаптирует CV под самые сильные из них" : ""}.`;
 }
 
 // ——— Campaign numbers & stage ———
 
 export const STAGES = [
-  { key: "goal", label: "Career Goal" },
-  { key: "search", label: "Search" },
-  { key: "applications", label: "Applications" },
-  { key: "assessments", label: "Assessments" },
-  { key: "interviews", label: "Interviews" },
-  { key: "offers", label: "Offers" },
-  { key: "hired", label: "Hired" },
+  { key: "goal", label: "Цель" },
+  { key: "search", label: "Поиск" },
+  { key: "applications", label: "Заявки" },
+  { key: "assessments", label: "Тесты" },
+  { key: "interviews", label: "Интервью" },
+  { key: "offers", label: "Офферы" },
+  { key: "hired", label: "Работа" },
 ] as const;
 
 type OppRow = { status: string; match: number; eligibility: string; createdAt: Date; submittedAt: Date | null; interviews: { round: string }[]; _count: { offers: number } };
@@ -106,6 +107,34 @@ export function totals(opps: OppRow[]) {
   };
 }
 export type Totals = ReturnType<typeof totals>;
+
+/**
+ * Exact split of found roles, labels that add up (Today's «подошли» and the feed's discovery line use the same rule):
+ *   found     = qualified + weaker + blocked + setAside
+ *   qualified = queued + prepared + applied + waiting
+ * qualified = isQualified (Match ≥ STRONG_MATCH, not blocked, not skipped). queued = the agent will prepare it (status
+ * "qualified"); prepared = package built, not sent yet (a question or the daily limit may hold it); applied = sent or
+ * later; waiting = the agent won't take it on its own (off-goal or stale) — it needs the user's Apply.
+ * weaker = eligible but Match below STRONG_MATCH; blocked = fails a hard requirement; setAside = skipped by the user or as
+ * a duplicate of the same role elsewhere.
+ */
+export function breakdown(opps: Pick<OppRow, "status" | "match" | "eligibility" | "submittedAt">[]) {
+  const b = { found: opps.length, qualified: 0, queued: 0, prepared: 0, applied: 0, waiting: 0, weaker: 0, blocked: 0, setAside: 0 };
+  for (const o of opps) {
+    if (o.eligibility === "blocked") b.blocked++;
+    else if (o.status === "skipped") b.setAside++;
+    else if (!isQualified(o)) b.weaker++;
+    else {
+      b.qualified++;
+      if (isSubmitted(o)) b.applied++;
+      else if (o.status === "prepared") b.prepared++;
+      else if (o.status === "qualified") b.queued++;
+      else b.waiting++;
+    }
+  }
+  return b;
+}
+export type Breakdown = ReturnType<typeof breakdown>;
 export type StageKey = (typeof STAGES)[number]["key"];
 
 /**
@@ -150,7 +179,7 @@ export type TimelineItem = {
 
 const RESPONSE_COPY: Record<string, (c: string) => { text: string; kind: TimelineItem["kind"]; cta?: string }> = {
   interview: (c) => ({ text: `${c}: приглашение на интервью`, kind: "interview", cta: "Подготовиться" }),
-  assessment: (c) => ({ text: `${c}: следующий этап — assessment`, kind: "interview", cta: "Подготовиться" }),
+  assessment: (c) => ({ text: `${c}: следующий этап — тестовое задание`, kind: "interview", cta: "Подготовиться" }),
   offer: (c) => ({ text: `Оффер от ${c}`, kind: "offer", cta: "Открыть оффер" }),
   rejection: (c) => ({ text: `${c}: отказ. Статус обновлён автоматически`, kind: "rejection" }),
 };
@@ -197,7 +226,8 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
   // Strongest few finds and a few skips per day — the rest is summarised, not listed.
   for (const o of found) if (bump(o.createdAt, "found") <= 4) items.push({ id: `f-${o.id}`, at: o.createdAt, kind: "found", text: `Найдена роль: ${o.job.title} — ${o.job.company}`, match: o.match, href: `/app/opportunities/${o.id}` });
   for (const o of skipped) {
-    const reason = j<string[]>(o.blockers, [])[0];
+    const first = j<string[]>(o.blockers, [])[0];
+    const reason = first ? blockerRu(first) : "";
     if (!reason) continue;
     if (bump(o.createdAt, "skipped") <= 3) items.push({ id: `s-${o.id}`, at: o.createdAt, kind: "skipped", text: `Пропущено — ${o.job.company}: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`, href: `/app/opportunities/${o.id}` });
   }
@@ -272,6 +302,7 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
   const t = totals(opps);
   const stage = currentStage(t, campaign.status);
   const today = { found: day.found, qualified: day.qualified, strong: day.strong, submitted: day.submitted, responses: responsesToday };
+  const dayOpps = opps.filter((o) => o.createdAt >= dayStart);
   const queue = await nextCycleQueue(campaign, autonomy);
   const { line, regions } = goalLine(user.goal);
   return {
@@ -281,6 +312,10 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
     /** Use for the progress rail values (StageBar) instead of reading totals directly. */
     stageValues: stageValues(t, user.goal?.primaryRole ?? ""),
     today,
+    /** Exact split of today's finds (sums to today.found; .qualified === today.qualified). */
+    todayBreakdown: breakdown(dayOpps),
+    /** The same split for the whole campaign (sums to totals.found; .qualified === totals.qualified). */
+    breakdown: breakdown(opps),
     strongThreshold: autonomy.autoApplyMinMatch,
     /** Roles the next agent cycle would send on its own (for «в очереди — агент подаст в следующем цикле»). */
     queue,

@@ -12,7 +12,7 @@ export function StepReadiness({ data }: { data: ReadinessData }) {
   const fixes: { kind: string; label: string; extra?: Record<string, string> }[] = [];
   if (r.suggestedSeniority !== goal.seniority && bad("seniority")) fixes.push({ kind: "seniority", label: `Уровень: ${SENIORITY_LABEL[r.suggestedSeniority] ?? r.suggestedSeniority}` });
   if (bad("salary")) fixes.push({ kind: "salary", label: `Минимум ${kUsd(range.mid)} (медиана рынка)` });
-  if (bad("geo") && !goal.workModes.includes("remote")) fixes.push({ kind: "remote", label: "Добавить remote" });
+  if (bad("geo") && !goal.workModes.includes("remote")) fixes.push({ kind: "remote", label: "Добавить удалённый формат" });
   for (const role of r.suggestedRoles.filter((x) => x !== goal.primaryRole && !goal.extraRoles.includes(x)).slice(0, r.verdict === "unrealistic" ? 2 : 1)) fixes.push({ kind: "role", label: `Добавить роль: ${role}`, extra: { role } });
 
   return (
@@ -24,7 +24,7 @@ export function StepReadiness({ data }: { data: ReadinessData }) {
       {fixes.length > 0 && (
         <section aria-labelledby="fixes-h" className="glass flex flex-col gap-3 p-5 sm:p-6">
           <div className="flex flex-col gap-1">
-            <h2 id="fixes-h" className="text-[15.5px] font-medium text-head">{r.verdict === "unrealistic" ? "Рекомендую поправить цель" : "Можно ускорить"}</h2>
+            <h2 id="fixes-h" className="text-[15.5px] font-medium text-head">{r.verdict === "unrealistic" ? "Агент советует поправить цель" : "Можно ускорить"}</h2>
             <p className="text-[13px] text-ink-3">В один клик. Меняется только цель — Readiness пересчитается сразу.</p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -32,7 +32,7 @@ export function StepReadiness({ data }: { data: ReadinessData }) {
               <form key={fx.kind + fx.label} action={applyAdjustment}>
                 <input type="hidden" name="kind" value={fx.kind} />
                 {fx.extra && Object.entries(fx.extra).map(([k, val]) => <input key={k} type="hidden" name={k} value={val} />)}
-                <SubmitButton variant={r.verdict === "unrealistic" ? "primary" : "glass"} size="sm" pendingText="Применяю…">{fx.label}</SubmitButton>
+                <SubmitButton variant={r.verdict === "unrealistic" ? "primary" : "glass"} size="sm" pendingText="Применяется…">{fx.label}</SubmitButton>
               </form>
             ))}
           </div>

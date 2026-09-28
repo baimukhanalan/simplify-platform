@@ -57,10 +57,10 @@ export function agentMaySubmit(opp: { decision: string; match: number }, a: Pick
 
 // submitApplications + autoApplyMinMatch are one control ("Auto-apply above N%"), rendered separately from these switches.
 export const AUTONOMY_LABELS: { key: Exclude<keyof Autonomy, "sensitive" | "autoApplyMinMatch" | "submitApplications">; label: string; hint: string }[] = [
-  { key: "findJobs", label: "Find jobs", hint: "Искать новые вакансии каждый день" },
-  { key: "personalizeCv", label: "Personalize CV", hint: "Адаптировать CV и cover letter под каждую вакансию" },
-  { key: "answerStandard", label: "Answer standard questions", hint: "Опыт, notice period, relocation, мотивация" },
-  { key: "changeSalary", label: "Change salary expectation", hint: "Отклоняться от твоей зарплатной вилки в ответах" },
-  { key: "outsideCountries", label: "Apply outside selected countries", hint: "Подаваться за пределами выбранных стран" },
-  { key: "belowSalaryFloor", label: "Apply below salary floor", hint: "Подаваться на вакансии ниже минимальной зарплаты" },
+  { key: "findJobs", label: "Искать вакансии", hint: "Искать новые вакансии каждый день" },
+  { key: "personalizeCv", label: "Адаптировать CV", hint: "Адаптировать CV и сопроводительное письмо под каждую вакансию" },
+  { key: "answerStandard", label: "Отвечать на стандартные вопросы", hint: "Опыт, срок выхода на работу, переезд, мотивация" },
+  { key: "changeSalary", label: "Менять ожидания по зарплате", hint: "Отклоняться от твоей зарплатной вилки в ответах" },
+  { key: "outsideCountries", label: "Подавать вне выбранных стран", hint: "Подавать заявки за пределами выбранных стран" },
+  { key: "belowSalaryFloor", label: "Подавать ниже минимальной зарплаты", hint: "Подавать заявки на вакансии ниже минимальной зарплаты" },
 ];

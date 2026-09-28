@@ -80,7 +80,7 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
           {pending ? <span aria-hidden className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" /> : <Share2 className="size-4" strokeWidth={1.7} aria-hidden />}
           {pending ? "Создаём ссылку…" : "Share my Simplify journey"}
         </button>
-        <p className="text-[12.5px] text-white/50">Публичная страница: только имя, роль, компания и статистика — без email и зарплаты.</p>
+        <p className="text-[12.5px] text-white/50">Публичная страница: только имя, роль, компания и статистика — без почты и зарплаты.</p>
         {error && <p role="alert" className="text-[13px] text-[#f2a7a8]">{error}</p>}
       </div>
     );
@@ -91,7 +91,7 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
       <div className="flex min-w-0 items-center gap-2 rounded-full border border-white/15 bg-white/[.06] py-1.5 pl-4 pr-1.5">
         <Link2 className="size-4 shrink-0 text-[#8fc7ad]" strokeWidth={1.7} aria-hidden />
         <input readOnly value={url ?? ""} aria-label="Публичная ссылка на твою историю в Simplify" onFocus={(e) => e.currentTarget.select()} className={cx("min-w-0 flex-1 truncate bg-transparent text-[13.5px] text-white/85 outline-none", "focus-visible:underline")} />
-        <button type="button" onClick={copy} className={cx("inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#7fe3b6] px-4 text-[13px] font-medium text-[#0c1512] transition hover:bg-[#9aeec7]", ring)}>
+        <button type="button" onClick={copy} className={cx("inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-[#7fe3b6] px-4 text-[13px] font-medium text-[#0c1512] transition hover:bg-[#9aeec7]", ring)}>
           {copied === "ok" ? <Check className="size-3.5" strokeWidth={2} aria-hidden /> : <Copy className="size-3.5" strokeWidth={1.8} aria-hidden />}
           <span aria-live="polite">{copied === "ok" ? "Скопировано" : copied === "fail" ? "Не вышло" : "Копировать"}</span>
         </button>
@@ -102,13 +102,13 @@ export function ShareJourney({ initialPath, shareText }: { initialPath: string |
             <Share2 className="size-4" strokeWidth={1.7} aria-hidden />Поделиться
           </button>
         )}
-        <a href={path} target="_blank" rel="noopener" className={cx("rounded text-[13px] text-white/60 underline-offset-4 hover:text-white hover:underline", ring)}>
+        <a href={path} target="_blank" rel="noopener" className={cx("inline-flex min-h-10 items-center rounded text-[13px] text-white/60 underline-offset-4 hover:text-white hover:underline", ring)}>
           Открыть публичную страницу<span className="sr-only"> (в новой вкладке)</span>
         </a>
-        <button type="button" onClick={rotate} disabled={pending} title="Старая ссылка перестанет работать" className={cx("inline-flex items-center gap-1.5 rounded text-[13px] text-white/60 hover:text-white disabled:opacity-60", ring)}>
+        <button type="button" onClick={rotate} disabled={pending} title="Старая ссылка перестанет работать" className={cx("inline-flex min-h-10 items-center gap-1.5 rounded text-[13px] text-white/60 hover:text-white disabled:opacity-60", ring)}>
           <RefreshCw className="size-3.5" strokeWidth={1.7} aria-hidden />Новая ссылка
         </button>
-        <button type="button" onClick={revoke} disabled={pending} className={cx("inline-flex items-center gap-1.5 rounded text-[13px] text-white/60 hover:text-[#f2a7a8] disabled:opacity-60", ring)}>
+        <button type="button" onClick={revoke} disabled={pending} className={cx("inline-flex min-h-10 items-center gap-1.5 rounded text-[13px] text-white/60 hover:text-[#f2a7a8] disabled:opacity-60", ring)}>
           <Unlink className="size-3.5" strokeWidth={1.7} aria-hidden />Отключить ссылку
         </button>
       </div>

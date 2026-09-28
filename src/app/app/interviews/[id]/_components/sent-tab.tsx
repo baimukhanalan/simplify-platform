@@ -8,23 +8,24 @@ import { cvVersionLabel } from "../../../opportunities/_lib/fit";
 
 type Answer = { q: string; a: string; category?: string; status?: string; kind?: string };
 
-export function SentTab({ pkg, company, submittedAt, opportunityId }: { pkg: ApplicationPackage | null; company: string; submittedAt: Date | null; opportunityId: string }) {
+export function SentTab({ pkg, company, submittedAt, opportunityId, debug }: { pkg: ApplicationPackage | null; company: string; submittedAt: Date | null; opportunityId: string; debug?: boolean }) {
   if (!pkg) return <Empty title="Пакет заявки не найден" sub="Похоже, заявка была отправлена вне Simplify — здесь нечего показать." />;
   const answers = j<Answer[]>(pkg.answers, []);
-  const method = pkg.submitMethod.startsWith("ats:") ? `ATS (${pkg.submitMethod.slice(4)})` : pkg.submitMethod === "user-handoff" ? "Отправлено тобой (handoff)" : "Не отправлено";
+  const method = pkg.submitMethod.startsWith("ats:") ? `Через форму работодателя (${pkg.submitMethod.slice(4)})` : pkg.submitMethod === "user-handoff" ? "Отправлено тобой" : "Не отправлено";
   return (
     <div className="flex flex-col gap-4">
       <Card className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <Label className="mb-1.5">Что именно мы отправили в {company}</Label>
+          <Label className="mb-1.5">Что именно агент отправил в {company}</Label>
           <p className="text-[14px] text-ink-2">Перечитай перед звонком: интервьюер видит ровно эту версию.</p>
-          <Link href={`/app/applications/${opportunityId}`} className="mt-2 inline-flex items-center gap-1 rounded text-[13px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">
+          <Link href={`/app/applications/${opportunityId}`} className="mt-1 inline-flex min-h-10 items-center gap-1 rounded text-[13px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">
             Открыть карточку заявки<ArrowUpRight className="size-3.5" strokeWidth={1.7} aria-hidden />
           </Link>
         </div>
         <div className="flex flex-wrap gap-2">
           <Chip tone="dark">{cvVersionLabel(pkg.cvVersion, company)}</Chip>
-          <Chip tone={pkg.generatedBy === "claude" ? "green" : "teal"}>{pkg.generatedBy}</Chip>
+          {pkg.generatedBy === "claude" && <Chip tone="green">Claude</Chip>}
+          {debug && <Chip>by: {pkg.generatedBy || "—"} · {pkg.submitMethod || "—"}</Chip>}
           <Chip>{method}</Chip>
           {submittedAt && <Chip>{submittedAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short" })}</Chip>}
         </div>
@@ -42,13 +43,13 @@ export function SentTab({ pkg, company, submittedAt, opportunityId }: { pkg: App
         <div className="flex flex-col gap-4">
           <Card>
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="h-serif text-[22px]">Cover letter</h2>
+              <h2 className="h-serif text-[22px]">Сопроводительное письмо</h2>
               {pkg.coverLetter && <CopyButton text={pkg.coverLetter} />}
             </div>
-            {pkg.coverLetter ? <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{pkg.coverLetter}</p> : <p className="text-[14px] text-ink-3">Cover letter не требовался.</p>}
+            {pkg.coverLetter ? <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-ink-2">{pkg.coverLetter}</p> : <p className="text-[14px] text-ink-3">Сопроводительное письмо не требовалось.</p>}
           </Card>
           <Card>
-            <h2 className="h-serif mb-3 text-[22px]">Screening answers</h2>
+            <h2 className="h-serif mb-3 text-[22px]">Ответы на анкету</h2>
             {answers.length === 0 ? (
               <p className="text-[14px] text-ink-3">Анкета не содержала вопросов.</p>
             ) : (

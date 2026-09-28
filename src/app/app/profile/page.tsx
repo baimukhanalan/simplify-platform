@@ -13,8 +13,8 @@ export const metadata: Metadata = { title: "Career Profile" };
 
 const NAV = [
   ["basics", "Основное"],
-  ["skills", "Skills"],
-  ["strengths", "Strengths"],
+  ["skills", "Навыки"],
+  ["strengths", "Сильные стороны"],
   ["constraints", "Ограничения"],
   ["experience", "Опыт"],
   ["stories", "Интервью"],
@@ -45,7 +45,7 @@ export default async function ProfilePage() {
   const withMetrics = facts.filter((f) => (f.kind === "employment" || f.kind === "project") && f.metrics).length;
 
   const needs: Need[] = [];
-  if (!profile.cvText) needs.push({ text: "Загрузи CV — я разберу его сам", href: "/onboarding?step=1" });
+  if (!profile.cvText) needs.push({ text: "Загрузи CV — агент разберёт его сам", href: "/onboarding?step=1" });
   if (!profile.linkedin) needs.push({ text: "Добавь ссылку на LinkedIn — её требуют многие формы заявок", href: "#basics" });
   if (facts.some((f) => f.kind === "employment") && withMetrics === 0) needs.push({ text: "Добавь хотя бы один результат в цифрах", href: "#experience" });
 
@@ -77,9 +77,9 @@ export default async function ProfilePage() {
 
         <section id="stories" aria-labelledby="stories-h" className="scroll-mt-24 pt-4">
           <div className="mb-4 flex flex-col gap-1">
-            <div className="label">Interview material</div>
+            <div className="label">Материалы для интервью</div>
             <h2 id="stories-h" className="h-serif text-[clamp(22px,2.4vw,30px)]">STAR-<Script>истории</Script></h2>
-            <p className="max-w-2xl text-[13.5px] text-ink-3">Situation, Task, Action, Result — короткие истории из твоего опыта для вопросов вроде «Расскажи о случае, когда…».</p>
+            <p className="max-w-2xl text-[13.5px] text-ink-3">STAR — ситуация, задача, действие, результат: короткие истории из твоего опыта для вопросов вроде «Расскажи о случае, когда…».</p>
           </div>
           <Stories stories={stories} facts={facts.map((f) => ({ id: f.id, title: f.title, org: f.org }))} />
         </section>

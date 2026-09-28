@@ -1,5 +1,5 @@
 // Pure presentation logic for Opportunities: turns engine output (match reasons, eligibility, job vs goal)
-// into human sentences — "Why this fits" and "Risks". Safe for server and client.
+// into human sentences — "Why this fits" and «Риски». Safe for server and client.
 import { ROLE_FAMILIES, SENIORITY_LABEL, seniorityIndex } from "@/lib/engine/taxonomy";
 import { plural } from "../../../_components/ru";
 
@@ -102,9 +102,9 @@ export function risks(o: FitOpp, job: FitJob, c: FitCandidate): string[] {
 
 /** Eligibility as a verdict the user reads in one glance. */
 export function eligibilityVerdict(e: string) {
-  if (e === "blocked") return { label: "Fail", hint: "Формально не проходишь — агент не подаёт", tone: "rose" as const };
-  if (e === "soft") return { label: "Pass", hint: "Проходишь, но есть пробелы", tone: "amber" as const };
-  return { label: "Pass", hint: "Формальных препятствий нет", tone: "green" as const };
+  if (e === "blocked") return { label: "Не проходишь", hint: "Агент на неё не подаёт", tone: "rose" as const };
+  if (e === "soft") return { label: "Проходишь", hint: "Есть пробелы, но подать можно", tone: "amber" as const };
+  return { label: "Проходишь", hint: "Формальных препятствий нет", tone: "green" as const };
 }
 
 /**

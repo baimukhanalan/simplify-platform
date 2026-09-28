@@ -12,7 +12,7 @@ const monoCyr = JetBrains_Mono({ subsets: ["cyrillic"], weight: ["400"], variabl
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3210")),
-  title: { default: "Simplify — AI Career Agent", template: "%s · Simplify" },
+  title: { default: "Simplify — карьерный ИИ-агент", template: "%s · Simplify" },
   description: "Tell us what job you want. We handle the rest. Stop applying. Start interviewing.",
   icons: { icon: [{ url: "/brand/favicon.svg", type: "image/svg+xml" }, { url: "/brand/favicon.png" }] },
   openGraph: { images: ["/brand/og_image.jpg"] },

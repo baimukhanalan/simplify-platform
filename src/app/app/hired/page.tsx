@@ -7,7 +7,8 @@ import { db } from "@/lib/db";
 import { ButtonLink, Card, Label, Script } from "@/components/ui";
 import { agentState } from "../_components/today-data";
 import { ShareJourney } from "./_components/share-journey";
-import { firstName, journeyStats, latestHiredCampaign, plural } from "./_lib/journey";
+import { plural } from "../../_components/ru";
+import { firstName, journeyStats, latestHiredCampaign } from "./_lib/journey";
 
 export const metadata: Metadata = { title: "HIRED" };
 
@@ -16,13 +17,13 @@ export default async function HiredPage() {
   const campaign = await latestHiredCampaign(user.id);
 
   if (!campaign) {
-    // An offer that is still waiting for a decision belongs on the Offer Desk, not on a "HIRED soon" placeholder.
+    // An offer that is still waiting for a decision belongs on the Offer Desk, not on the «скоро HIRED» placeholder.
     const openOffer = await db.offer.findFirst({ where: { userId: user.id, status: { in: ["received", "negotiating"] } }, select: { id: true } });
     if (openOffer) redirect("/app/offers");
     return (
       <Card strong className="mx-auto mt-6 flex max-w-2xl animate-rise flex-col items-start gap-4 sm:p-10">
         <Label>HIRED</Label>
-        <h1 className="h-serif text-[clamp(30px,4vw,44px)]">HIRED <Script>soon</Script></h1>
+        <h1 className="h-serif text-[clamp(30px,4vw,44px)]"><Script>Скоро</Script> HIRED</h1>
         <p className="text-[15px] text-ink-2">
           Когда ты примешь оффер, кампания завершится статусом HIRED и здесь появится итог: заявки, интервью и дни до оффера.
         </p>
@@ -45,8 +46,8 @@ export default async function HiredPage() {
   const after = agent.running
     ? "Новая кампания уже идёт — прогресс на Today."
     : user.careerMode === "passive"
-      ? "Passive Mode включён: заявки не подаются, Simplify следит за рынком и скажет, когда стоит двигаться."
-      : "Заявки по этой кампании больше не подаются. Passive Mode можно включить в Career Mode.";
+      ? "Пассивный режим включён: заявки не подаются, агент следит за рынком и скажет, когда стоит двигаться."
+      : "Заявки по этой кампании больше не подаются. Пассивный режим можно включить в разделе Career.";
 
   return (
     <section aria-labelledby="hired-h" className="relative isolate flex min-h-[calc(100dvh-7.5rem)] flex-col overflow-hidden rounded-[32px] bg-[#0c1512] px-6 py-9 text-white shadow-[0_30px_80px_-30px_rgb(12_21_18/.6)] sm:px-12 sm:py-12 lg:min-h-[calc(100dvh-9rem)]">
@@ -65,7 +66,7 @@ export default async function HiredPage() {
         <div aria-hidden className="mt-5 h-px w-full max-w-[520px] origin-left animate-[draw_1.4s_cubic-bezier(.16,1,.3,1)_.3s_both] bg-gradient-to-r from-[#7fe3b6] via-[#8fc7ad]/60 to-transparent" />
         {s.offer ? (
           <p className="mt-6 max-w-3xl animate-rise text-[clamp(20px,2.6vw,30px)] leading-snug text-white/85" style={{ animationDelay: "120ms" }}>
-            {s.offer.role} <span className="script !text-[#8fc7ad]">at</span> <span className="text-white">{s.offer.company}</span>
+            {s.offer.role} <span className="script !text-[#8fc7ad]">в</span> <span className="text-white">{s.offer.company}</span>
           </p>
         ) : (
           <p className="mt-6 animate-rise text-[clamp(18px,2.2vw,24px)] text-white/80" style={{ animationDelay: "120ms" }}>Поздравляем, {name}.</p>
@@ -84,7 +85,7 @@ export default async function HiredPage() {
       <div className="flex animate-rise flex-col gap-6 border-t border-white/10 pt-7 lg:flex-row lg:items-start lg:justify-between" style={{ animationDelay: "320ms" }}>
         <div className="flex flex-col gap-2">
           <Link href="/app/career" className="inline-flex h-12 w-fit items-center gap-2 rounded-full bg-[#7fe3b6] px-6 text-[15px] font-medium text-[#0c1512] transition hover:bg-[#9aeec7] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]">
-            Перейти в Career Mode<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
+            Перейти в Career<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </Link>
           <p className="max-w-sm text-[12.5px] text-white/50">{after}</p>
         </div>

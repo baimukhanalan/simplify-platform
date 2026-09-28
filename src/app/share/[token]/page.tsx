@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Logo } from "@/components/ui";
-import { plural } from "@/app/app/hired/_lib/journey";
+import { plural } from "../../_components/ru";
 import { headline, loadShare, statsLine } from "./data";
 
 type Props = { params: Promise<{ token: string }> };
@@ -13,7 +13,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const d = await loadShare(token);
   if (!d) return { title: "Simplify", robots: { index: false, follow: false } };
   const title = headline(d);
-  const description = `${statsLine(d)} — вместе с Simplify, персональным AI Career Agent.`;
+  const description = `${statsLine(d)} — вместе с Simplify, персональным карьерным ИИ-агентом.`;
   return {
     title: { absolute: `${title} · Simplify` },
     description,
@@ -74,7 +74,7 @@ export default async function SharePage({ params }: Props) {
         </dl>
 
         <p className="mt-auto max-w-xl pt-12 text-[14px] leading-relaxed text-white/60">
-          Весь поиск вёл персональный AI Career Agent Simplify: подбор вакансий, заявки, подготовка к интервью и переговоры по офферу.
+          Весь поиск вёл персональный карьерный ИИ-агент Simplify: подбор вакансий, заявки, подготовка к интервью и переговоры по офферу.
         </p>
       </article>
 

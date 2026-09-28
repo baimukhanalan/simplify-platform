@@ -71,6 +71,26 @@ export const PLANS = {
   international: { key: "international", label: "International", priceKzt: 49990, days: 60, dailyLimit: 10, regions: ["EU", "UK", "US", "CA", "MENA", "WORLD", "KZ", "CIS"] },
 } as const;
 
+/** Markets that make a goal "international" as a qualifier: named foreign markets. WORLD (remote) and local ones don't. */
+const NAMED_FOREIGN = new Set(["EU", "UK", "US", "CA", "MENA"]);
+const WHERE_WORDS = /(?<![\p{L}\p{N}])(удал[её]нно|удал[её]нка|remote|hybrid|гибрид|onsite|офис|relocation|переезд|европа|europe|сша|usa|казахстан|kazakhstan)(?![\p{L}\p{N}])/giu;
+
+/** A role as typed, without format/region words ("Product Manager, удалённо" → "Product Manager"). */
+export function cleanRoleTitle(role: string) {
+  return role.replace(WHERE_WORDS, " ").replace(/[\s,·|/()-]+$/g, "").replace(/^[\s,·|/()-]+/g, "").replace(/\s{2,}/g, " ").trim() || role.trim();
+}
+
+/**
+ * The goal as one title: the role only, plus «International» when the goal names a foreign market (EU, UK, US, CA, MENA).
+ * "Удалённо" / WORLD is a work format, never part of the title: role "Product Manager" + where ["WORLD"] → "Product Manager".
+ * Stray format/region words typed into the role ("Product Manager удалённо") are dropped.
+ */
+export function goalTitle(role: string, countries: string[]) {
+  const clean = cleanRoleTitle(role);
+  const intl = countries.some((c) => NAMED_FOREIGN.has(c));
+  return intl && !/international/i.test(clean) ? `International ${clean}` : clean;
+}
+
 export function classifyRole(title: string): string {
   const t = ` ${title.toLowerCase()} `;
   // Order matters: specific families before the generic "engineer".
@@ -114,13 +134,60 @@ export function seniorityFromTitle(title: string): Seniority | null {
   return null;
 }
 
+/** Emails, URLs, domains and phone numbers carry letters that look like skills ("r.smith@…" → "R"): never match inside them. */
+export function stripContacts(text: string) {
+  return text
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, " ")
+    .replace(/(?:https?:\/\/|www\.)\S+/gi, " ")
+    .replace(/(?<![\p{L}\p{N}@])[\w-]+(?:\.[\w-]+)*\.(?:com|kz|ru|io|org|net|dev|ai|me|app|co|uk|de|example)(?:\/\S*)?(?![\p{L}\p{N}])/gu, " ") // lower-case only: "ASP.NET" stays
+    .replace(/\+?\d[\d\s().-]{7,}\d/g, " ");
+}
+
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+const ALNUM = /[\p{L}\p{N}]/u;
+/** Skill as a whole token: no letter or digit right before or after ("Java" ≠ "JavaScript", "Excel" ≠ "excellent", "REST" ≠ "interest"). */
+const tokenRe = (skill: string) =>
+  new RegExp(`${ALNUM.test(skill[0]) ? "(?<![\\p{L}\\p{N}])" : ""}${esc(skill)}${ALNUM.test(skill[skill.length - 1]) ? "(?![\\p{L}\\p{N}])" : ""}`, CASE_EXACT.has(skill) ? "u" : "iu");
+/** Skills that are also everyday English words ("the rest of", "a swift reply"): only their proper spelling counts. */
+const CASE_EXACT = new Set(["REST", "Spark", "Swift", "Notion"]);
+
+/**
+ * 1–2 letter skills ("R", "Go", "C#") are ordinary letters too — a name initial, "Go to market". They count only as a
+ * case-exact token with a context cue nearby, or as an item of a skills list (a line headed "Skills:", or a comma/slash
+ * list where another known skill sits next to it). A word that implies the skill ("RStudio", "Golang") counts on its own.
+ */
+const SHORT_SKILLS: Record<string, { implied: RegExp; cue: RegExp; caseExact: RegExp }> = {
+  R: { implied: /(?<![\p{L}\p{N}])(rstudio|tidyverse|ggplot2?|dplyr|r shiny|r markdown|rmarkdown)(?![\p{L}\p{N}])/iu, cue: /statistic|programming|rstudio|ggplot|tidyverse|dplyr|shiny|cran|regression|econometric|stata|spss|sas\b|matlab|python|sql|статистик|программир/i, caseExact: /(?<![\p{L}\p{N}.@'’-])R(?![\p{L}\p{N}@'’&-]|\.(?:\s*[A-ZА-Я]|\p{L}))/gu },
+  Go: { implied: /(?<![\p{L}\p{N}])golang(?![\p{L}\p{N}])/iu, cue: /golang|goroutine|grpc|microservice|backend|kubernetes|docker|rust|java|python|typescript|node\.js|бэкенд|микросервис/i, caseExact: /(?<![\p{L}\p{N}])(?:Go|GO)(?![\p{L}\p{N}'’-])/gu },
+  "C#": { implied: /(?<![\p{L}\p{N}])(csharp|c sharp)(?![\p{L}\p{N}])/iu, cue: /./, caseExact: /(?<![\p{L}\p{N}])[Cc]#/gu },
+};
+const LIST_HEAD = /^\s*[-•*·]?\s*(skills|hard skills|technical skills|tech(?:nologies)?|tech stack|stack|tools|languages|programming languages|навыки|стек|технологии|инструменты|языки программирования)(?![\p{L}])\s*[:—–-]/iu;
+const LIST_SEP = /\s*(?:[,;/|·•]|\s(?:and|or|&|и|или)\s)\s*/iu;
+
+function shortSkillIn(skill: string, text: string, longHits: Set<string>) {
+  const rule = SHORT_SKILLS[skill];
+  if (!rule) return false;
+  if (rule.implied.test(text)) return true;
+  for (const m of text.matchAll(rule.caseExact)) {
+    const at = m.index ?? 0;
+    const lineStart = text.lastIndexOf("\n", at) + 1;
+    const lineEnd = text.indexOf("\n", at);
+    const line = text.slice(lineStart, lineEnd === -1 ? undefined : lineEnd);
+    if (LIST_HEAD.test(line)) return true;
+    const chunks = line.replace(LIST_HEAD, "").split(LIST_SEP).map((c) => c.trim().replace(/[.:()]+$/g, "")).filter(Boolean);
+    if (chunks.includes(m[0]) && chunks.some((c) => c !== m[0] && longHits.has(c.toLowerCase()))) return true;
+    const window = text.slice(Math.max(0, at - 50), at + m[0].length + 50);
+    if (skill !== "C#" && rule.cue.test(window.replace(m[0], " "))) return true;
+    if (skill === "C#") return true;
+  }
+  return false;
+}
+
 export function extractSkills(text: string): string[] {
-  const lower = text.toLowerCase();
-  return SKILL_DICTIONARY.filter((s) => {
-    const k = s.toLowerCase();
-    if (k.length <= 2) return new RegExp(`(^|[^a-z])${k.replace(/[.+#]/g, "\\$&")}([^a-z]|$)`).test(lower);
-    return lower.includes(k);
-  });
+  const clean = stripContacts(text);
+  const long = SKILL_DICTIONARY.filter((s) => s.length > 2 && tokenRe(s).test(clean));
+  const longHits = new Set(long.map((s) => s.toLowerCase()));
+  return SKILL_DICTIONARY.filter((s) => (s.length > 2 ? longHits.has(s.toLowerCase()) : shortSkillIn(s, clean, longHits)));
 }
 
 /* ——— Languages ——— */

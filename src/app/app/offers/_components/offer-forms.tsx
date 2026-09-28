@@ -4,6 +4,7 @@ import type { Offer } from "@prisma/client";
 import { Field } from "@/components/ui";
 import { PendingButton, submitVia } from "../../interviews/_components/pending-button";
 import { addOffer, updateOffer, type OfferFormState } from "@/lib/actions/offer";
+import { WORK_MODE_RU } from "../../../_components/ru";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "KZT", "CAD", "AED"];
 
@@ -18,7 +19,7 @@ function TermsFields({ o }: { o?: Partial<Offer> }) {
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
-        <Field label="Base, в год" hint="Годовая сумма до налогов">
+        <Field label="Оклад в год" hint="Годовая сумма до налогов">
           <input name="base" type="number" inputMode="numeric" min={1000} step={500} required defaultValue={o?.base ?? ""} className="field num" placeholder="68000" />
         </Field>
         <Field label="Валюта">
@@ -28,27 +29,25 @@ function TermsFields({ o }: { o?: Partial<Offer> }) {
         </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Bonus, в год"><input name="bonus" type="number" inputMode="numeric" min={0} defaultValue={o?.bonus ?? 0} className="field num" /></Field>
-        <Field label="Signing bonus"><input name="signingBonus" type="number" inputMode="numeric" min={0} defaultValue={o?.signingBonus ?? 0} className="field num" /></Field>
-        <Field label="Equity"><input name="equity" defaultValue={o?.equity ?? ""} className="field" placeholder="0.05%, 4 года" /></Field>
+        <Field label="Бонус в год"><input name="bonus" type="number" inputMode="numeric" min={0} defaultValue={o?.bonus ?? 0} className="field num" /></Field>
+        <Field label="Бонус за подписание"><input name="signingBonus" type="number" inputMode="numeric" min={0} defaultValue={o?.signingBonus ?? 0} className="field num" /></Field>
+        <Field label="Акции / опционы"><input name="equity" defaultValue={o?.equity ?? ""} className="field" placeholder="0.05%, 4 года" /></Field>
       </div>
-      <Field label="Benefits" hint="Через запятую">
-        <input name="benefits" defaultValue={benefits} className="field" placeholder="Health insurance, Learning budget" />
+      <Field label="Бонусы и льготы" hint="Через запятую">
+        <input name="benefits" defaultValue={benefits} className="field" placeholder="Медстраховка, бюджет на обучение" />
       </Field>
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Отпуск, дней"><input name="vacationDays" type="number" min={0} max={365} defaultValue={o?.vacationDays ?? 0} className="field num" /></Field>
-        <Field label="Испытательный, мес."><input name="probationMonths" type="number" min={0} max={24} defaultValue={o?.probationMonths ?? 0} className="field num" /></Field>
+        <Field label="Испытательный срок, месяцев"><input name="probationMonths" type="number" min={0} max={24} defaultValue={o?.probationMonths ?? 0} className="field num" /></Field>
         <Field label="Формат">
           <select name="remote" defaultValue={o?.remote ?? "remote"} className="field">
-            <option value="remote">Remote</option>
-            <option value="hybrid">Hybrid</option>
-            <option value="onsite">Onsite</option>
+            {(["remote", "hybrid", "onsite"] as const).map((m) => <option key={m} value={m}>{WORK_MODE_RU[m]}</option>)}
           </select>
         </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Relocation"><input name="relocation" defaultValue={o?.relocation ?? ""} className="field" placeholder="Пакет, виза, билеты" /></Field>
-        <Field label="Notice period"><input name="noticePeriod" defaultValue={o?.noticePeriod ?? ""} className="field" placeholder="2 weeks" /></Field>
+        <Field label="Релокация"><input name="relocation" defaultValue={o?.relocation ?? ""} className="field" placeholder="Пакет, виза, билеты" /></Field>
+        <Field label="Срок уведомления"><input name="noticePeriod" defaultValue={o?.noticePeriod ?? ""} className="field" placeholder="2 недели" /></Field>
       </div>
     </>
   );
@@ -74,7 +73,7 @@ export function AddOfferForm({ opportunities }: { opportunities: { id: string; l
         <Field label="Должность"><input name="role" required maxLength={160} className="field" placeholder="Junior Data Analyst" /></Field>
       </div>
       {opportunities.length > 0 && (
-        <Field label="Связать с вакансией" hint="Необязательно — тогда pipeline перейдёт в Offer">
+        <Field label="Связать с вакансией" hint="Необязательно — тогда заявка перейдёт в статус «Оффер»">
           <select name="opportunityId" defaultValue="" className="field">
             <option value="">Не связывать</option>
             {opportunities.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}

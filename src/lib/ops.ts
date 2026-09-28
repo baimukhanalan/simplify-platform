@@ -86,7 +86,7 @@ export const LANE: Record<string, { label: string; tone: Tone }> = {
   mass: { label: "Массовый найм", tone: "amber" },
 };
 
-export const REMOTE_LABEL: Record<string, string> = { remote: "Remote", hybrid: "Hybrid", onsite: "Onsite" };
+export const REMOTE_LABEL: Record<string, string> = { remote: "Удалённо", hybrid: "Гибрид", onsite: "В офисе" };
 
 export const SOURCE_LABEL: Record<string, string> = { demo: "Demo", greenhouse: "Greenhouse", lever: "Lever", remotive: "Remotive", arbeitnow: "Arbeitnow", seed: "Seed" };
 

@@ -1,4 +1,5 @@
 import { ROLE_FAMILIES, INTERVIEW_STATUSES } from "./taxonomy";
+import { count } from "../ru";
 
 export type OppLite = { status: string; segment: string; lane: string; submittedAt: Date | null; match: number; job: { remote: string; countries: string; postedAt: Date; seniority: string }; pkg?: { cvVersion: string } | null; reachedInterview: boolean; reachedAssessment: boolean };
 
@@ -40,10 +41,10 @@ export function recommendations(bySegment: SegmentStat[], byGeo: SegmentStat[]) 
   const best = bySegment.find((x) => x.applied >= 5);
   const worst = [...bySegment].reverse().find((x) => x.applied >= 10);
   if (best && worst && best.key !== worst.key && best.rate > worst.rate * 1.5)
-    out.push(`${best.label}: ${best.applied} → ${best.interviews} интервью. ${worst.label}: ${worst.applied} → ${worst.interviews}. Смещаем новые заявки в «${best.label}».`);
-  for (const x of bySegment.filter((x) => x.verdict === "stop")) out.push(`«${x.label}» — ${x.applied} заявок без интервью. Подача в сегмент приостановлена.`);
+    out.push(`${best.label}: ${count(best.applied, ["заявка", "заявки", "заявок"])} → ${best.interviews} интервью. ${worst.label}: ${count(worst.applied, ["заявка", "заявки", "заявок"])} → ${worst.interviews} интервью. Агент смещает новые заявки в «${best.label}».`);
+  for (const x of bySegment.filter((x) => x.verdict === "stop")) out.push(`«${x.label}» — ${count(x.applied, ["заявка", "заявки", "заявок"])} без интервью. Агент приостановил подачу в этот сегмент.`);
   const g = byGeo.find((x) => x.applied >= 6 && x.verdict === "scale");
-  if (g) out.push(`${g.label} даёт лучший outcome (${Math.round(g.rate * 100)}% → интервью). Увеличиваем долю.`);
+  if (g) out.push(`${g.label} даёт лучший результат (${Math.round(g.rate * 100)}% заявок доходят до интервью). Агент увеличивает долю таких заявок.`);
   if (!out.length) out.push("Данных пока мало: агент собирает статистику. Выводы появятся после ~20 отправленных заявок.");
   return out;
 }

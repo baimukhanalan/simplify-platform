@@ -3,10 +3,11 @@ import Link from "next/link";
 import { ArrowLeft, Mail } from "lucide-react";
 import { Script } from "@/components/ui";
 import { SiteHeader } from "../_components/site-header";
+import { SUPPORT_EMAIL } from "../_components/legal-page";
 
 export const metadata: Metadata = { title: "Восстановление доступа", robots: { index: false } };
 
-const SUPPORT = "support@simplify.kz";
+const SUPPORT = SUPPORT_EMAIL;
 
 /**
  * Honest password reset: there is no email delivery yet, so access is restored by support by hand.

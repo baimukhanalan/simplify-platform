@@ -6,14 +6,15 @@ import { ButtonLink, Chip, PageHeader, Script } from "@/components/ui";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
 import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
-import { CAMPAIGN_MODE_RU, WORK_MODE_RU, regionRu } from "../../_components/ru";
+import { CAMPAIGN_MODE_RU, WORK_MODE_RU } from "../../_components/ru";
 import { goalTitle } from "../readiness/_components/model";
 import { Facts } from "../profile/_components/editable";
 import { GoalForm, type GoalValues } from "./_components/goal-form";
+import { goalRegion } from "./_components/region";
 
 export const metadata: Metadata = { title: "Моя цель" };
 
-const SIZE_LABEL: Record<string, string> = { any: "Любой", startup: "Стартап", scaleup: "Scale-up", corporate: "Корпорация" };
+const SIZE_LABEL: Record<string, string> = { any: "Любой", startup: "Стартап", scaleup: "Растущая компания", corporate: "Корпорация" };
 
 function money(n: number, cur: string) {
   if (!n) return "";
@@ -65,7 +66,7 @@ export default async function GoalPage({ searchParams }: { searchParams: Promise
     );
   }
 
-  const regions = [...new Set(initial.countries.map(regionRu))].join(", ");
+  const regions = [...new Set(initial.countries.map(goalRegion))].join(", ");
   const needs: Need[] = campaign ? [] : [{ text: "Запусти кампанию — и агент начнёт искать под эту цель", href: "/onboarding?step=5" }];
 
   return (

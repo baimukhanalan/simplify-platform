@@ -9,26 +9,28 @@ import { updateBasics, updateConstraints, addSkill, removeSkill, reparseCV } fro
 import { ActionForm, FormSubmit } from "./action-form";
 import { Check, Disclosure } from "./bits";
 import { Editable, Facts } from "./editable";
-import { WORK_MODE_RU, regionRu } from "../../../_components/ru";
+import { WORK_MODE_RU, plural, regionRu } from "../../../_components/ru";
+import { CitizenshipField } from "./citizenship-field";
 import type { Strength } from "./strengths";
 
 const COUNTRY_LABEL: Record<string, string> = { KZ: "Казахстан", UZ: "Узбекистан", KG: "Кыргызстан", RU: "Россия", BY: "Беларусь", UA: "Украина", AM: "Армения", GE: "Грузия", AZ: "Азербайджан", US: "США", GB: "Великобритания", CA: "Канада", AE: "ОАЭ", TR: "Турция" };
 const AUTH_OPTIONS: [string, string][] = [["EU", "Евросоюз"], ["US", "США"], ["GB", "Великобритания"], ["CA", "Канада"], ["AE", "ОАЭ"], ["KZ", "Казахстан"], ["UZ", "Узбекистан"], ["KG", "Кыргызстан"], ["RU", "Россия"], ["GE", "Грузия"], ["AM", "Армения"]];
 const REMOTE_LABEL = WORK_MODE_RU;
+/** Citizenship choices; anything else goes through «Другое» as an ISO code (the action accepts two letters only). */
+const CITIZENSHIP_OPTIONS: [string, string][] = Object.entries(COUNTRY_LABEL);
 const NOTICE_LABEL: Record<string, string> = { Immediately: "Сразу", "1 week": "Через неделю", "2 weeks": "Через 2 недели", "1 month": "Через месяц", "2 months": "Через 2 месяца" };
 const usd = (n: number) => `$${n.toLocaleString("en-US")}`;
 const yearsText = (y: number) => {
   const n = Math.round(y * 10) / 10;
   if (!Number.isInteger(n)) return `${n.toLocaleString("ru-RU")} года`;
-  const a = n % 100, b = n % 10;
-  return `${n} ${a > 10 && a < 20 ? "лет" : b === 1 ? "год" : b > 1 && b < 5 ? "года" : "лет"}`;
+  return `${n} ${plural(n, ["год", "года", "лет"])}`;
 };
 const host = (url: string) => url.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, "");
 
 function Ext({ href }: { href: string }) {
   if (!href) return null;
   const url = /^https?:\/\//i.test(href) ? href : `https://${href}`;
-  return <a href={url} target="_blank" rel="noopener noreferrer" className="rounded text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green">{host(href)}</a>;
+  return <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center rounded text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green">{host(href)}</a>;
 }
 
 /* ───────────── Основное ───────────── */
@@ -64,7 +66,7 @@ export function Basics({ name, email, profile: p, goal, currentRole }: { name: s
             <Field label="Имя"><input name="name" required minLength={2} autoComplete="name" defaultValue={name} className="field" /></Field>
             <Field label="Текущая роль" hint="Как ты называешь свою роль сейчас"><input name="headline" defaultValue={p.headline || currentRole} className="field" placeholder="Product Analyst" /></Field>
             <Field label="Опыт, лет"><input name="yearsExperience" type="number" step="0.5" min={0} max={50} inputMode="decimal" defaultValue={p.yearsExperience} className="field" /></Field>
-            <Field label="English">
+            <Field label="Английский">
               <select name="englishLevel" defaultValue={p.englishLevel} className="field">
                 {["A1", "A2", "B1", "B2", "C1", "C2"].map((l) => <option key={l}>{l}</option>)}
               </select>
@@ -84,14 +86,14 @@ export function Basics({ name, email, profile: p, goal, currentRole }: { name: s
   );
 }
 
-/* ───────────── Skills ───────────── */
+/* ───────────── Навыки ───────────── */
 
 export function Skills({ skills, facts }: { skills: string[]; facts: Fact[] }) {
   const have = new Set(skills.map((s) => s.toLowerCase()));
   const fromFacts = [...new Set(facts.flatMap((f) => j<string[]>(f.tech, [])))].filter((t) => !have.has(t.toLowerCase())).slice(0, 12);
   return (
     <Editable
-      id="skills" title="Skills"
+      id="skills" title="Навыки"
       view={skills.length ? (
         <ul className="flex flex-wrap gap-2" aria-label="Навыки">
           {skills.map((s) => <li key={s} className="rounded-full border border-line bg-white/80 px-3 py-1 text-[13.5px] text-head">{s}</li>)}
@@ -145,7 +147,7 @@ export function Skills({ skills, facts }: { skills: string[]; facts: Fact[] }) {
 export function Strengths({ items }: { items: Strength[] }) {
   return (
     <Editable
-      id="strengths" title="Career strengths" sub="Что повторяется в твоём опыте. Агент строит на этом позиционирование в CV и на интервью."
+      id="strengths" title="Сильные стороны" sub="Что повторяется в твоём опыте. Агент строит на этом позиционирование в CV и на интервью."
       view={items.length ? (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {items.map((s) => (
@@ -176,10 +178,10 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
       id="constraints" title="Ограничения" sub="Агент не подаётся туда, где эти условия не выполняются."
       view={
         <Facts cols={3} rows={[
-          ["Requires sponsorship", yesNo(p.needsSponsorship)],
+          ["Нужна рабочая виза", yesNo(p.needsSponsorship)],
           ["Переезд", yesNo(goal?.relocation ?? p.relocation)],
           ["Формат работы", REMOTE_LABEL[p.remotePref] ?? p.remotePref],
-          ["Minimum salary", minSalary ? `${minSalary} / год` : ""],
+          ["Минимальная зарплата", minSalary ? `${minSalary} / год` : ""],
           ["Право на работу", authLabels.join(", ")],
           ["Выход на работу", NOTICE_LABEL[p.noticePeriod] ?? p.noticePeriod],
         ]} />
@@ -187,13 +189,13 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
       editor={
         <ActionForm action={updateConstraints} closeDetailsOnSuccess className="flex flex-col gap-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Гражданство (код)" hint="Например, KZ"><input name="citizenship" maxLength={2} defaultValue={p.citizenship} className="field uppercase" /></Field>
+            <CitizenshipField defaultValue={p.citizenship} options={CITIZENSHIP_OPTIONS} />
             <Field label="Формат работы">
               <select name="remotePref" defaultValue={p.remotePref} className="field">
                 {Object.entries(REMOTE_LABEL).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
             </Field>
-            <Field label="Minimum salary, USD / год" hint={goal?.minSalary && goal.currency !== "USD" ? `≈ ${goal.minSalary.toLocaleString("ru-RU")} ${goal.currency}; пусто — не менять` : "Пусто — не менять"}>
+            <Field label="Минимальная зарплата, USD / год" hint={goal?.minSalary && goal.currency !== "USD" ? `≈ ${goal.minSalary.toLocaleString("ru-RU")} ${goal.currency}; пусто — не менять` : "Пусто — не менять"}>
               {/* The goal may be stored in KZT/EUR: prefill converted to USD, since the action saves this field as USD. */}
               <input name="minSalary" type="number" min={0} step={1000} inputMode="numeric" defaultValue={goal?.minSalary ? toUSD(goal.minSalary, goal.currency) : p.salaryExpectation || ""} className="field" placeholder="70000" />
             </Field>
@@ -215,7 +217,7 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
             {auth.filter((c) => !AUTH_OPTIONS.some(([k]) => k === c) && !REGIONS.EU.countries.includes(c)).map((c) => <input key={c} type="hidden" name="workAuth" value={c} />)}
           </fieldset>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Check name="needsSponsorship" defaultChecked={p.needsSponsorship} label="Нужна рабочая виза (sponsorship)" hint="Для стран, где нет права на работу." />
+            <Check name="needsSponsorship" defaultChecked={p.needsSponsorship} label="Нужна рабочая виза (спонсорство)" hint="Для стран, где нет права на работу." />
             <Check name="relocation" defaultChecked={goal?.relocation ?? p.relocation} label="Переезд возможен" />
           </div>
           <div><FormSubmit pendingText="Сохраняем…">Сохранить</FormSubmit></div>

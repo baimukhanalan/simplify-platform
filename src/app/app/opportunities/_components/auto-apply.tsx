@@ -58,7 +58,7 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
         </button>
         <div className="flex min-w-0 flex-col gap-0.5">
           <span id="auto-apply-label" className="text-[14px] font-medium leading-snug text-head">
-            Auto-apply all jobs above <span className="num">{min}%</span> match
+            Автоподача на все вакансии с Match от <span className="num">{min}%</span>
           </span>
           <span className="text-[12.5px] text-ink-3" aria-live="polite">
             {!consent
@@ -73,7 +73,7 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
       </div>
       <p id="auto-apply-hint" className="flex items-start gap-1.5 text-[12px] leading-snug text-ink-3">
         <ShieldCheck className="mt-px size-3.5 shrink-0 text-teal" aria-hidden />
-        Чувствительные вопросы (визы, юридические, self-identification) всё равно придут тебе на подтверждение.
+        Чувствительные вопросы (визы, юридические, самоидентификация) всё равно придут тебе на подтверждение.
       </p>
       {error && <p role="alert" className="text-[12.5px] text-rose">{error}</p>}
     </div>

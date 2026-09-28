@@ -7,15 +7,18 @@ import { currentCampaign, nextCycleQueue, pendingApprovalsCount, pendingHandoffs
 import { startOfToday } from "@/lib/time";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
-import { REMOTE_LABEL, ago, salaryLabel } from "@/lib/ops";
+import { salaryLabel } from "@/lib/ops";
+import { blockerRu, fitVerdict } from "@/lib/engine/matching";
 import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
-import { handoffsWaiting, questionsWaiting } from "../../_components/ru";
+import { count, handoffsWaiting, questionsWaiting } from "../../_components/ru";
 import { LaneChip, StatusChip, matchTone } from "./_components/bits";
 import { DecisionBar } from "./_components/decision";
 import { AutoApplyToggle } from "./_components/auto-apply";
+import { Announcer } from "./_components/announcer";
 import { fitCandidate } from "./_lib/candidate";
 import { interviewChance, plural, risks, whyFits, type FitCandidate, type Reason } from "./_lib/fit";
+import { agoRu, placeRu } from "./_lib/when";
 
 export const metadata = { title: "Opportunities" };
 
@@ -52,8 +55,8 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         <PageHeader eyebrow="Opportunities" title={<>Что агент <Script>нашёл</Script></>} />
         <Empty
           title="Агент ещё не начал поиск"
-          sub="После запуска кампании агент каждый день собирает вакансии, проверяет Match и Eligibility и подаёт на сильные сам. Здесь ты увидишь, что он нашёл."
-          action={<ButtonLink href="/app/campaign">Start your campaign</ButtonLink>}
+          sub="После запуска кампании агент каждый день собирает вакансии, проверяет Match и требования и подаёт на сильные сам. Здесь ты увидишь, что он нашёл."
+          action={<ButtonLink href="/app/campaign">Начать кампанию</ButtonLink>}
         />
       </>
     );
@@ -109,6 +112,10 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const hasDemo = rows.some((o) => o.job.source === "demo");
   const queued = new Set(queue.ids);
   const queueNote = QUEUE_NOTE[queue.reason];
+  // Cards waiting for Apply / Auto / Skip are optional work on this very screen: the status line names them instead of
+  // claiming «Здесь ничего не нужно» right above them.
+  const waitingHere = counts[0];
+  const here = waitingHere ? `${count(waitingHere, ["вакансия ждёт", "вакансии ждут", "вакансий ждут"])} твоего решения — ${tab === "strong" ? "ниже" : "во вкладке «Ждут решения»"}.` : undefined;
   const needs: Need[] = [
     ...(waiting ? [{ text: `${questionsWaiting(waiting)} — без этого часть заявок не уйдёт`, href: "/app/approvals" }] : []),
     ...(handoffs ? [{ text: handoffsWaiting(handoffs), href: "/app/approvals#kind-handoff" }] : []),
@@ -121,6 +128,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       <AgentStatus
         needs={needs}
         idle={campaign.status !== "active"}
+        here={here}
         working={campaign.status === "active" ? "Агент ищет вакансии и подаёт на сильные сам." : campaign.status === "paused" ? "Кампания на паузе — агент не ищет и не подаёт." : "Кампания завершена — новые вакансии не ищутся."}
         className="-mt-3"
       />
@@ -182,7 +190,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       ) : (
         <ul className="grid gap-3 lg:grid-cols-2" aria-label="Вакансии">
           {rows.map((o) => (
-            <OpportunityCard key={o.id} o={o} candidate={candidate} queued={queued.has(o.id) ? queue.when : null} />
+            <OpportunityCard key={o.id} o={o} candidate={candidate} queued={queued.has(o.id) ? queue.when : null} hold={queued.has(o.id) ? null : holdReason(o, queue)} />
           ))}
         </ul>
       )}
@@ -194,6 +202,8 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
           {page < pages ? <ButtonLink href={href(tab, q, page + 1)} variant="glass" size="sm">Дальше<ArrowRight className="size-4" aria-hidden /></ButtonLink> : <span />}
         </nav>
       )}
+
+      <Announcer />
     </div>
   );
 }
@@ -209,7 +219,7 @@ const N = ({ v }: { v: number }) => <span className="num text-[0.92em] text-head
 function EmptyFeed({ tab, q }: { tab: Tab; q: string }) {
   if (q) return <Empty title="Ничего не найдено" sub={`По запросу «${q}» вакансий нет.`} action={<ButtonLink href={href(tab, "")} variant="glass" size="sm">Сбросить поиск</ButtonLink>} />;
   if (tab === "strong") return <Empty title="Сейчас ничего не ждёт решения" sub="Агент продолжает искать каждый день. Всё, что он уже нашёл, — во вкладке «Все»." action={<ButtonLink href={href("all", "")} variant="glass" size="sm">Показать все</ButtonLink>} />;
-  if (tab === "skipped") return <Empty title="Пропущенных нет" sub="Сюда попадают пропущенные вакансии и роли с hard blockers." />;
+  if (tab === "skipped") return <Empty title="Пропущенных нет" sub="Сюда попадают пропущенные вакансии и роли, по требованиям которых ты не проходишь." />;
   return <Empty title="Вакансий пока нет" sub="Агент ещё не нашёл вакансий. Первый цикл обычно занимает несколько минут." />;
 }
 
@@ -220,18 +230,37 @@ type Row = {
   job: { title: string; company: string; location: string; remote: string; salaryMin: number | null; salaryMax: number | null; currency: string; postedAt: Date; source: string; roleFamily: string; seniority: string; minYears: number; industry: string; sponsorship: string };
 };
 
-function OpportunityCard({ o, candidate, queued }: { o: Row; candidate: FitCandidate; queued: NextCycle["when"] }) {
-  const fitOpp = { match: o.match, eligibility: o.eligibility, pInterview: o.pInterview, reasons: j<Reason[]>(o.matchReasons, []), blockers: j<string[]>(o.blockers, []), softGaps: j<string[]>(o.softGaps, []) };
+/**
+ * Why a fitting, still-open card is not in the agent's next-cycle queue — one short line on the card, straight from
+ * the engine (`nextCycleQueue().reasons`, the same simulation of runTick that Today uses). No UI-side guessing.
+ */
+function holdReason(o: Row, queue: NextCycle): string | null {
+  if (o.eligibility === "blocked" || !OPEN.includes(o.status) || o.decision === "skip") return null;
+  return queue.reasons[o.id] ?? null;
+}
+
+function OpportunityCard({ o, candidate, queued, hold }: { o: Row; candidate: FitCandidate; queued: NextCycle["when"]; hold: string | null }) {
+  const fitOpp = { match: o.match, eligibility: o.eligibility, pInterview: o.pInterview, reasons: j<Reason[]>(o.matchReasons, []), blockers: j<string[]>(o.blockers, []).map(blockerRu), softGaps: j<string[]>(o.softGaps, []).map(blockerRu) };
   const why = whyFits(fitOpp, o.job, candidate);
   const risk = risks(fitOpp, o.job, candidate)[0];
   const chance = interviewChance(o);
   const salary = salaryLabel(o.job.salaryMin, o.job.salaryMax, o.job.currency);
   const applied = APPLIED_OR_LATER.includes(o.status);
-  const blocked = o.eligibility === "blocked";
+  // A hard-blocked role can still score Match 100 (skills fit): the verdict and its reason go first (src/lib/engine/matching.ts).
+  const verdict = fitVerdict({ eligibility: o.eligibility, match: o.match, blockers: fitOpp.blockers });
+  const blocked = verdict.blocked;
   const titleId = `opp-${o.id}`;
+  const place = placeRu(o.job.location, o.job.remote);
 
   return (
     <li className={cx("glass flex flex-col gap-4 p-5 transition-shadow hover:shadow-[0_8px_28px_rgb(0_0_0/.09)]", o.status === "skipped" && "opacity-80")} aria-labelledby={titleId}>
+      {verdict.blocked && (
+        <p className="flex items-start gap-2 rounded-xl border border-rose/15 bg-rose-soft/60 px-3 py-2 text-[13px] text-rose">
+          <b className="shrink-0 font-medium">{verdict.headline}</b>
+          <span className="min-w-0 text-ink-2">· {verdict.reason}</span>
+        </p>
+      )}
+
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
@@ -239,15 +268,23 @@ function OpportunityCard({ o, candidate, queued }: { o: Row; candidate: FitCandi
             <LaneChip value={o.lane} />
           </div>
           <h2 id={titleId} className="h-serif text-[21px] !leading-[1.15]">
-            <Link href={`/app/opportunities/${o.id}`} className="decoration-line underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
+            <Link href={`/app/opportunities/${o.id}`} className="inline-flex min-h-10 items-center decoration-line underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
               {o.job.title}
             </Link>
           </h2>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className="label !text-[9.5px]">Match</span>
-          <span className={cx("num text-[30px] leading-none", TONE_TEXT[matchTone(o.match)])}>{o.match}%</span>
-        </div>
+        {verdict.blocked ? (
+          // Secondary: for a blocked role the number is the skills fit, not a chance.
+          <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+            <span className="label !text-[9.5px]">Совпадение навыков</span>
+            <span className="num text-[20px] leading-none text-ink-3">{o.match}%</span>
+          </div>
+        ) : (
+          <div className="flex shrink-0 flex-col items-end gap-1">
+            <span className="label !text-[9.5px]">Match</span>
+            <span className={cx("num text-[30px] leading-none", TONE_TEXT[matchTone(o.match)])}>{o.match}%</span>
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-2">
@@ -256,12 +293,12 @@ function OpportunityCard({ o, candidate, queued }: { o: Row; candidate: FitCandi
           Interview probability: <b className={cx("num font-medium", TONE_TEXT[chance.tone])}>{chance.label}</b>
         </span>
         {salary ? <span className="num text-head">{salary}</span> : <span className="text-ink-3">зарплата не указана</span>}
-        <Chip tone={o.job.remote === "remote" ? "green" : "neutral"}>{REMOTE_LABEL[o.job.remote] ?? o.job.remote}</Chip>
-        {o.job.location && <span className="inline-flex min-w-0 items-center gap-1 text-ink-3"><MapPin className="size-3.5 shrink-0 text-ink-4" aria-hidden /><span className="truncate">{o.job.location}</span></span>}
-        <span className="text-ink-3">опубликована {ago(o.job.postedAt)}</span>
+        {place.showMode && <Chip tone={o.job.remote === "remote" ? "green" : "neutral"}>{place.mode}</Chip>}
+        {place.location && <span className="inline-flex min-w-0 items-center gap-1 text-ink-3"><MapPin className="size-3.5 shrink-0 text-ink-4" aria-hidden /><span className="truncate">{place.location}</span></span>}
+        <span className="text-ink-3">опубликована {agoRu(o.job.postedAt)}</span>
       </div>
 
-      {why.length > 0 && (
+      {verdict.showWhyFits && why.length > 0 && (
         <div className="flex flex-col gap-2">
           <span className="label !text-[9.5px]">Why this fits</span>
           <ul className="grid gap-x-4 gap-y-1.5 text-[13.5px] text-ink-2 sm:grid-cols-2">
@@ -271,7 +308,7 @@ function OpportunityCard({ o, candidate, queued }: { o: Row; candidate: FitCandi
           </ul>
         </div>
       )}
-      {risk && <p className={cx("text-[12.5px]", blocked ? "text-rose" : "text-amber")}>{blocked ? "Hard blocker: " : "Учти: "}{risk}</p>}
+      {!blocked && risk && <p className="text-[12.5px] text-amber">Учти: {risk}</p>}
 
       <div className="mt-auto flex flex-wrap items-end justify-between gap-3 border-t border-line pt-4">
         {applied ? (
@@ -281,6 +318,7 @@ function OpportunityCard({ o, candidate, queued }: { o: Row; candidate: FitCandi
           </div>
         ) : (
           <div className="flex flex-col gap-2">
+            {hold && <span className="text-[12.5px] leading-snug text-ink-3">{hold}</span>}
             {queued && (
               <span className="inline-flex items-center gap-1.5 text-[12.5px] text-green">
                 <span className="size-1.5 rounded-full bg-green animate-pulse-dot" aria-hidden />

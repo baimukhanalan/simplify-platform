@@ -14,9 +14,9 @@ export const metadata: Metadata = { title: "Приватность и данны
 
 const CONSENTS = [
   { key: "autoSubmit", title: "Автоподача заявок", text: "Агент подаёт заявки от твоего имени в пределах дневного лимита. Выключено — каждая заявка ждёт твоего подтверждения, а активная кампания переходит в ручной режим." },
-  { key: "emailScan", title: "Разбор писем работодателей", text: "Simplify классифицирует ответы работодателей (подтверждение, отказ, assessment, интервью, оффер) и обновляет статусы в Applications. Без согласия статусы обновляются вручную." },
-  { key: "copilot", title: "AI Interview Copilot", text: "Подсказки во время интервью — из твоего профиля и STAR-историй. Используй Copilot только там, где это допускают правила интервью." },
-  { key: "analytics", title: "Продуктовая аналитика", text: "Обезличенные метрики использования, чтобы улучшать продукт. Мы не продаём и не передаём твои данные рекламным сетям." },
+  { key: "emailScan", title: "Разбор писем работодателей", text: "Simplify классифицирует ответы работодателей (подтверждение, отказ, тестовое задание, интервью, оффер) и обновляет статусы в Applications. Без согласия статусы обновляются вручную." },
+  { key: "copilot", title: "Copilot во время интервью", text: "Подсказки во время интервью — из твоего профиля и STAR-историй. Используй Copilot только там, где это допускают правила интервью." },
+  { key: "analytics", title: "Продуктовая аналитика", text: "Обезличенные метрики использования, чтобы улучшать продукт. Simplify не продаёт и не передаёт твои данные рекламным сетям." },
 ] as const;
 
 const PER_PAGE = 20;
@@ -33,9 +33,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
-        eyebrow="Privacy & data"
+        eyebrow="Приватность и данные"
         title={<>Твои данные — <Script>твои</Script></>}
-        sub="Управляй тем, что агент может делать от твоего имени, скачивай всё, что мы храним, и удаляй аккаунт без обращений в поддержку."
+        sub="Управляй тем, что агент может делать от твоего имени, скачивай всё, что хранит Simplify, и удаляй аккаунт без обращений в поддержку."
       />
 
       <AgentStatus
@@ -46,7 +46,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
 
       <div className="flex flex-col gap-12">
         <section aria-labelledby="consents-h">
-          <SectionTitle eyebrow="01 · Consents" title={<span id="consents-h">Согласия</span>} sub={consents.at ? `Последнее изменение: ${new Date(consents.at).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", dateStyle: "medium", timeStyle: "short" })}` : undefined} />
+          <SectionTitle eyebrow="01 · Согласия" title={<span id="consents-h">Согласия</span>} sub={consents.at ? `Последнее изменение: ${new Date(consents.at).toLocaleString("ru-RU", { timeZone: "Asia/Almaty", dateStyle: "medium", timeStyle: "short" })}` : undefined} />
           <Card>
             <ActionForm action={updateConsents} className="flex flex-col gap-4">
               <ul className="flex flex-col divide-y divide-line">
@@ -63,7 +63,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                     {c.key === "autoSubmit" && (
                       <p className="mt-2 max-w-2xl text-[13px] text-ink-3">
                         Это согласие разрешает агенту отправлять заявки вообще. Какие роли он отправляет сам (порог Match), задаётся в{" "}
-                        <Link href="/app/agent#auto-apply" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">Agent → Auto-apply</Link>.
+                        <Link href="/app/agent#auto-apply" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">Agent → Автоотклик</Link>.
                       </p>
                     )}
                   </li>
@@ -78,7 +78,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </section>
 
         <section aria-labelledby="data-h" className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-3"><SectionTitle eyebrow="02 · Data" title={<span id="data-h">Данные и безопасность</span>} /></div>
+          <div className="lg:col-span-3"><SectionTitle eyebrow="02 · Данные" title={<span id="data-h">Данные и безопасность</span>} /></div>
           <Card className="flex flex-col gap-3">
             <Download className="size-5 text-teal" strokeWidth={1.7} aria-hidden />
             <h3 className="h-serif text-[19px]">Экспорт данных</h3>
@@ -93,7 +93,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <ul className="flex flex-col gap-1.5 text-[13.5px] text-ink-3">
               <li>Профиль и опыт — пока аккаунт активен.</li>
               <li>Заявки и переписка кампании — 12 месяцев после её окончания, затем обезличиваются.</li>
-              <li>Транскрипты mock- и Copilot-сессий — 90 дней.</li>
+              <li>Транскрипты пробных интервью и сессий Copilot — 90 дней.</li>
               <li>Платёжные записи — по требованию бухгалтерского учёта.</li>
               <li>После удаления аккаунта данные стираются сразу, из резервных копий — в течение 30 дней.</li>
             </ul>
@@ -102,26 +102,25 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <ShieldCheck className="size-5 text-teal" strokeWidth={1.7} aria-hidden />
             <h3 className="h-serif text-[19px]">Безопасность</h3>
             <ul className="flex flex-col gap-1.5 text-[13.5px] text-ink-3">
-              <li>Шифрование при хранении (at rest) и TLS при передаче в production.</li>
-              <li>RBAC: доступ к твоим данным есть только у тебя; операторы видят лишь то, что нужно для поддержки.</li>
-              <li>Audit log: каждое действие агента и изменение согласий записывается.</li>
+              <li>Данные шифруются при хранении и передаются по защищённому соединению (TLS).</li>
+              <li>Разграничение доступа: твои данные видишь только ты; операторы видят лишь то, что нужно для поддержки.</li>
+              <li>Журнал действий: каждое действие агента и изменение согласий записывается.</li>
               <li>Пароли хранятся только в виде bcrypt-хэша.</li>
             </ul>
           </Card>
         </section>
 
         <section aria-labelledby="audit-h" id="audit" className="scroll-mt-24">
-          <SectionTitle eyebrow="03 · Audit log" title={<span id="audit-h">Журнал действий</span>} sub={`Последние ${LIMIT} событий по твоему аккаунту — действия агента, твои изменения и системные события.`} />
+          <SectionTitle eyebrow="03 · Журнал" title={<span id="audit-h">Журнал действий</span>} sub={`Последние ${LIMIT} событий по твоему аккаунту — действия агента, твои изменения и системные события.`} />
           <Card className="!p-0">
             {slice.length === 0 ? (
               <p className="px-6 py-10 text-center text-[14px] text-ink-3">Событий пока нет.</p>
             ) : (
               <ol className="flex flex-col divide-y divide-line">
                 {slice.map((e) => (
-                  <li key={e.id} className="grid gap-x-4 gap-y-1 px-5 py-3.5 sm:grid-cols-[150px_1fr_auto] sm:items-center sm:px-6">
+                  <li key={e.id} className="grid gap-x-4 gap-y-1 px-5 py-3.5 sm:grid-cols-[150px_1fr] sm:items-center sm:px-6">
                     <time dateTime={e.createdAt.toISOString()} className="num text-[12.5px] text-ink-3">{e.createdAt.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", dateStyle: "short", timeStyle: "short" })}</time>
                     <span className="text-[14px] text-ink-2">{e.message}</span>
-                    <span className="font-mono text-[10.5px] uppercase tracking-[.06em] text-ink-3">{e.type}</span>
                   </li>
                 ))}
               </ol>
@@ -137,7 +136,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </section>
 
         <section aria-labelledby="danger-h">
-          <SectionTitle eyebrow="04 · Danger zone" title={<span id="danger-h">Удаление аккаунта</span>} />
+          <SectionTitle eyebrow="04 · Опасная зона" title={<span id="danger-h">Удаление аккаунта</span>} />
           <Card className="border-rose/20">
             <div className="mb-4 flex items-center gap-2">
               <KeyRound className="size-4 text-rose" strokeWidth={1.7} aria-hidden />

@@ -1,6 +1,21 @@
 import { REGIONS, ROLE_FAMILIES, SENIORITY_LABEL, seniorityIndex, seniorityFromYears, classifyRole, normalizeLanguage, wordRe } from "./taxonomy";
 import { fmtYearsRu } from "../ru";
 
+const WORK_MODE_WORD: Record<string, string> = { remote: "удалённо", hybrid: "гибрид", onsite: "в офисе" };
+
+/**
+ * Blocker / gap lines written by older engine versions in English, as stored on existing opportunities → the current
+ * Russian wording. New rows are written in Russian already; this only keeps old rows readable.
+ */
+export function blockerRu(line: string): string {
+  return line
+    .replace(/^Onsite\/hybrid, спонсорство визы недоступно$/, "Офис или гибрид, спонсорство визы недоступно")
+    .replace(/^Требуется переезд, relocation выключен$/, "Требуется переезд, а переезд у тебя выключен")
+    .replace(/^(.+) authorization required$/, "Нужно право на работу: $1 — спонсорство не указано")
+    .replace(/^Только onsite — /, "Только в офисе — ")
+    .replace(/^Формат (remote|hybrid|onsite) вне предпочтений$/, (_, m: string) => `Формат «${WORK_MODE_WORD[m]}» вне предпочтений`);
+}
+
 const ADVANCED_DEGREE = wordRe("master|phd|магистр", { end: false });
 
 export type CandidateCtx = {
@@ -42,6 +57,9 @@ export const requiredYears = (job: Pick<JobCtx, "minYears" | "seniority">) => Ma
 
 /** A gap this large (in years or in seniority levels) is a hard blocker; a one-step stretch stays a soft gap. */
 export const HARD_GAP = 2;
+
+/** Match from which a found role counts as «подошла» (fits). The one threshold for Today, Opportunities and engine event texts. */
+export const STRONG_MATCH = 70;
 
 const EN: Record<string, number> = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 };
 
@@ -96,18 +114,18 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
   const needsPresence = job.remote !== "remote";
   const authorizedForJob = job.countries.some((x) => auth.has(x)) || job.countries.includes("*");
   if (needsPresence && !authorizedForJob) {
-    if (job.sponsorship === "no") blockers.push("Onsite/hybrid, спонсорство визы недоступно");
-    else if (!c.relocation) blockers.push("Требуется переезд, relocation выключен");
+    if (job.sponsorship === "no") blockers.push("Офис или гибрид, спонсорство визы недоступно");
+    else if (!c.relocation) blockers.push("Требуется переезд, а переезд у тебя выключен");
     else softGaps.push("Нужна виза — спонсорство не указано");
   }
   if (job.workAuth.length && !job.workAuth.some((x) => auth.has(x))) {
     if (job.sponsorship === "no" || !c.needsSponsorship) blockers.push(`Нужно право на работу: ${job.workAuth.join(", ")}`);
     else if (job.sponsorship === "yes") softGaps.push("Потребуется спонсорство (компания спонсирует)");
-    else blockers.push(`${job.workAuth.join(", ")} authorization required`);
+    else blockers.push(`Нужно право на работу: ${job.workAuth.join(", ")} — спонсорство не указано`);
   }
   if (!c.goal.workModes.includes(job.remote) && !c.goal.workModes.includes("any")) {
-    if (job.remote === "onsite") blockers.push("Только onsite — не входит в твои форматы");
-    else softGaps.push(`Формат ${job.remote} вне предпочтений`);
+    if (job.remote === "onsite") blockers.push("Только в офисе — не входит в твои форматы");
+    else softGaps.push(`Формат «${WORK_MODE_WORD[job.remote] ?? job.remote}» вне предпочтений`);
   }
   const en = EN[c.englishLevel] ?? 3;
   const jobLangs = job.languages.map(normalizeLanguage);
@@ -138,4 +156,28 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date()): MatchR
   const onGoal = wanted.includes(job.roleFamily) || (c.goal.mode === "mass" && job.massHiring);
 
   return { match, reasons, eligibility, blockers, softGaps, pInterview: Math.round(pInterview * 1000) / 1000, priority, lane, segment: job.roleFamily, freshnessDays: Math.round(freshnessDays * 10) / 10, onGoal };
+}
+
+/**
+ * How a scored role must be presented. A hard-blocked role can still have Match 100 (skills fit, but e.g. onsite abroad
+ * without a visa): the verdict «Не проходишь» and its first blocker go FIRST, "Why this fits" is not shown, and the
+ * match number is secondary (kept as is — it is the skills fit, not a chance). `blockers` may be the stored JSON string.
+ */
+export function fitVerdict(o: { eligibility: string; match: number; blockers: string[] | string }) {
+  const raw = Array.isArray(o.blockers) ? o.blockers : (() => { try { const v = JSON.parse(o.blockers || "[]"); return Array.isArray(v) ? (v as string[]) : []; } catch { return []; } })();
+  const blockers = raw.map(blockerRu);
+  const blocked = o.eligibility === "blocked";
+  return {
+    blocked,
+    /** Show before anything else when blocked. */
+    headline: blocked ? "Не проходишь" : null,
+    /** The first hard requirement that fails. */
+    reason: blocked ? blockers[0] ?? "Не проходишь по формальным требованиям" : null,
+    blockers: blocked ? blockers : [],
+    /** «Почему подходит» only for roles the user can actually get. */
+    showWhyFits: !blocked,
+    /** Match stays the stored value; for a blocked role it reads as skills fit, not a recommendation. */
+    match: o.match,
+    matchLabel: blocked ? `Совпадение навыков ${o.match}% · не проходишь` : `Match ${o.match}%`,
+  };
 }

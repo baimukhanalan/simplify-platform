@@ -11,12 +11,16 @@ export function benchmarkOffer(o: { base: number; roleFamily: string; seniority:
 
 export function negotiationPlan(o: { company: string; role: string; base: number; currency: string; range: { low: number; mid: number; high: number }; strengths: string[]; name: string; level: Aggressiveness }) {
   const k = o.level === "soft" ? 0.4 : o.level === "balanced" ? 0.65 : 0.9;
-  const target = roundK(Math.max(o.base * 1.05, o.base + (o.range.high - o.base) * k));
-  const ask = roundK(target * (o.level === "assertive" ? 1.04 : 1.02));
-  const walkaway = roundK(Math.max(o.base, o.base + (target - o.base) * 0.35));
+  // Never ask above the market's top (range.high ≈ p85): an ask past it reads as uninformed, not assertive. An offer that
+  // is already at or above the top is not pushed further (cap = the offer itself).
+  const cap = Math.max(o.range.high, Math.ceil(o.base / 1000) * 1000);
+  const target = Math.min(cap, roundK(Math.max(o.base * 1.05, o.base + (o.range.high - o.base) * k)));
+  const ask = Math.min(cap, roundK(target * (o.level === "assertive" ? 1.04 : 1.02)));
+  const walkaway = Math.min(target, roundK(Math.max(o.base, o.base + (target - o.base) * 0.35)));
+  const position = o.base < o.range.mid ? "the offer sits below the midpoint" : o.base < o.range.high ? "the offer sits in the upper half of that range" : "the offer is already at the top of that range";
   const money = (n: number) => `${o.currency === "USD" ? "$" : ""}${Math.round(n / 1000)}k${o.currency !== "USD" ? ` ${o.currency}` : ""}`;
   const args = [
-    `Market data: comparable ${o.role} roles pay ${money(o.range.low)}–${money(o.range.high)}; the offer sits below the midpoint.`,
+    `Market data: comparable ${o.role} roles pay ${money(o.range.low)}–${money(o.range.high)}; ${position}.`,
     ...o.strengths.slice(0, 2).map((s) => `Impact: ${s}`),
     "Enthusiasm first — make it clear you want to join; negotiation is about fit, not leverage.",
   ];
@@ -29,7 +33,7 @@ export function negotiationPlan(o: { company: string; role: string; base: number
     `Floor: don't go below ${money(walkaway)} without a compensating component.`,
     "Close: confirm next steps and ask for the revised offer in writing.",
   ];
-  return { target, ask, walkaway, args, email, callScript, fallback: [`Signing bonus ≈ ${money(Math.max(3000, (target - o.base) * 0.6))}`, "Compensation review after 6 months", "Extra vacation days or learning budget", "Remote flexibility / equipment budget"] };
+  return { target, ask, walkaway, capped: ask >= cap && cap === o.range.high, args, email, callScript, fallback: [`Бонус за выход (signing bonus) ≈ ${money(Math.max(3000, (target - o.base) * 0.6))}`, "Пересмотр компенсации через 6 месяцев", "Дополнительные дни отпуска или бюджет на обучение", "Гибкость по удалённой работе или бюджет на оборудование"] };
 }
 
 const roundK = (n: number) => Math.round(n / 1000) * 1000;

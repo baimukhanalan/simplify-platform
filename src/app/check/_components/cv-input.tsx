@@ -2,6 +2,7 @@
 import { useId, useRef, useState, type DragEvent } from "react";
 import { FileText, UploadCloud, X, AlertCircle, CheckCircle2 } from "lucide-react";
 import { cx } from "@/components/ui";
+import { count, plural } from "../../_components/ru";
 
 type Status = { kind: "idle" } | { kind: "uploading"; name: string } | { kind: "done"; name: string; pages: number } | { kind: "error"; message: string };
 
@@ -76,7 +77,7 @@ export function CvInput({ initialText = "", initialFileName = "", minChars = 120
               <div className="truncate text-[14px] font-medium text-head">{status.name}</div>
               <div className="text-[12.5px] text-ink-3">
                 <CheckCircle2 className="-mt-0.5 mr-1 inline size-3.5 text-green" strokeWidth={2} />
-                Текст извлечён · <span className="num">{chars.toLocaleString("ru-RU")}</span> символов{status.pages ? ` · ${status.pages} стр.` : ""}
+                Текст извлечён · <span className="num">{chars.toLocaleString("ru-RU")}</span> {plural(chars, ["символ", "символа", "символов"])}{status.pages ? ` · ${count(status.pages, ["страница", "страницы", "страниц"])}` : ""}
                 {" · "}
                 <button type="button" onClick={() => setTab("paste")} className="underline decoration-line underline-offset-2 hover:text-head">проверить текст</button>
               </div>
@@ -121,13 +122,13 @@ export function CvInput({ initialText = "", initialFileName = "", minChars = 120
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={10}
-          placeholder={"Имя Фамилия\nData Analyst · Almaty\n\nExperience\nData Analyst — Company, Jan 2023 – Present\n• …"}
+          placeholder={"Имя Фамилия\nData Analyst · Алматы\n\nОпыт работы\nData Analyst — Компания, янв 2023 – сейчас\n• …"}
           className="field scroll-thin min-h-[220px] resize-y font-mono !text-[13px] leading-relaxed"
           aria-describedby={`${id}-count`}
         />
         <div id={`${id}-count`} className="mt-1.5 flex justify-between text-[12px] text-ink-3">
           <span>Скопируй текст из PDF, Word или LinkedIn</span>
-          <span className={cx("num", chars > 0 && chars < minChars && "text-amber")}>{chars.toLocaleString("ru-RU")} симв.</span>
+          <span className={cx("num", chars > 0 && chars < minChars && "text-amber")}>{chars.toLocaleString("ru-RU")} {plural(chars, ["символ", "символа", "символов"])}</span>
         </div>
       </div>
     </div>

@@ -8,6 +8,7 @@ import { logEvent } from "../engine/agent";
 import { ROLE_FAMILIES, REGIONS, SENIORITY, classifyRole, seniorityFromYears } from "../engine/taxonomy";
 import { marketRange } from "../engine/market";
 import { rateLimitUser, retryText } from "../rate-limit";
+import { confirmSeniority, syncSeniorityFromYears } from "../onboarding";
 
 /** Result shape for forms driven by useActionState. */
 export type FormState = { ok?: boolean; error?: string; message?: string; at?: number } | undefined;
@@ -74,6 +75,7 @@ export async function updateBasics(_: FormState, form: FormData): Promise<FormSt
   };
   await db.user.update({ where: { id: user.id }, data: { name } });
   await db.profile.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
+  await syncSeniorityFromYears(user.id, data.yearsExperience); // unless the user set the goal level themselves
   refresh();
   return done("Сохранено");
 }
@@ -81,7 +83,11 @@ export async function updateBasics(_: FormState, form: FormData): Promise<FormSt
 /** "Ограничения": work authorization, sponsorship, relocation, format, minimum salary. Keeps profile and goal in sync. */
 export async function updateConstraints(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  const citizenship = (str(form, "citizenship", 2).toUpperCase().match(/^[A-Z]{2}$/)?.[0]) ?? "KZ";
+  // Citizenship is a two-letter country code. Anything else is an error, never a silent «KZ»
+  // (the sponsorship / eligibility checks depend on it).
+  const rawCitizenship = str(form, "citizenship", 10).toUpperCase();
+  if (!/^[A-Z]{2}$/.test(rawCitizenship)) return fail("Укажи гражданство — выбери страну из списка.");
+  const citizenship = rawCitizenship;
   const picked = form.getAll("workAuth").map((v) => String(v).toUpperCase()).filter((c) => c === "EU" || /^[A-Z]{2}$/.test(c));
   const workAuth = [...new Set([citizenship, ...picked.flatMap((c) => (c === "EU" ? REGIONS.EU.countries : [c]))])];
   const needsSponsorship = bool(form, "needsSponsorship");
@@ -227,7 +233,7 @@ export async function reparseCV(_: FormState, form: FormData): Promise<FormState
   }
   const fileName = `Вставленный текст · ${new Date().toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}`;
   await db.profile.upsert({ where: { userId: user.id }, update: { cvText: text, cvFileName: fileName }, create: { userId: user.id, cvText: text, cvFileName: fileName } });
-  await logEvent(user.id, "cv_reparsed", `CV разобран заново (${by}): добавлено ${fresh.length} новых фактов`);
+  await logEvent(user.id, "cv_reparsed", `CV разобран заново (${by}): новых фактов — ${fresh.length}`);
   refresh();
   return done(fresh.length ? `Добавлено новых позиций: ${fresh.length}. Проверь их в разделе «Опыт».` : "Нового не нашлось — всё уже есть в профиле.");
 }
@@ -262,6 +268,7 @@ export async function saveGoal(_: FormState, form: FormData): Promise<FormState>
   };
   if (data.mode === "target" && data.dreamCompanies === "[]") return fail("Target Mode работает только по компаниям мечты — добавь хотя бы одну.");
   await db.goal.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
+  await confirmSeniority(user.id, data.seniority);
   await logEvent(user.id, "goal_updated", `Цель обновлена: ${primaryRole} · ${data.seniority}`);
   refresh();
   // The goal page edits in a separate mode; send it back to the read view.
@@ -279,6 +286,7 @@ export async function applyReadinessFix(form: FormData) {
   if (fix === "seniority") {
     const suggested = seniorityFromYears(profile.yearsExperience);
     await db.goal.update({ where: { userId: user.id }, data: { seniority: suggested } });
+    await confirmSeniority(user.id, suggested);
     await logEvent(user.id, "readiness_fix", `Уровень цели изменён на ${suggested}`);
   } else if (fix === "salary") {
     const range = marketRange(classifyRole(goal.primaryRole), goal.seniority, j(goal.countries, []));

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { count } from "../../../../_components/ru";
 
 // Interview Debrief: turns a ~1 minute free-form story ("how did it go?") into a structured debrief.
 // Pure deterministic engine — the server action uses it as the fallback for Claude (same schema).
@@ -30,22 +31,22 @@ const RE = {
 const PREP_MAP: [RegExp, string][] = [
   [/sql|join|window|оконн|запрос/i, "SQL: JOIN, агрегаты и оконные функции на время"],
   [/a\/b|experiment|эксперимент|тест[аы]? a|significan|значим/i, "A/B-тесты: дизайн, размер выборки, интерпретация"],
-  [/retention|churn|funnel|воронк|удержан|метрик|metric/i, "Продуктовые метрики: retention, funnel, разбор падения"],
+  [/retention|churn|funnel|воронк|удержан|метрик|metric/i, "Продуктовые метрики: удержание, воронка, разбор падения"],
   [/python|pandas/i, "Python / pandas: группировки и чистка данных"],
   [/conflict|конфликт|disagree|stakeholder|стейкхолдер/i, "STAR-история про конфликт со стейкхолдером"],
   [/fail|mistake|ошибк|провал/i, "STAR-история про ошибку и вывод"],
   [/salary|зарплат|ожидани|вилк/i, "Ответ про зарплатные ожидания с диапазоном"],
   [/english|англ|accent|speak/i, "Разговорная практика на английском: 3 ответа вслух"],
   [/case|кейс|estimate|оцен|sizing/i, "Кейсы: структура → гипотезы → метрики → рекомендация"],
-  [/yourself|о себе|introduc/i, "Tell me about yourself: 60–90 секунд, Present → Past → Future"],
-  [/why (us|company)|почему (мы|компан)|motivation|мотивац/i, "Why us: 1 факт о компании + связь с опытом"],
+  [/yourself|о себе|introduc/i, "Рассказ о себе: 60–90 секунд, сейчас → раньше → дальше"],
+  [/why (us|company)|почему (мы|компан)|motivation|мотивац/i, "«Почему мы?»: 1 факт о компании + связь с опытом"],
 ];
 
 const NEXT_ROUND_PREP: Record<string, string> = {
-  recruiter: "Recruiter: мотивация, ожидания, сроки выхода",
-  hiring_manager: "Hiring Manager: глубина лучшего проекта и приоритизация",
-  technical: "Technical: live-задача по SQL / аналитике",
-  final: "Final: ценности, долгосрочные цели, вопросы к лидерам",
+  recruiter: "Рекрутер: мотивация, ожидания, сроки выхода",
+  hiring_manager: "Нанимающий менеджер: глубина лучшего проекта и приоритизация",
+  technical: "Техническое: задача вживую по SQL / аналитике",
+  final: "Финал: ценности, долгосрочные цели, вопросы к лидерам",
 };
 
 const sentencesOf = (t: string) =>
@@ -99,7 +100,7 @@ export function structureDebrief(i: { transcript: string; outcome: string; round
   const strong = goodS.map((s) => cap(trimEnd(s))).slice(0, 4);
   if (!strong.length) {
     if (nextS.length) strong.push("Дошли до обсуждения следующего этапа — хороший сигнал");
-    if (questions.length >= 3) strong.push(`Ответили на ${questions.length} вопросов без пропусков`);
+    if (questions.length >= 3) strong.push(`Ответы на ${count(questions.length, ["вопрос", "вопроса", "вопросов"])} без пропусков`);
     if (/\d/.test(i.transcript)) strong.push("Приводили конкретные цифры");
   }
   if (!weak.length && !/\d/.test(i.transcript)) weak.push("В рассказе нет цифр — проверь, были ли они в ответах");

@@ -3,14 +3,14 @@ import { Prisma } from "@prisma/client";
 import { db, j, s, noNul } from "../db";
 import { isAhead, ROUND_LABEL } from "../rounds";
 import { agentMaySubmit, readAutonomy } from "./autonomy";
-import { scoreJob, type CandidateCtx, type JobCtx, type MatchResult } from "./matching";
+import { scoreJob, STRONG_MATCH, type CandidateCtx, type JobCtx, type MatchResult } from "./matching";
 import { buildPackage, type FactLite, type ProfileLite } from "./personalize";
 import { ensureSeedJobs } from "./ingest";
 import { allocationFrom, reachedInterview } from "./insights";
 import { classifyEmail, CLASS_TO_STATUS, matchCompany } from "./inbox";
 import { buildPackHeuristic } from "./interview";
 import { classifyRole, defaultLanguagesFor, roleKey, APPLIED_OR_LATER } from "./taxonomy";
-import { count } from "../ru";
+import { count, plural } from "../ru";
 import { toUSD } from "./fx";
 import { salaryAnswer } from "./salary";
 import { startOfToday } from "../time";
@@ -133,7 +133,7 @@ export async function discover(campaignId: string) {
   const scored = fetched.map((job) => ({ job, r: scoreJob(c, scoreCtx(job)) }));
   const rank = (x: (typeof scored)[number]) => (x.r.eligibility === "blocked" ? 0 : 1) * 1e6 + x.r.priority * 1e3 + x.r.match;
   scored.sort((a, b) => rank(b) - rank(a));
-  let found = 0, qualified = 0, blocked = 0;
+  let found = 0, qualified = 0, blocked = 0, fits = 0, weaker = 0;
   for (const { job, r } of scored) {
     const key = roleKey(job.company, job.title);
     if (takenKeys.has(key)) continue;
@@ -149,8 +149,18 @@ export async function discover(campaignId: string) {
     found++;
     if (status === "qualified") qualified++;
     if (status === "skipped") blocked++;
+    // The same split as Today's «подошли» (isQualified in src/lib/ops-data.ts): fits + weaker + blocked = found.
+    else if (r.match >= STRONG_MATCH) fits++;
+    else weaker++;
   }
-  if (found) await logEvent(campaign.userId, "discovery", `Найдено ${count(found, ["новая вакансия", "новые вакансии", "новых вакансий"])}: ${qualified} в очереди агента, ${blocked} не ${blocked === 1 ? "проходит" : "проходят"} по требованиям`);
+  if (found) {
+    const parts = [
+      fits ? `${fits} ${plural(fits, ["подошла", "подошли", "подошли"])} (Match ${STRONG_MATCH}+)` : "",
+      weaker ? `${weaker} со слабым совпадением` : "",
+      blocked ? `${blocked} не ${plural(blocked, ["проходит", "проходят", "проходят"])} по требованиям` : "",
+    ].filter(Boolean);
+    await logEvent(campaign.userId, "discovery", `Найдено ${count(found, ["новая вакансия", "новые вакансии", "новых вакансий"])}: ${parts.join(", ")}`, null, { found, fits, weaker, blocked, queued: qualified });
+  }
   return { found, qualified, blocked };
 }
 
@@ -380,7 +390,9 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
     } else waiting++;
   }
   await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: new Date() } });
-  await logEvent(campaign.userId, "tick", `Цикл агента: найдено +${d.found}, подготовлено ${prepared}, отправлено ${submitted}${waiting ? `, ждут тебя: ${waiting}` : ""}`);
+  // No "ждут тебя: N" here: a stored count goes stale as soon as the user answers, and Today counts pending questions
+  // (pendingApprovalsCount) — a different thing from roles this cycle left unsent. The live number lives on Today.
+  await logEvent(campaign.userId, "tick", `Цикл агента: найдено +${d.found}, подготовлено ${prepared}, отправлено ${submitted}${waiting ? " · часть заявок ждёт твоего решения" : ""}`, null, { found: d.found, prepared, submitted, waiting });
   return { ...d, prepared, submitted, waiting, budget: startBudget };
 }
 
@@ -416,7 +428,12 @@ export async function ingestEmail(userId: string, msg: { from: string; subject: 
     offer: { title: NOTIFY_TITLE.offer, body: `${opp.job.company} · ${opp.job.title}` },
   };
   if (NOTE[c.cls] && !closed) await notify(userId, c.cls, NOTE[c.cls].title, NOTE[c.cls].body, c.cls === "offer" ? "/app/offers" : "/app/interviews");
-  if (c.cls === "interview" || c.cls === "assessment") await createInterview(userId, oppId, c.cls === "assessment" ? "assessment" : c.round ?? "recruiter", c.deadline);
+  if (c.cls === "interview" || c.cls === "assessment") {
+    const iv = await createInterview(userId, oppId, c.cls === "assessment" ? "assessment" : c.round ?? "recruiter", c.deadline);
+    // One source of truth for the date: Interview.scheduledAt. The message carries the same value (an assessment always —
+    // its deadline IS the round's date; an interview only when the email named a time, never the placeholder).
+    if (iv.scheduledAt && (c.cls === "assessment" || c.deadline)) await db.inboxMessage.update({ where: { id: saved.id }, data: { deadline: iv.scheduledAt } });
+  }
   if (c.cls === "offer" && !(await db.offer.findFirst({ where: { opportunityId: oppId }, select: { id: true } }))) {
     const job = await db.opportunity.findUniqueOrThrow({ where: { id: oppId }, include: { job: true } });
     const base = Number(msg.body.match(/\$\s?(\d{2,3}),?(\d{3})/)?.slice(1, 3).join("")) || job.job.salaryMin || 60000;
@@ -439,6 +456,24 @@ export async function createInterview(userId: string, opportunityId: string, rou
   return iv;
 }
 
+/**
+ * Move a round to a new date: Interview.scheduledAt and the deadline of the emails that set it (same opportunity, same
+ * kind) change together, so the Interview Room, the inbox and the push always show one date.
+ */
+export async function rescheduleInterview(interviewId: string, at: Date) {
+  const iv = await db.interview.update({ where: { id: interviewId }, data: { scheduledAt: at }, select: { opportunityId: true, round: true, userId: true } });
+  await db.inboxMessage.updateMany({
+    where: { userId: iv.userId, opportunityId: iv.opportunityId, classification: iv.round === "assessment" ? "assessment" : "interview", deadline: { not: null } },
+    data: { deadline: at },
+  });
+  if (iv.round === "assessment") {
+    await db.inboxMessage.updateMany({ where: { userId: iv.userId, opportunityId: iv.opportunityId, classification: "assessment", deadline: null }, data: { deadline: at } });
+  }
+}
+
+/** The date of a round, for every screen: Interview.scheduledAt (an assessment's deadline, an interview's time). */
+export const roundDate = (iv: { scheduledAt: Date | null } | null | undefined) => iv?.scheduledAt ?? null;
+
 // ——— Demo: simulated employer responses (only for demo vacancies; clearly labeled in UI) ———
 export async function simulateResponses(userId: string, opts: { rand?: () => number; submittedBefore?: Date; submittedAfter?: Date } = {}) {
   const rand = opts.rand ?? Math.random;
@@ -455,7 +490,7 @@ export async function simulateResponses(userId: string, opts: { rand?: () => num
     let mail: { subject: string; body: string } | null = null;
     if (o.status === "submitted" && r < 0.35) mail = { subject: `We received your application — ${o.job.title}`, body: `Hi,\n\nThank you for applying to ${o.job.company}! We have received your application for ${o.job.title} and our team will review it shortly.\n\nBest,\n${o.job.company} Talent Team` };
     else if (r < p * (o.job.massHiring ? 0.6 : 0.25)) mail = { subject: `${o.job.company} — online assessment`, body: `Hi,\n\nThanks for your interest in ${o.job.title}. As a next step, please complete this online assessment on TestGorilla within 5 days.\n\nGood luck!\n${o.job.company} Recruiting` };
-    else if (r < p) mail = { subject: `Interview invitation — ${o.job.title} at ${o.job.company}`, body: `Hi,\n\nWe reviewed your application and would like to invite you to a 30-minute call with our recruiter to learn more about your background. Please pick a time here: calendly.com/${domain}/intro\n\nBest regards,\n${o.job.company}` };
+    else if (r < p) mail = { subject: `Interview invitation — ${o.job.title} at ${o.job.company}`, body: `Hi,\n\nWe reviewed your application and would like to invite you to a 30-minute call with our recruiter to learn more about your background. Please reply with a few time slots that work for you and we will schedule a call.\n\nBest regards,\n${o.job.company}` };
     else if (r > 0.72) mail = { subject: `Your application to ${o.job.company}`, body: `Hi,\n\nThank you for your interest in ${o.job.title}. Unfortunately, we have decided to move forward with other candidates whose experience more closely matches our needs.\n\nWe wish you the best in your search.\n${o.job.company}` };
     if (mail) { await ingestEmail(userId, { from: `talent@${domain}`, ...mail, simulated: true, opportunityId: o.id }); n++; }
   }

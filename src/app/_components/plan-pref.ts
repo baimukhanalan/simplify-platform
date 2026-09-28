@@ -8,3 +8,18 @@ export function cleanPlan(v: unknown): PlanKey | null {
   const s = Array.isArray(v) ? v[0] : v;
   return s === "local" || s === "international" ? s : null;
 }
+
+/** Regions the Local / CIS plan covers; any goal region outside them needs International. */
+const LOCAL_REGIONS = new Set(["KZ", "CIS"]);
+
+/**
+ * The plan that fits a goal: Local when every target region is KZ/CIS, International otherwise.
+ * Null when there is no goal yet (nothing to recommend). Never changes the display order — Local is always first.
+ */
+export function fitPlan(countries: readonly string[] | null | undefined): PlanKey | null {
+  if (!countries?.length) return null;
+  return countries.every((c) => LOCAL_REGIONS.has(c.toUpperCase())) ? "local" : "international";
+}
+
+/** Tier order everywhere (landing, onboarding, campaign): Local first, then International. */
+export const PLAN_ORDER: readonly PlanKey[] = ["local", "international"];

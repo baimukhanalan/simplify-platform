@@ -75,11 +75,22 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
   const paid = inv.status === "paid";
   const failed = inv.status === "failed";
   const expired = inv.status === "expired";
+  const expiredText = inv.expiredReason === "campaign_started" ? "Счёт закрыт: кампания уже запущена по другому счёту. Деньги по этому счёту не списаны." : "Счёт истёк: он действует 30 минут. Деньги не списаны.";
+  // One persistent polite live region voices every non-error status change; declines and errors use role="alert".
+  const statusText =
+    paid && inv.activationBlocked && !inv.campaignId ? "Оплата получена, но у тебя уже идёт кампания — этот платёж будет возвращён."
+    : paid && !inv.campaignId ? "Оплата получена, кампания запускается…"
+    : paid ? "Кампания запущена. Переходим в кабинет…"
+    : expired ? expiredText
+    : busy === "success" ? "Оплата обрабатывается…"
+    : !mockGateway && !failed ? "Ждём подтверждения от Kaspi…"
+    : "";
 
   return (
     <div className="mt-10 flex flex-col gap-5 animate-rise">
+      <p role="status" aria-live="polite" className="sr-only">{statusText}</p>
       <div className="flex flex-col gap-2">
-        <span className="label">Оплата Career Campaign</span>
+        <span className="label">Оплата кампании</span>
         <h1 className="h-serif text-[clamp(30px,6vw,42px)]">{paid ? "Оплата прошла" : "Kaspi Pay"}</h1>
       </div>
 
@@ -97,20 +108,20 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
         </div>
 
         {paid && inv.activationBlocked && !inv.campaignId ? (
-          <p className="rounded-2xl bg-amber-soft px-4 py-3 text-[14px] text-amber" role="status">Оплата получена, но у тебя уже идёт кампания — этот платёж будет возвращён.</p>
+          <p className="rounded-2xl bg-amber-soft px-4 py-3 text-[14px] text-amber">Оплата получена, но у тебя уже идёт кампания — этот платёж будет возвращён.</p>
         ) : paid && !inv.campaignId ? (
-          <p className="flex items-center gap-2 rounded-2xl bg-green-soft px-4 py-3 text-[14px] text-green" role="status"><Loader2 className="size-4 animate-spin" />Оплата получена, запускаем кампанию…</p>
+          <p className="flex items-center gap-2 rounded-2xl bg-green-soft px-4 py-3 text-[14px] text-green"><Loader2 className="size-4 animate-spin" aria-hidden />Оплата получена, кампания запускается…</p>
         ) : paid ? (
-          <div className="flex items-center gap-3 rounded-2xl bg-green-soft px-4 py-4 text-green" role="status">
-            <span className="grid size-9 place-items-center rounded-full bg-green text-white"><Check className="size-5" /></span>
+          <div className="flex items-center gap-3 rounded-2xl bg-green-soft px-4 py-4 text-green">
+            <span className="grid size-9 place-items-center rounded-full bg-green text-white"><Check className="size-5" aria-hidden /></span>
             <div>
               <div className="text-[15px] font-medium">Кампания запущена</div>
               <div className="text-[13px] text-green/80">Агент уже ищет вакансии. Переходим в кабинет…</div>
             </div>
           </div>
         ) : expired ? (
-          <div className="flex flex-col gap-3 rounded-2xl bg-amber-soft px-4 py-3.5" role="status">
-            <p className="text-[14px] text-amber">{inv.expiredReason === "campaign_started" ? "Счёт закрыт: кампания уже запущена по другому счёту. Деньги по этому счёту не списаны." : "Счёт истёк: он действует 30 минут. Деньги не списаны."}</p>
+          <div className="flex flex-col gap-3 rounded-2xl bg-amber-soft px-4 py-3.5">
+            <p className="text-[14px] text-amber">{expiredText}</p>
             <Link href={newInvoiceHref} className={`inline-flex h-11 items-center justify-center self-start rounded-full bg-cta px-5 text-[14px] font-medium text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c] ${focusRing}`}>
               Создать новый счёт
             </Link>
@@ -121,8 +132,8 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
               <Smartphone className="size-6 shrink-0 text-teal" strokeWidth={1.6} />
               <p className="text-[13.5px] leading-relaxed text-ink-2">Подтверди оплату в приложении Kaspi. Статус обновится здесь автоматически.</p>
             </div>
-            {failed && <p className="rounded-2xl bg-rose-soft px-4 py-3 text-[14px] text-rose">Оплата отклонена. Можно попробовать ещё раз в приложении Kaspi.</p>}
-            <p className="flex items-center gap-2 text-[13px] text-ink-3" role="status"><Loader2 className="size-3.5 animate-spin" />Ждём подтверждения от Kaspi…</p>
+            {failed && <p className="rounded-2xl bg-rose-soft px-4 py-3 text-[14px] text-rose" role="alert">Оплата отклонена. Можно попробовать ещё раз в приложении Kaspi.</p>}
+            <p className="flex items-center gap-2 text-[13px] text-ink-3"><Loader2 className="size-3.5 animate-spin" aria-hidden />Ждём подтверждения от Kaspi…</p>
           </>
         ) : (
           <>
@@ -130,7 +141,7 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
               <Smartphone className="size-6 shrink-0 text-teal" strokeWidth={1.6} />
               <p className="text-[13.5px] leading-relaxed text-ink-2">В боевом режиме здесь откроется подтверждение в приложении Kaspi. Сейчас это тестовая оплата — деньги не списываются.</p>
             </div>
-            {failed && <p className="rounded-2xl bg-rose-soft px-4 py-3 text-[14px] text-rose">Оплата отклонена. Можно попробовать ещё раз.</p>}
+            {failed && <p className="rounded-2xl bg-rose-soft px-4 py-3 text-[14px] text-rose" role="alert">Оплата отклонена. Можно попробовать ещё раз.</p>}
             {error && <p className="rounded-2xl bg-rose-soft px-4 py-3 text-[14px] text-rose" role="alert">{error}</p>}
             <div className="flex flex-col items-stretch gap-3">
               <button type="button" onClick={() => pay("success")} disabled={!!busy} aria-busy={busy === "success" || undefined} className={`inline-flex h-13 items-center justify-center gap-2 rounded-full bg-cta text-[15px] font-medium text-white shadow-(--shadow-cta) transition hover:bg-[#2f2c2c] disabled:opacity-60 ${focusRing}`}>

@@ -9,6 +9,33 @@ import { buildPackageHeuristic, type FactLite, type ProfileLite } from "./engine
 import { ROLE_FAMILIES, REGIONS, classifyRole, seniorityFromYears } from "./engine/taxonomy";
 import { toUSD } from "./engine/fx";
 
+/* ——————————————————————————— Goal level from experience ——————————————————————————— */
+
+/** Event written when the user sets the goal level themselves (goal form, a readiness fix). From then on the CV never overrides it. */
+export const SENIORITY_CONFIRMED = "goal_seniority_confirmed";
+
+export async function seniorityConfirmed(userId: string) {
+  return Boolean(await db.event.findFirst({ where: { userId, type: SENIORITY_CONFIRMED }, select: { id: true } }));
+}
+
+/** Record that the user chose the goal level (only when it differs from the last recorded choice). */
+export async function confirmSeniority(userId: string, seniority: string) {
+  const last = await db.event.findFirst({ where: { userId, type: SENIORITY_CONFIRMED }, orderBy: { createdAt: "desc" }, select: { data: true } });
+  if (last && j<{ seniority?: string }>(last.data, {}).seniority === seniority) return;
+  await db.event.create({ data: { userId, type: SENIORITY_CONFIRMED, message: `Уровень цели подтверждён: ${seniority}`, data: s({ seniority }) } });
+}
+
+/**
+ * The goal level follows the CV's years of experience (7.5 years → "senior", never the "junior" column default)
+ * until the user sets it themselves. Called after every CV parse and experience edit. Returns the level now stored.
+ */
+export async function syncSeniorityFromYears(userId: string, years: number) {
+  if (!(years > 0) || (await seniorityConfirmed(userId))) return null;
+  const seniority = seniorityFromYears(years);
+  await db.goal.upsert({ where: { userId }, create: { userId, seniority }, update: { seniority } });
+  return seniority;
+}
+
 /* ——————————————————————————— Onboarding wizard ——————————————————————————— */
 
 export const ONBOARDING_STEPS = [
@@ -81,7 +108,7 @@ const OWNERSHIP_OPTIONS: ChatOption[] = [
 const ENGLISH_OPTIONS: ChatOption[] = ["A2", "B1", "B2", "C1", "C2"].map((v) => ({ value: v, label: v }));
 const RELOCATION_OPTIONS: ChatOption[] = [
   { value: "yes", label: "Да, переезд возможен" },
-  { value: "remote", label: "Нет, только remote" },
+  { value: "remote", label: "Нет, только удалённо" },
   { value: "local", label: "Нет, остаюсь в своём городе" },
 ];
 const NOTICE_OPTIONS: ChatOption[] = [
@@ -99,8 +126,10 @@ type ChatUser = {
 export function buildChatTurns(u: ChatUser): ChatTurn[] {
   const turns: ChatTurn[] = [];
   // Answers are stored under the question text; `legacy` finds answers saved under an earlier wording of the same question.
-  const saved = (question: string, factId: string | null = null, legacy?: string) =>
-    u.miniAnswers.find((a) => (a.question === question || (legacy != null && a.question === legacy)) && (a.factId ?? null) === factId)?.answer ?? null;
+  const saved = (question: string, factId: string | null = null, legacy: string | string[] = []) => {
+    const names = [question, ...(Array.isArray(legacy) ? legacy : [legacy])];
+    return u.miniAnswers.find((a) => names.includes(a.question) && (a.factId ?? null) === factId)?.answer ?? null;
+  };
   const work = u.facts
     .filter((f) => f.kind === "employment" || f.kind === "project")
     .sort((a, b) => Number(a.kind === "project") - Number(b.kind === "project") || a.createdAt.getTime() - b.createdAt.getTime())
@@ -113,13 +142,14 @@ export function buildChatTurns(u: ChatUser): ChatTurn[] {
     if (!f.metrics || m !== null) {
       turns.push({ id: `metric:${f.id}`, factId: f.id, prompt: mq, hint: "Было → стало, в цифрах. Например: «конверсия 18% → 26%» или «отчёт за 4 часа вместо 3 дней».", kind: "text", placeholder: "Например: выручка +15% за квартал", answer: m ?? (f.metrics || null) });
     }
-    const oq = `Какой была твоя роль в ${where}?`;
-    const o = saved(oq, f.id, `А в ${where} ты сам(а) принимал(а) решения или работал(а) по задачам команды?`);
+    // "Какой была твоя роль в Kolesa Group (Product Manager)?" — the company first; earlier wordings keep their answers.
+    const oq = f.org ? `Какой была твоя роль в ${f.org} (${f.title})?` : `Какой была твоя роль в проекте «${f.title}»?`;
+    const o = saved(oq, f.id, [`Какой была твоя роль в ${where}?`, `А в ${where} ты сам(а) принимал(а) решения или работал(а) по задачам команды?`]);
     if (!f.ownership || o !== null) turns.push({ id: `own:${f.id}`, factId: f.id, prompt: oq, hint: "Самостоятельно — решения за тобой. Участие — важная часть команды. Исполнение — задачи ставили другие.", kind: "choice", options: OWNERSHIP_OPTIONS, answer: o ?? (f.ownership || null) });
   }
 
   const cq = "Какое у тебя гражданство?";
-  turns.push({ id: "citizenship", prompt: cq, hint: "От этого зависит, куда я могу подаваться без визы.", kind: "choice", options: CITIZENSHIP_OPTIONS, answer: saved(cq), suggested: u.profile?.citizenship || "KZ" });
+  turns.push({ id: "citizenship", prompt: cq, hint: "От этого зависит, куда агент может подаваться без визы.", kind: "choice", options: CITIZENSHIP_OPTIONS, answer: saved(cq), suggested: u.profile?.citizenship || "KZ" });
 
   const targets = j<string[]>(u.goal?.countries, []).filter((c) => c in INTL_AUTH);
   for (const r of targets) {
@@ -128,7 +158,7 @@ export function buildChatTurns(u: ChatUser): ChatTurn[] {
   }
 
   const rq = "Рассматриваешь переезд, если компания поможет с релокацией?";
-  turns.push({ id: "relocation", prompt: rq, kind: "choice", options: RELOCATION_OPTIONS, answer: saved(rq, null, "Готов(а) к переезду, если компания поможет с релокацией?") });
+  turns.push({ id: "relocation", prompt: rq, kind: "choice", options: RELOCATION_OPTIONS, answer: saved(rq, null, "Готов(а) к переезду, если компания поможет с релокацией?") }); // the old gendered wording only matches saved answers
   const eq = "Какой у тебя уровень английского?";
   turns.push({ id: "english", prompt: eq, hint: "Честно — на интервью это всё равно проверят.", kind: "choice", options: ENGLISH_OPTIONS, answer: saved(eq), suggested: u.profile?.englishLevel });
   const nq = "Когда сможешь выйти на новую работу?";

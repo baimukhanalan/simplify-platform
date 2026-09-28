@@ -32,6 +32,15 @@ export function marketRange(family: string, seniority: string, regions: string[]
   return { low: Math.round((mid * 0.85) / 1000) * 1000, mid, high: Math.round((mid * 1.2) / 1000) * 1000 };
 }
 
+/**
+ * THE "Market demand" score (0–100) from the number of active vacancies for the role family. One formula for Career Score's
+ * component and the Readiness parameter of the same name, so both screens show the same number for the same data.
+ */
+export function marketDemandScore(activeJobs: number) {
+  if (!activeJobs || activeJobs < 0) return 25;
+  return Math.min(100, 45 + Math.round(Math.sqrt(activeJobs) * 6));
+}
+
 /** Percentile of a value inside a normal-ish band (low≈p15, high≈p85). */
 export function percentileIn(value: number, range: { low: number; mid: number; high: number }) {
   const sd = (range.high - range.low) / 2.07; // p15..p85 ≈ ±1.036σ

@@ -7,16 +7,14 @@ import { SubmitButton } from "@/components/client";
 import { cx } from "@/components/ui";
 import { useActionForm } from "../../_components/use-action-form";
 import { BackLink, FormAlert } from "./shared";
+import { yearsRu } from "../../_components/ru";
 
 type Position = { id: string; kind: string; title: string; org: string; startDate: string; endDate: string };
 
 const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-const yearsLabel = (y: number) => {
-  const n = Math.round(y * 10) / 10;
-  if (!Number.isInteger(n)) return `${n.toLocaleString("ru-RU")} года`;
-  const a = n % 100, b = n % 10;
-  return `${n} ${a > 10 && a < 20 ? "лет" : b === 1 ? "год" : b > 1 && b < 5 ? "года" : "лет"}`;
-};
+// Option labels built in lib that still carry English; mapped here until the source is fixed.
+const OPTION_RU: Record<string, string> = { "Нет, только remote": "Нет, только удалённо" };
+const optionLabel = (label: string) => OPTION_RU[label] ?? label;
 
 /**
  * Step 2 as a conversation: the agent summarises what it parsed, lets the user fix it,
@@ -78,7 +76,7 @@ export function StepChat({ name, years, skills, skillCount, positions, turns }: 
 
         <ol role="log" aria-live="polite" aria-label="Диалог с агентом" className="flex flex-col gap-4">
           <AgentBubble>
-            <p>Привет, {name}. Я разобрал твои материалы{years > 0 ? <> — у тебя <b className="font-medium text-head">{yearsLabel(years)}</b> опыта</> : null}.</p>
+            <p>Привет, {name}. Агент разобрал твои материалы{years > 0 ? <> — у тебя <b className="font-medium text-head">{yearsRu(years)}</b> опыта</> : null}.</p>
             {skills.length > 0 && (
               <div className="mt-2.5 flex flex-wrap gap-1.5">
                 {skills.map((s) => <span key={s} className="rounded-full border border-line bg-white/80 px-2.5 py-0.5 text-[12.5px] text-ink-2">{s}</span>)}
@@ -90,11 +88,11 @@ export function StepChat({ name, years, skills, skillCount, positions, turns }: 
           <AgentBubble>
             {positions.length ? (
               <>
-                <p>Вот что я нашёл в опыте. Если что-то распознал неточно — поправь.</p>
+                <p>Вот что агент нашёл в опыте. Если что-то распознано неточно — поправь.</p>
                 <Positions items={positions} />
               </>
             ) : (
-              <p>В CV я не нашёл мест работы. Ничего страшного — добавишь опыт в Career Profile позже, а сейчас пара вопросов.</p>
+              <p>Агент не нашёл в CV мест работы. Ничего страшного — опыт можно добавить в Career Profile позже, а сейчас пара вопросов.</p>
             )}
           </AgentBubble>
 
@@ -112,7 +110,7 @@ export function StepChat({ name, years, skills, skillCount, positions, turns }: 
                   <Composer turn={t} autoFocus={interacted} initial={a ?? ""} busy={savingId === t.id} error={error?.id === t.id ? error.text : ""} onSend={(v) => send(t, v)} onCancel={editing ? () => { setEditing(null); setError(null); } : undefined} />
                 ) : a !== null ? (
                   <UserBubble onEdit={savingId ? undefined : () => { setInteracted(true); setError(null); setEditing(t.id); }} saving={savingId === t.id}>
-                    {a === "" ? <span className="text-white/70">Пропущу этот вопрос</span> : t.options?.find((o) => o.value === a)?.label ?? a}
+                    {a === "" ? <span className="text-white/70">Пропущу этот вопрос</span> : optionLabel(t.options?.find((o) => o.value === a)?.label ?? a)}
                   </UserBubble>
                 ) : null}
               </li>
@@ -121,7 +119,7 @@ export function StepChat({ name, years, skills, skillCount, positions, turns }: 
 
           {allDone && !editing && (
             <AgentBubble>
-              <p>Спасибо — этого достаточно, чтобы начать.{works.length ? " Твой опыт я покажу работодателям через результаты, а не обязанности." : ""} Дальше подтвердим цель.</p>
+              <p>Спасибо — этого достаточно, чтобы начать.{works.length ? " Агент покажет твой опыт работодателям через результаты, а не обязанности." : ""} Дальше подтвердим цель.</p>
             </AgentBubble>
           )}
         </ol>
@@ -165,7 +163,7 @@ function UserBubble({ children, onEdit, saving }: { children: ReactNode; onEdit?
       )}
       <div className="max-w-[80%] rounded-[18px] rounded-tr-md bg-cta px-4 py-2.5 text-[14.5px] text-white shadow-(--shadow-cta)">
         {children}
-        {saving && <span className="sr-only"> — сохраняю</span>}
+        {saving && <span className="sr-only"> — сохраняется</span>}
       </div>
     </div>
   );
@@ -207,7 +205,7 @@ function Composer({ turn, initial, busy, error, onSend, onCancel, autoFocus }: {
                   picked ? "border-cta bg-cta text-white" : suggested ? "border-green/40 bg-green-soft text-green hover:bg-green-soft/80" : "border-line bg-white/80 text-head hover:bg-white")}
               >
                 {picked && <Check className="size-3.5" strokeWidth={2.4} aria-hidden />}
-                {o.label}
+                {optionLabel(o.label)}
                 {suggested && <span className="font-mono text-[9.5px] uppercase tracking-wide opacity-70">· из профиля</span>}
               </button>
             );
