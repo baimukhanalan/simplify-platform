@@ -1,4 +1,5 @@
 import "server-only";
+import { createNotification } from "@/lib/notify";
 import { Prisma } from "@prisma/client";
 import { db, j, s, noNul } from "../db";
 import { isAhead, ROUND_LABEL } from "../rounds";
@@ -26,7 +27,7 @@ export const inboxEventText = (company: string, cls: string, status: string) =>
   `${company}: ${INBOX_EVENT_RU[cls] ?? "новое письмо"} → статус «${STATUS_RU_EVENT[status] ?? status}»`;
 
 export async function notify(userId: string, type: string, title: string, body = "", href = "") {
-  await db.notification.create({ data: { userId, type, title, body, href } });
+  await createNotification(userId, type, title, body, href);
 }
 
 export async function logEvent(userId: string, type: string, message: string, opportunityId?: string | null, data: object = {}) {

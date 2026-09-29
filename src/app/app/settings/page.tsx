@@ -5,6 +5,8 @@ import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { hhEnabled } from "@/lib/hh/client";
 import { Card, Label, PageHeader, Script, cx } from "@/components/ui";
+import { TelegramCard } from "./_components/telegram-card";
+import { PushCard } from "./_components/push-card";
 import { updateConsents, type Consents } from "@/lib/actions/account";
 import { ActionForm, FormSubmit } from "../profile/_components/action-form";
 import { SectionTitle } from "../profile/_components/bits";
@@ -86,8 +88,16 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           </Card>
         </section>
 
+        <section aria-labelledby="notify-h" id="notifications" className="scroll-mt-24">
+          <SectionTitle eyebrow="02 · Уведомления" title={<span id="notify-h">Уведомления</span>} sub="Куда агент пишет, когда происходит важное: приглашение на интервью, тест, оффер." />
+          <div className="grid gap-6 lg:grid-cols-2">
+            <TelegramCard />
+            <PushCard />
+          </div>
+        </section>
+
         <section aria-labelledby="data-h" className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-3"><SectionTitle eyebrow="02 · Данные" title={<span id="data-h">Данные и безопасность</span>} /></div>
+          <div className="lg:col-span-3"><SectionTitle eyebrow="03 · Данные" title={<span id="data-h">Данные и безопасность</span>} /></div>
           <Card className="flex flex-col gap-3">
             <Download className="size-5 text-teal" strokeWidth={1.7} aria-hidden />
             <h3 className="h-serif text-[19px]">Экспорт данных</h3>
@@ -121,7 +131,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </section>
 
         <section aria-labelledby="audit-h" id="audit" className="scroll-mt-24">
-          <SectionTitle eyebrow="03 · Журнал" title={<span id="audit-h">Журнал действий</span>} sub={`Последние ${LIMIT} событий по твоему аккаунту — действия агента, твои изменения и системные события.`} />
+          <SectionTitle eyebrow="04 · Журнал" title={<span id="audit-h">Журнал действий</span>} sub={`Последние ${LIMIT} событий по твоему аккаунту — действия агента, твои изменения и системные события.`} />
           <Card className="!p-0">
             {slice.length === 0 ? (
               <p className="px-6 py-10 text-center text-[14px] text-ink-3">Событий пока нет.</p>
@@ -146,7 +156,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </section>
 
         <section aria-labelledby="danger-h">
-          <SectionTitle eyebrow="04 · Опасная зона" title={<span id="danger-h">Удаление аккаунта</span>} />
+          <SectionTitle eyebrow="05 · Опасная зона" title={<span id="danger-h">Удаление аккаунта</span>} />
           <Card className="border-rose/20">
             <div className="mb-4 flex items-center gap-2">
               <KeyRound className="size-4 text-rose" strokeWidth={1.7} aria-hidden />
