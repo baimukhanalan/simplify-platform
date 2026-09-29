@@ -37,6 +37,7 @@ model User {
   snapshots    CareerSnapshot[]
   partner      Partner?
   notifications Notification[]
+  integrations  Integration[]
 }
 
 model Profile {
@@ -403,4 +404,24 @@ model Notification {
   href      String    @default("")
   readAt    DateTime?
   createdAt DateTime  @default(now())
+}
+
+// External accounts a user connected (hh.kz OAuth) and the browser-extension token.
+// Tokens are encrypted at rest (src/lib/crypto.ts); only a hash is stored for the extension token.
+model Integration {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider       String // hh | extension
+  accessToken    String    @default("") // encrypted
+  refreshToken   String    @default("") // encrypted
+  tokenHash      String?   @unique // sha256 of the extension token
+  expiresAt      DateTime?
+  externalUserId String    @default("")
+  resumeId       String    @default("") // hh: chosen resume for applications
+  meta           String    @default("{}")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([userId, provider])
 }
