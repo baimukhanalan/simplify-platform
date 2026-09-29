@@ -115,7 +115,11 @@ async function opportunityCards(c, tab = "all") {
 async function qualifiedNumbers(c) {
   const opp = visible((await c.get("/app/opportunities")).text);
   const today = visible((await c.get("/app")).text);
-  const o = opp.match(/(Сегодня|За неделю|За кампанию) агент нашёл (\d+) \S+\. (\d+) подошл/);
+  // Round 10 (discoverySentence): «Сегодня агент нашёл 8 вакансий: 4 подходят (Match 70+), …» / «… — она подходит» /
+  // «… — все подходят (Match 70+)»; no qualified part when none fits.
+  const o = opp.match(/(Сегодня|За неделю|За кампанию) агент (?:пока не нашёл новых вакансий|нашёл (\d+) [^\s:.]+(?::(?:[^.]*?(\d+) подход)?| — (?:она|обе|все) (подход))?)/);
+  if (o) o[3] = o[4] ? o[2] : o[3] ?? "0";
+  if (o && !o[2]) o[2] = "0";
   const key = today.match(/Подошли (\d+)/);
   // The strip agrees each word with its number («+61 найдена», «+1 подошла», «+26 подошли»; src/app/app/_components/today.tsx).
   const strip = today.match(/Сегодня (\+?\d+) найден[аоы] (\+?\d+) подошл[аи]/);
@@ -168,7 +172,8 @@ async function qualifiedAgree(c, camp, label) {
   const bad = [];
   for (const u of users) for (const cp of u.campaigns) {
     const agentSent = await db.event.findMany({ where: { userId: u.id, type: "submitted", opportunity: { campaignId: cp.id } }, select: { data: true, opportunity: { include: { job: true } } } });
-    for (const e of agentSent) if (JSON.parse(e.data || "{}").method === "agent" && overGap(e.opportunity.job, u.profile?.yearsExperience ?? 0)) bad.push(`${u.email}: ${e.opportunity.job.title} (${e.opportunity.job.seniority}, ${e.opportunity.job.minYears}+) with ${u.profile?.yearsExperience}y`);
+    // Round 10: a dream-company role blocked only by level is the user's decision — sent after their Apply / Auto (not the agent's own pick).
+    for (const e of agentSent) if (JSON.parse(e.data || "{}").method === "agent" && !["apply", "auto"].includes(e.opportunity.decision) && overGap(e.opportunity.job, u.profile?.yearsExperience ?? 0)) bad.push(`${u.email}: ${e.opportunity.job.title} (${e.opportunity.job.seniority}, ${e.opportunity.job.minYears}+) with ${u.profile?.yearsExperience}y`);
   }
   check(bad.length === 0, "J14.db.senior", "no agent submission anywhere in the DB is over the candidate's level (current profile years)", bad.slice(0, 5));
 }
@@ -249,7 +254,10 @@ async function qualifiedAgree(c, camp, label) {
   const job = await db.job.create({ data: { source: "lever", externalId: `j14-${Date.now()}`, dedupeKey: `j14-live-${Date.now()}`, company: "J14 Live Co", title: "Data Analyst", roleFamily: "data_analyst", seniority: "junior", minYears: 1, countries: JSON.stringify(["*"]), remote: "remote", technologies: JSON.stringify(["SQL", "Python"]), postedAt: new Date(), url: "https://jobs.lever.co/j14/1", active: false } });
   const opp = await db.opportunity.create({ data: { campaignId: camp.id, jobId: job.id, match: 90, status: "qualified", eligibility: "eligible", priority: 0.3, pInterview: 0.2 } });
   await c.action("opportunities.decideOpportunity", [{}, form({ id: opp.id, decision: "apply" })], { page: "/app/opportunities" });
-  for (const a of await db.approval.findMany({ where: { opportunityId: opp.id, status: "pending", kind: { not: "handoff" } } })) {
+  // Round 10: a standing question shared with another role is one card (on that role) — answer this role's own cards and
+  // the shared cards its package waits for (same question text); leave the rest open for the split checks below.
+  const waitsFor = JSON.parse((await db.applicationPackage.findUnique({ where: { opportunityId: opp.id } }))?.answers ?? "[]").filter((a) => a.status === "pending").map((a) => a.q);
+  for (const a of await db.approval.findMany({ where: { userId: uid, status: "pending", kind: { not: "handoff" }, OR: [{ opportunityId: opp.id }, { question: { in: waitsFor } }] } })) {
     await c.action("ops.resolveApproval", [form({ id: a.id, decision: "edit", answer: a.proposed || "Yes" })], { page: "/app/approvals" });
   }
   if (!(await db.approval.count({ where: { opportunityId: opp.id, kind: "handoff" } }))) await c.action("opportunities.decideOpportunity", [{}, form({ id: opp.id, decision: "apply" })], { page: "/app/opportunities" });
@@ -269,7 +277,9 @@ async function qualifiedAgree(c, camp, label) {
   for (const [name, text] of [["approvals", ap], ["today", today], ["opportunities", opps], ["campaign", camps]]) {
     const hasQ = questions ? text.includes(qWord(questions)) : !/вопрос(а|ов)? жд/.test(text);
     const hasH = handoffs ? text.includes(hWord(handoffs)) : true;
-    const mixed = text.includes(qWord(questions + handoffs)) && handoffs > 0 && questions > 0;
+    // Round 10: the activity feed keeps past agent-cycle lines («… · 2 вопроса ждут твоего ответа в Подтверждениях», counts as
+    // of that cycle) — history, not a merged count; only live wording is checked for merging.
+    const mixed = text.replace(/\d+ \S+ ждут? твоего ответа в Подтверждениях/g, "").includes(qWord(questions + handoffs)) && handoffs > 0 && questions > 0;
     check(hasQ && hasH && !mixed, `J14.split.${name}`, `${name}: «${qWord(questions)}» and «${hWord(handoffs)}» shown separately`, { hasQ, hasH, mixed, snippet: (text.match(/\d+ (вопрос\S* жд\S+|заяв\S+ жд\S+)[^.]{0,40}/g) ?? []).slice(0, 4) });
   }
   check(Number(badgeM?.[1] ?? 0) === questions + handoffs, "J14.split.badge", "nav badge of «Подтверждения» = questions + handoffs", { badge: badgeM?.[1], questions, handoffs });

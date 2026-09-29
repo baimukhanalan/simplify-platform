@@ -1,26 +1,26 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
-import { ArrowLeft, ArrowRight, Check, MapPin, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, MapPin, Search } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j, insensitive } from "@/lib/db";
-import { currentCampaign, nextCycleQueue, qualifiedWhere, windowNumbers, type NextCycle, type NotQueuedReason } from "@/lib/ops-data";
+import { awaitingDecisionWhere, currentCampaign, nextCycleQueue, windowNumbers, type NextCycle, type NotQueuedReason } from "@/lib/ops-data";
 import { startOfToday } from "@/lib/time";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { salaryLabel } from "@/lib/ops";
-import { blockerRu, fitVerdict } from "@/lib/engine/matching";
-import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
+import { DREAM_DECISION, blockerRu, fitVerdict } from "@/lib/engine/matching";
+import { ButtonLink, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { breakdown, discoverySentence } from "../_components/today-data";
 import { decisionsWaiting, needsYouCached } from "../../_components/global-needs";
-import { handoffsWaiting, questionsWaiting } from "../../_components/ru";
+import { handoffsWaiting, placeWithFormat, questionsWaiting } from "../../_components/ru";
 import { LaneChip, StatusChip, matchTone } from "./_components/bits";
 import { DecisionBar } from "./_components/decision";
 import { AutoApplyToggle } from "./_components/auto-apply";
 import { Announcer } from "./_components/announcer";
 import { fitCandidate } from "./_lib/candidate";
 import { interviewChance, isDreamCompany, overrideNote, plural, risks, whyFits, type FitCandidate, type Reason } from "./_lib/fit";
-import { agoRu, placeRu } from "./_lib/when";
+import { agoRu } from "./_lib/when";
 
 export const metadata = { title: "Opportunities" };
 
@@ -71,11 +71,14 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const dreamCompanies = j<string[]>(user.goal?.dreamCompanies ?? "[]", []);
   const threshold = autonomy.autoApplyMinMatch;
 
+  // What the next agent cycle would send on its own — the same computation as Today. Computed first: «Ждут решения» is
+  // exactly the roles it leaves for the user (awaitingDecisionWhere), for both the list and its counter.
+  const queue = await nextCycleQueue(campaign, autonomy);
   const base: Prisma.OpportunityWhereInput = { campaignId: campaign.id };
   const search: Prisma.OpportunityWhereInput = q ? { job: { OR: [{ title: { contains: q, ...insensitive } }, { company: { contains: q, ...insensitive } }, { location: { contains: q, ...insensitive } }] } } : {};
   const tabWhere: Record<Tab, Prisma.OpportunityWhereInput> = {
-    // Same "qualified" as Today (lib/ops-data), narrowed to roles that still wait for a decision.
-    strong: { ...qualifiedWhere(campaign.id), status: { in: OPEN } },
+    // The same filter as needsYou.applyDecisions (Today, Applications, Inbox): awaitingDecisionWhere.
+    strong: awaitingDecisionWhere(campaign.id, queue),
     all: { status: { not: "skipped" } },
     skipped: { status: "skipped" },
   };
@@ -90,7 +93,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   ]);
   const since = foundToday ? today : foundWeek ? week : null;
 
-  const [{ submitted }, windowOpps, waiting, counts, total, rows, candidate, queue] = await Promise.all([
+  const [{ submitted }, windowOpps, waiting, counts, total, rows, candidate] = await Promise.all([
     windowNumbers(campaign.id, since, threshold),
     db.opportunity.findMany({ where: { ...base, ...(since ? { createdAt: { gte: since } } : {}) }, select: { status: true, match: true, eligibility: true, submittedAt: true } }),
     needsYouCached(user.id),
@@ -107,11 +110,10 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       },
     }),
     fitCandidate(user),
-    // What the next agent cycle would send on its own — the same computation as Today.
-    nextCycleQueue(campaign, autonomy),
   ]);
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   const when = foundToday ? "Сегодня" : foundWeek ? "За неделю" : "За кампанию";
+  const found = breakdown(windowOpps);
   const hasDemo = rows.some((o) => o.job.source === "demo");
   const queued = new Set(queue.ids);
   // Reasons that hold every card for the same account-level cause are said once above the feed, not on each card.
@@ -137,27 +139,43 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         here={here}
         hereNeeds={Boolean(waitingHere)}
         skip={["decisions"]}
-        working={campaign.status === "active" ? "Агент ищет вакансии и подаёт на сильные сам." : campaign.status === "paused" ? "Кампания на паузе — агент не ищет и не подаёт." : "Кампания завершена — новые вакансии не ищутся."}
+        working={here ? undefined : campaign.status === "active" ? "Агент ищет вакансии и подаёт на сильные сам." : campaign.status === "paused" ? "Кампания на паузе — агент не ищет и не подаёт." : "Кампания завершена — новые вакансии не ищутся."}
         className="-mt-3"
       />
 
-      <section aria-label="Итоги поиска" className="glass-strong -mt-2 grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-10">
-        <div className="flex flex-col gap-4">
+      {/* Search summary, auto-apply and feed notes in one compact disclosure, so the first card starts near the top on a phone. */}
+      <details className="glass group -mt-2 !rounded-[20px]">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-[20px] px-4 py-2.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green sm:px-5 [&::-webkit-details-marker]:hidden">
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-[14px] leading-snug text-head">
+              {when}: найдено <N v={found.found} />{found.qualified > 0 && <> · {plural(found.qualified, ["подходит", "подходят", "подходят"])} <N v={found.qualified} /></>}{submitted > 0 && <> · отправлено <N v={submitted} /></>}
+            </span>
+            <span className="text-[12.5px] text-ink-3">
+              Автоподача{" "}
+              {!campaign.autoSubmit ? "выключена в настройках" : autonomy.submitApplications ? <>включена · Match от <span className="num">{threshold}%</span></> : "по Match выключена"}
+            </span>
+          </span>
+          <span className="inline-flex min-h-10 shrink-0 items-center gap-1 text-[12.5px] text-teal group-hover:text-head">
+            {/* Phone: the chevron alone (the whole row is the toggle); the words from sm up. */}
+            <span className="sr-only sm:not-sr-only group-open:hidden">Подробнее</span>
+            <span className="hidden sm:group-open:inline">Свернуть</span>
+            <ChevronDown className="size-4 transition-transform group-open:rotate-180 sm:size-3.5" aria-hidden />
+          </span>
+        </summary>
+        <div className="flex flex-col gap-4 border-t border-line px-4 py-4 sm:px-5">
           {/* The same sentence as Today (discoverySentence: zero parts hidden); submissions said separately. */}
-          <p className="h-serif text-[clamp(21px,2.4vw,28px)] !leading-[1.25]">
-            {discoverySentence(breakdown(windowOpps), when)}
+          <p className="text-[14.5px] leading-relaxed text-ink-2">
+            {discoverySentence(found, when)}
             {submitted > 0 && <>{" "}<N v={submitted} /> {plural(submitted, ["заявка уже отправлена", "заявки уже отправлены", "заявок уже отправлены"])}.</>}
           </p>
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
-            <Link href="/app/applications" className="inline-flex min-h-10 items-center gap-1.5 text-teal underline-offset-4 hover:text-head hover:underline">
-              Смотреть заявки <ArrowRight className="size-3.5" aria-hidden />
-            </Link>
-          </div>
-        </div>
-        <div className="border-t border-line pt-5 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
           <AutoApplyToggle enabled={autonomy.submitApplications} min={threshold} consent={campaign.autoSubmit} />
+          {queueNote && <p className="text-[12.5px] text-ink-3">{queueNote}</p>}
+          {hasDemo && <p className="text-[12.5px] text-ink-3">Часть вакансий — демонстрационные: подача в них и ответы работодателей симулируются.</p>}
+          <Link href="/app/applications" className="inline-flex min-h-10 w-fit items-center gap-1.5 text-[13px] text-teal underline-offset-4 hover:text-head hover:underline">
+            Смотреть заявки <ArrowRight className="size-3.5" aria-hidden />
+          </Link>
         </div>
-      </section>
+      </details>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <nav aria-label="Фильтр вакансий" className="glass inline-flex w-fit gap-1 !rounded-full p-1">
@@ -167,7 +185,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
               href={href(t.key, q)}
               aria-current={tab === t.key ? "page" : undefined}
               className={cx(
-                "inline-flex h-10 items-center gap-1.5 rounded-full px-3.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green",
+                "inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[13px] transition-colors sm:px-3.5 focus-visible:outline-2 focus-visible:outline-green",
                 tab === t.key ? "bg-cta text-white" : "text-ink-2 hover:bg-white/70 hover:text-head",
               )}
             >
@@ -184,20 +202,12 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         </form>
       </div>
 
-      {queueNote && <p className="-mt-2 text-[12.5px] text-ink-3">{queueNote}</p>}
-
-      {hasDemo && (
-        <p className="-mt-2 text-[12.5px] text-ink-3">
-          Часть вакансий — демонстрационные: подача в них и ответы работодателей симулируются.
-        </p>
-      )}
-
       {rows.length === 0 ? (
         <EmptyFeed tab={tab} q={q} />
       ) : (
         <ul className="grid gap-3 lg:grid-cols-2" aria-label="Вакансии">
           {rows.map((o) => (
-            <OpportunityCard key={o.id} o={o} candidate={candidate} queued={queued.has(o.id) ? queue.when : null} hold={queued.has(o.id) ? null : holdReason(o, queue)} dream={isDreamCompany(o.job.company, dreamCompanies)} userDecision={queue.notQueued[o.id] === "dream-decision"} />
+            <OpportunityCard key={o.id} o={o} candidate={candidate} queued={queued.has(o.id) ? queue.when : null} hold={queued.has(o.id) ? null : holdReason(o, queue)} holdKind={queued.has(o.id) ? null : holdKind(o, queue)} dream={isDreamCompany(o.job.company, dreamCompanies)} userDecision={queue.notQueued[o.id] === "dream-decision"} />
           ))}
         </ul>
       )}
@@ -259,22 +269,31 @@ const PAGE_HOLD_NOTE: Record<PageHold, (min: number) => string> = {
   "auto-apply-off": () => "Автоподача по Match выключена — агент подаёт только на вакансии с отметкой Apply или Auto.",
 };
 
-function OpportunityCard({ o, candidate, queued, hold, dream, userDecision }: { o: Row; candidate: FitCandidate; queued: NextCycle["when"]; hold: string | null; dream: boolean; userDecision: boolean }) {
+/** One dream-company line for both engine paths (set aside as DREAM_DECISION, or blocked on a level line). */
+const DREAM_LINE = "Компания мечты, но уровень не совпадает с целью — агент сам не подаёт. Реши сам: Apply или Skip.";
+/** The mobile card shows this many "Why this fits" bullets; the rest sit behind «ещё». */
+const WHY_MOBILE = 2;
+
+function OpportunityCard({ o, candidate, queued, hold, holdKind: kind, dream, userDecision }: { o: Row; candidate: FitCandidate; queued: NextCycle["when"]; hold: string | null; holdKind: NotQueuedReason | null; dream: boolean; userDecision: boolean }) {
   const fitOpp = { match: o.match, eligibility: o.eligibility, pInterview: o.pInterview, reasons: j<Reason[]>(o.matchReasons, []), blockers: j<string[]>(o.blockers, []).map(blockerRu), softGaps: j<string[]>(o.softGaps, []).map(blockerRu) };
   const why = whyFits(fitOpp, o.job, candidate);
-  const risk = risks(fitOpp, o.job, candidate)[0];
   const chance = interviewChance(o);
   const salary = salaryLabel(o.job.salaryMin, o.job.salaryMax, o.job.currency);
   const applied = APPLIED_OR_LATER.includes(o.status);
   // A hard-blocked role can still score Match 100 (skills fit): the verdict and its reason go first (src/lib/engine/matching.ts).
   const verdict = fitVerdict({ eligibility: o.eligibility, match: o.match, blockers: fitOpp.blockers, pInterview: o.pInterview });
+  const override = overrideNote(o.eligibility, o.blockers, dream);
+  // Dream company + level off-goal: one treatment whichever path the engine took — the dream line and Apply / Skip.
+  const dreamCall = !applied && ((userDecision || fitOpp.softGaps.includes(DREAM_DECISION)) || (dream && verdict.blocked && Boolean(override))) && o.decision !== "apply" && o.decision !== "auto";
   const blocked = verdict.blocked;
+  // One risk line, never a repeat of what the card already says (the dream line, the stale hold).
+  const risk = risks(fitOpp, o.job, candidate).find((r) => r !== DREAM_DECISION && !(kind === "stale" && /больше месяца/.test(r)));
   const titleId = `opp-${o.id}`;
-  const place = placeRu(o.job.location, o.job.remote);
+  const place = placeWithFormat(o.job.location, o.job.remote);
 
   return (
-    <li className={cx("glass flex flex-col gap-4 p-5 transition-shadow hover:shadow-[0_8px_28px_rgb(0_0_0/.09)]", o.status === "skipped" && "opacity-80")} aria-labelledby={titleId}>
-      {verdict.blocked && (
+    <li className={cx("glass flex flex-col gap-3 p-4 transition-shadow hover:shadow-[0_8px_28px_rgb(0_0_0/.09)] sm:gap-4 sm:p-5", o.status === "skipped" && "opacity-80")} aria-labelledby={titleId}>
+      {verdict.blocked && !dreamCall && (
         <p className="flex items-start gap-2 rounded-xl border border-rose/15 bg-rose-soft/60 px-3 py-2 text-[13px] text-rose">
           <b className="shrink-0 font-medium">{verdict.headline}</b>
           <span className="min-w-0 text-ink-2">· {verdict.reason}</span>
@@ -282,12 +301,12 @@ function OpportunityCard({ o, candidate, queued, hold, dream, userDecision }: { 
       )}
 
       <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-1.5">
+        <div className="flex min-w-0 flex-col gap-1 sm:gap-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-[13px] font-medium text-ink">{o.job.company}</span>
             <LaneChip value={o.lane} />
           </div>
-          <h2 id={titleId} className="h-serif text-[21px] !leading-[1.15]">
+          <h2 id={titleId} className="h-serif text-[19px] !leading-[1.15] sm:text-[21px]">
             <Link href={`/app/opportunities/${o.id}`} className="inline-flex min-h-10 items-center decoration-line underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
               {o.job.title}
             </Link>
@@ -302,12 +321,12 @@ function OpportunityCard({ o, candidate, queued, hold, dream, userDecision }: { 
         ) : (
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span className="label !text-[11px]">Match</span>
-            <span className={cx("num text-[30px] leading-none", TONE_TEXT[matchTone(o.match)])}>{o.match}%</span>
+            <span className={cx("num text-[26px] leading-none sm:text-[30px]", TONE_TEXT[matchTone(o.match)])}>{o.match}%</span>
           </div>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-ink-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-ink-2 sm:gap-y-2">
         {/* No probability for a role outside the user's own filters: fitVerdict returns null there (no judgement). */}
         {verdict.pInterview !== null && (
           <span className="inline-flex items-center gap-1.5">
@@ -315,25 +334,44 @@ function OpportunityCard({ o, candidate, queued, hold, dream, userDecision }: { 
             Interview probability: <b className={cx("num font-medium", TONE_TEXT[chance.tone])}>{chance.label}</b>
           </span>
         )}
-        {salary ? <span className="num text-head">{salary}</span> : <span className="text-ink-3">зарплата не указана</span>}
-        {place.showMode && <Chip tone={o.job.remote === "remote" ? "green" : "neutral"}>{place.mode}</Chip>}
-        {place.location && <span className="inline-flex min-w-0 items-center gap-1 text-ink-3"><MapPin className="size-3.5 shrink-0 text-ink-4" aria-hidden /><span className="truncate">{place.location}</span></span>}
-        <span className="text-ink-3">опубликована {agoRu(o.job.postedAt)}</span>
+        {salary ? <span className="num text-head">{salary}</span> : <span className="hidden text-ink-3 sm:inline">зарплата не указана</span>}
+        {place && (
+          <span className="inline-flex min-w-0 items-center gap-1 text-ink-3">
+            <MapPin className="size-3.5 shrink-0 text-ink-4" aria-hidden />
+            <span className="truncate">{place}</span>
+          </span>
+        )}
+        <span className="hidden text-ink-3 sm:inline">опубликована {agoRu(o.job.postedAt)}</span>
       </div>
 
-      {verdict.showWhyFits && why.length > 0 && (
-        <div className="flex flex-col gap-2">
+      {verdict.showWhyFits && why.length > 0 && !dreamCall && (
+        <div className="flex flex-col gap-1.5 sm:gap-2">
           <span className="label !text-[11px]">Why this fits</span>
           <ul className="grid gap-x-4 gap-y-1.5 text-[13.5px] text-ink-2 sm:grid-cols-2">
-            {why.map((w) => (
-              <li key={w} className="flex min-w-0 items-start gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={2.2} aria-hidden /><span>{w}</span></li>
+            {why.map((w, i) => (
+              <li key={w} className={cx("min-w-0 items-start gap-2", i < WHY_MOBILE ? "flex" : "hidden sm:flex")}><Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={2.2} aria-hidden /><span>{w}</span></li>
             ))}
           </ul>
+          {why.length > WHY_MOBILE && (
+            <details className="group/why sm:hidden">
+              <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-1 text-[12.5px] text-teal focus-visible:rounded focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+                <span className="group-open/why:hidden">ещё {why.length - WHY_MOBILE}</span>
+                <span className="hidden group-open/why:inline">свернуть</span>
+                <ChevronDown className="size-3.5 transition-transform group-open/why:rotate-180" aria-hidden />
+              </summary>
+              <ul className="flex flex-col gap-1.5 text-[13.5px] text-ink-2">
+                {why.slice(WHY_MOBILE).map((w) => (
+                  <li key={w} className="flex min-w-0 items-start gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={2.2} aria-hidden /><span>{w}</span></li>
+                ))}
+              </ul>
+            </details>
+          )}
         </div>
       )}
-      {!blocked && risk && <p className="text-[12.5px] text-amber">Учти: {risk}</p>}
+      {dreamCall && <p className="text-[12.5px] leading-snug text-amber">{DREAM_LINE}</p>}
+      {!blocked && !dreamCall && !applied && risk && <p className="text-[12.5px] text-amber">Учти: {risk}</p>}
 
-      <div className="mt-auto flex flex-wrap items-end justify-between gap-3 border-t border-line pt-4">
+      <div className="mt-auto flex flex-wrap items-end justify-between gap-2 border-t border-line pt-3 sm:gap-3 sm:pt-4">
         {applied ? (
           <div className="flex flex-wrap items-center gap-2">
             <StatusChip value={o.status} />
@@ -341,17 +379,18 @@ function OpportunityCard({ o, candidate, queued, hold, dream, userDecision }: { 
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {hold && <span className="text-[12.5px] leading-snug text-ink-3">{hold}</span>}
+            {hold && !dreamCall && <span className="text-[12.5px] leading-snug text-ink-3">{hold}</span>}
             {queued && (
               <span className="inline-flex items-center gap-1.5 text-[12.5px] text-green">
                 <span className="size-1.5 rounded-full bg-green animate-pulse-dot" aria-hidden />
                 {queued === "tomorrow" ? "В очереди — агент подаст завтра" : "В очереди — агент подаст в следующем цикле"}
               </span>
             )}
-            <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} blockedBy={verdict.kind ?? undefined} pending={o.approvals.length} override={overrideNote(o.eligibility, o.blockers, dream)} userDecision={userDecision} />
+            <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} blockedBy={verdict.kind ?? undefined} pending={o.approvals.length} override={dreamCall ? null : override} forceEnable={dreamCall} userDecision={dreamCall} />
           </div>
         )}
-        <Link href={`/app/opportunities/${o.id}`} className="inline-flex min-h-10 items-center gap-1 text-[12.5px] text-ink-3 hover:text-head" aria-label={`Подробнее: ${o.job.title}, ${o.job.company}`}>
+        {/* On a phone the title is the way in; the extra row would only make the card taller. */}
+        <Link href={`/app/opportunities/${o.id}`} className="hidden min-h-10 items-center gap-1 text-[12.5px] text-ink-3 hover:text-head sm:inline-flex" aria-label={`Подробнее: ${o.job.title}, ${o.job.company}`}>
           Подробнее<ArrowRight className="size-3" aria-hidden />
         </Link>
       </div>

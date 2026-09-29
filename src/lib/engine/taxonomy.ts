@@ -22,7 +22,7 @@ export const MASS_HIRING_FAMILIES = ["support", "sales", "operations", "annotati
 export const SKILL_DICTIONARY = [
   "SQL", "Python", "R", "Excel", "Google Sheets", "Tableau", "Power BI", "Looker", "Metabase", "Statistics", "A/B testing",
   "Amplitude", "Mixpanel", "Google Analytics", "Machine Learning", "scikit-learn", "PyTorch", "TensorFlow", "pandas", "NumPy",
-  "dbt", "Airflow", "Spark", "BigQuery", "Snowflake", "ClickHouse", "PostgreSQL", "MySQL", "MongoDB", "Redis",
+  "dbt", "Airflow", "Spark", "ETL", "Kafka", "BigQuery", "Snowflake", "ClickHouse", "PostgreSQL", "MySQL", "MongoDB", "Redis",
   "JavaScript", "TypeScript", "React", "Next.js", "Vue", "Node.js", "Go", "Java", "Kotlin", "Swift", "C#", ".NET", "PHP", "Ruby",
   "Docker", "Kubernetes", "AWS", "GCP", "Azure", "Terraform", "Git", "Linux", "REST", "GraphQL",
   "Figma", "User research", "Prototyping", "Design systems", "Jira", "Confluence", "Notion", "Roadmapping",
@@ -45,7 +45,48 @@ export const SENIORITY = ["intern", "junior", "middle", "senior", "lead"] as con
 export type Seniority = (typeof SENIORITY)[number];
 export const SENIORITY_LABEL: Record<string, string> = { intern: "Стажёр", junior: "Junior", middle: "Middle", senior: "Senior", lead: "Lead" };
 export const seniorityIndex = (s: string) => Math.max(0, SENIORITY.indexOf(s as Seniority));
-export const seniorityFromYears = (y: number): Seniority => (y < 0.5 ? "intern" : y < 2 ? "junior" : y < 5 ? "middle" : y < 8 ? "senior" : "lead");
+/** Years where one level ends and the next begins: < 0.5 intern, < 2 junior, < 5 middle, < 8 senior, else lead. */
+export const SENIORITY_YEARS = { junior: 0.5, middle: 2, senior: 5, lead: 8 } as const;
+/**
+ * THE years → level rule (profile, goal, /check, Readiness, matching). Years are read at the precision the UI shows them
+ * (fmtYearsRu: one decimal), so «2 года» is always Middle and «1,9 года» always Junior — never a rounded «2 года ≈ Junior».
+ */
+export const seniorityFromYears = (years: number): Seniority => {
+  const y = Math.round((Number.isFinite(years) ? years : 0) * 10) / 10;
+  return y < SENIORITY_YEARS.junior ? "intern" : y < SENIORITY_YEARS.middle ? "junior" : y < SENIORITY_YEARS.senior ? "middle" : y < SENIORITY_YEARS.lead ? "senior" : "lead";
+};
+
+/**
+ * Skills that are evidence for a role on their own (a Data Scientist does ML, a Data Engineer builds pipelines).
+ * SQL / Excel / Python are shared by many data roles and never prove one by themselves.
+ */
+export const SIGNATURE_SKILLS: Record<string, string[]> = {
+  data_analyst: ["SQL", "Tableau", "Power BI", "Looker", "Metabase"],
+  product_analyst: ["A/B testing", "Amplitude", "Mixpanel"],
+  data_scientist: ["Machine Learning", "scikit-learn", "PyTorch", "TensorFlow"],
+  data_engineer: ["ETL", "Airflow", "dbt", "Spark", "Kafka"],
+  software_engineer: ["JavaScript", "TypeScript", "Go", "Java", "React", "Node.js", "Kotlin", "Swift", "C#", ".NET", "PHP", "Ruby"],
+  qa: ["Manual testing", "Selenium", "Cypress", "Playwright", "Postman"],
+  product_manager: ["Roadmapping", "User research"],
+  designer: ["Figma", "Prototyping", "Design systems"],
+  marketing: ["SEO", "Paid ads", "Google Analytics", "Copywriting"],
+  sales: ["Cold outreach", "Salesforce", "Negotiation", "CRM"],
+  support: ["Zendesk", "Intercom", "Troubleshooting"],
+  operations: ["Process improvement"],
+  annotation: ["Guidelines", "Attention to detail"],
+};
+
+/**
+ * Whether the skills are real evidence for a role family: at least two of its core skills, one of them a signature
+ * skill (SIGNATURE_SKILLS). «SQL + Excel» is never evidence for Data Scientist or Data Engineer.
+ */
+export function roleSkillEvidence(family: string, skills: string[]) {
+  const have = new Set(skills.map((x) => x.toLowerCase()));
+  const core = [...new Set([...(ROLE_FAMILIES[family]?.skills ?? []), ...(SIGNATURE_SKILLS[family] ?? [])])];
+  const covered = core.filter((x) => have.has(x.toLowerCase()));
+  const signature = (SIGNATURE_SKILLS[family] ?? []).filter((x) => have.has(x.toLowerCase()));
+  return { covered, signature, ok: covered.length >= 2 && signature.length >= 1 };
+}
 
 export const PIPELINE: { key: string; label: string; group: "prep" | "applied" | "interview" | "result" }[] = [
   { key: "found", label: "Found", group: "prep" },
@@ -99,7 +140,12 @@ export function goalMarket(countries: string[]) {
   const names: Record<string, string> = { KZ: "Казахстан", CIS: "СНГ", EU: "Европа", UK: "Великобритания", US: "США", CA: "Канада", MENA: "ОАЭ и Ближний Восток", WORLD: "весь мир удалённо" };
   const international = countries.some((c) => NAMED_FOREIGN.has(c) || c === "WORLD");
   const list = countries.map((c) => names[c] ?? c).join(", ");
-  const label = international ? "Международный рынок" : "Казахстан и СНГ";
+  if (!international) {
+    // A local goal is said once: «Казахстан и СНГ» (never «Казахстан и СНГ · Казахстан, СНГ»), «Казахстан», «СНГ».
+    const local = countries.includes("KZ") && countries.includes("CIS") ? "Казахстан и СНГ" : list || "Казахстан и СНГ";
+    return { international, label: local, regions: list, line: local };
+  }
+  const label = "Международный рынок";
   return { international, label, regions: list, line: list ? `${label} · ${list}` : label };
 }
 
@@ -250,3 +296,89 @@ export function fmtMoney(n: number, cur = "USD") {
 export const fmtKzt = (n: number) => fmtMoney(n, "KZT");
 /** A range in the same style: «$40 000–$60 000». */
 export const fmtMoneyRange = (lo: number, hi: number, cur = "USD") => `${fmtMoney(lo, cur)}–${fmtMoney(hi, cur)}`;
+
+/**
+ * The user's skills the vacancy actually asks for, in the vacancy's order: technologies listed on the job, then skills
+ * named in the JD text. A skill the JD never mentions is never cited as «what they need».
+ */
+export function jdSkillsYouHave(skills: string[], technologies: string[], jdText = "") {
+  const have = new Map(skills.map((x) => [x.toLowerCase(), x]));
+  const out: string[] = [];
+  for (const t of technologies) { const k = t.toLowerCase(); if (have.has(k) && !out.some((o) => o.toLowerCase() === k)) out.push(have.get(k)!); }
+  const text = jdText.toLowerCase();
+  for (const x of skills) {
+    const k = x.toLowerCase();
+    if (out.some((o) => o.toLowerCase() === k) || !text) continue;
+    const esc = k.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
+    if (new RegExp(`(?<![\\p{L}\\p{N}])${esc}(?![\\p{L}\\p{N}])`, "iu").test(text)) out.push(x);
+  }
+  return out;
+}
+
+/* ——— English forms of Russian CV words, for employer-facing English text (cover letter, interview drafts) ——— */
+
+const CYR = /[Ѐ-ӿ]/;
+const TITLE_RU_EN: [RegExp, string][] = [
+  [/(?:аналитик\p{L}*\s+данных|дата[\s-]?аналитик\p{L}*)/iu, "Data Analyst"],
+  [/продуктов\p{L}*\s+аналитик\p{L}*|аналитик\p{L}*\s+продукт\p{L}*/iu, "Product Analyst"],
+  [/(?:bi|би)[\s-]?аналитик\p{L}*|аналитик\p{L}*\s+bi/iu, "BI Analyst"],
+  [/бизнес[\s-]?аналитик\p{L}*/iu, "Business Analyst"],
+  [/системн\p{L}*\s+аналитик\p{L}*/iu, "Systems Analyst"],
+  [/финансов\p{L}*\s+аналитик\p{L}*/iu, "Financial Analyst"],
+  [/маркетинг\p{L}*\s+аналитик\p{L}*|аналитик\p{L}*\s+маркетинг\p{L}*/iu, "Marketing Analyst"],
+  [/(?:дата[\s-]?сайентист\p{L}*|специалист\p{L}*\s+по\s+(?:машинному\s+обучению|анализу\s+данных))/iu, "Data Scientist"],
+  [/(?:инженер\p{L}*\s+данных|дата[\s-]?инженер\p{L}*)/iu, "Data Engineer"],
+  [/(?:инженер\p{L}*\s+по\s+тестированию|тестировщик\p{L}*)/iu, "QA Engineer"],
+  [/frontend[\s-]?разработчик\p{L}*|фронтенд[\s-]?разработчик\p{L}*/iu, "Frontend Developer"],
+  [/backend[\s-]?разработчик\p{L}*|бэкенд[\s-]?разработчик\p{L}*/iu, "Backend Developer"],
+  [/разработчик\p{L}*|программист\p{L}*/iu, "Software Engineer"],
+  [/(?:менеджер\p{L}*\s+продукт\p{L}*|продакт[\s-]?менеджер\p{L}*|продуктов\p{L}*\s+менеджер\p{L}*)/iu, "Product Manager"],
+  [/(?:менеджер\p{L}*\s+проект\p{L}*|проектн\p{L}*\s+менеджер\p{L}*)/iu, "Project Manager"],
+  [/продуктов\p{L}*\s+дизайнер\p{L}*/iu, "Product Designer"],
+  [/дизайнер\p{L}*/iu, "Designer"],
+  [/(?:маркетолог\p{L}*|менеджер\p{L}*\s+по\s+маркетингу)/iu, "Marketing Manager"],
+  [/менеджер\p{L}*\s+по\s+продажам/iu, "Sales Manager"],
+  [/(?:специалист\p{L}*|оператор\p{L}*|менеджер\p{L}*)\s+(?:службы\s+)?поддержки/iu, "Customer Support Specialist"],
+  [/бухгалтер\p{L}*/iu, "Accountant"],
+  [/экономист\p{L}*/iu, "Economist"],
+  [/аналитик\p{L}*/iu, "Analyst"],
+  [/стаж[её]р\p{L}*|практикант\p{L}*/iu, "Intern"],
+  [/руководител\p{L}*\s+(?:отдела|группы|команды)/iu, "Team Lead"],
+];
+const LEVEL_RU_EN: [RegExp, string][] = [[/младш\p{L}*/iu, "Junior"], [/старш\p{L}*/iu, "Senior"], [/ведущ\p{L}*/iu, "Lead"], [/главн\p{L}*/iu, "Principal"]];
+
+/**
+ * A CV job title in English for employer-facing English text: «Аналитик данных» → "Data Analyst", «Старший аналитик» →
+ * "Senior Analyst", «Junior аналитик» → "Junior Analyst". Latin titles pass through. A Cyrillic title the map does not
+ * know becomes `fallback` (e.g. the vacancy's role-family label), never Cyrillic inside an English sentence.
+ */
+export function englishTitle(title: string, fallback = "specialist") {
+  const t = title.trim();
+  if (!CYR.test(t)) return t;
+  const role = TITLE_RU_EN.find(([re]) => re.test(t))?.[1];
+  if (!role) return fallback;
+  const level = LEVEL_RU_EN.find(([re]) => re.test(t))?.[1] ?? t.match(/\b(Junior|Middle|Senior|Lead|Head)\b/i)?.[1] ?? "";
+  return level && !role.startsWith(level) ? `${level[0].toUpperCase()}${level.slice(1).toLowerCase()} ${role}` : role;
+}
+
+const PLACE_RU_EN: Record<string, string> = { алматы: "Almaty", астана: "Astana", шымкент: "Shymkent", караганда: "Karaganda", актобе: "Aktobe", атырау: "Atyrau", павлодар: "Pavlodar", ташкент: "Tashkent", бишкек: "Bishkek", москва: "Moscow", казахстан: "Kazakhstan" };
+const LAT: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p",
+  р: "r", с: "s", т: "t", у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "sch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+  ә: "a", ғ: "g", қ: "k", ң: "n", ө: "o", ұ: "u", ү: "u", һ: "h", і: "i",
+};
+/**
+ * A company / place name for English text: known cities in English («Астана» → "Astana"), other Cyrillic names
+ * transliterated («Магнум» → "Magnum"). Latin names pass through.
+ */
+export function latinName(name: string) {
+  return name.split(/(,\s*)/).map((part) => {
+    if (!CYR.test(part)) return part;
+    const known = PLACE_RU_EN[part.trim().toLowerCase()];
+    if (known) return known;
+    return [...part].map((ch) => { const l = LAT[ch.toLowerCase()]; return l == null ? ch : ch !== ch.toLowerCase() && l ? l[0].toUpperCase() + l.slice(1) : l; }).join("");
+  }).join("");
+}
+
+/** Cyrillic in a line: such a line is never spliced into an English sentence. */
+export const hasCyrillic = (s: string) => CYR.test(s);

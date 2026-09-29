@@ -11,10 +11,9 @@ import { Card, Chip, Label, PageHeader, cx } from "@/components/ui";
 import { cleanRequirement, cvVersionLabel } from "../../opportunities/_lib/fit";
 import { StatusMover } from "../../opportunities/_components/bits";
 import { AgentStatus, type Need } from "../../../_components/agent-status";
-import { endSentence, shortDate, statusRu } from "../../../_components/ru";
+import { endSentence, placeWithFormat, shortDate, statusRu } from "../../../_components/ru";
 import { Timeline, type Step } from "./_components/timeline";
 import { SentAnswer } from "../../../_components/sent-answer";
-import { placeRu } from "../../opportunities/_lib/when";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const [{ id }, userId] = await Promise.all([params, currentUserId()]);
@@ -57,7 +56,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
       pkg: true,
       events: { orderBy: { createdAt: "asc" } },
       inbox: { orderBy: { receivedAt: "asc" }, select: { id: true, subject: true, classification: true, receivedAt: true, simulated: true } },
-      interviews: { orderBy: { createdAt: "asc" }, select: { round: true, scheduledAt: true, status: true, createdAt: true } },
+      interviews: { orderBy: { createdAt: "asc" }, select: { id: true, round: true, scheduledAt: true, status: true, createdAt: true } },
       offers: { select: { createdAt: true, role: true, base: true, currency: true } },
     },
   });
@@ -76,7 +75,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   }
   for (const iv of opp.interviews) {
     const result = iv.status === "passed" ? " · пройдено" : iv.status === "failed" ? " · не пройдено" : iv.status === "done" ? " · состоялось" : "";
-    steps.push({ at: iv.createdAt, kind: "interview_room", title: `Назначено: ${statusRu(iv.round).toLowerCase()}`, detail: `${iv.scheduledAt ? fmtDate(iv.scheduledAt, true) : "дата уточняется"}${result}`, href: "/app/interviews" });
+    steps.push({ at: iv.createdAt, kind: "interview_room", title: `Назначено: ${statusRu(iv.round).toLowerCase()}`, detail: `${iv.scheduledAt ? fmtDate(iv.scheduledAt, true) : "дата уточняется"}${result}`, href: `/app/interviews/${iv.id}` });
   }
   for (const o of opp.offers) steps.push({ at: o.createdAt, kind: "offer", title: "Оффер получен", detail: `${o.role} · ${salaryLabel(o.base, null, o.currency) ?? ""}`, href: "/app/offers" });
   for (const e of opp.events) {
@@ -93,11 +92,13 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   const hasCyrillic = pkg ? /[Ѐ-ӿ]/.test(pkg.cvText) : false;
   const salary = salaryLabel(job.salaryMin, job.salaryMax, job.currency);
   const isDemo = job.source === "demo";
-  const place = placeRu(job.location, job.remote);
+  const place = placeWithFormat(job.location, job.remote);
   const pendingAnswers = answers.filter((a) => a.status === "pending").length;
   const needs: Need[] = [];
   if (opp.status === "offer") needs.push({ text: "Оффер ждёт твоего решения", href: "/app/offers" });
-  if (["assessment", "recruiter", "hiring_manager", "technical", "final"].includes(opp.status)) needs.push({ text: "Подготовься к следующему этапу", href: "/app/interviews" });
+  // The room of the round that is coming (else the latest one) — not the Interviews list.
+  const nextRound = opp.interviews.find((iv) => iv.status === "upcoming") ?? opp.interviews[opp.interviews.length - 1];
+  if (["assessment", "recruiter", "hiring_manager", "technical", "final"].includes(opp.status)) needs.push({ text: "Подготовься к следующему этапу", href: nextRound ? `/app/interviews/${nextRound.id}` : "/app/interviews" });
   if (pendingAnswers) needs.push({ text: "Ответь на вопрос из анкеты", href: "/app/approvals" });
 
   return (
@@ -197,9 +198,8 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Label>Вакансия</Label>
               <span className="flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">
-                {place.showMode && <Chip tone={job.remote === "remote" ? "green" : "neutral"}>{place.mode}</Chip>}
                 {salary && <span className="num text-head">{salary}</span>}
-                {place.location && <span>{place.location}</span>}
+                {place && <span>{place}</span>}
               </span>
             </div>
             {requirements.length > 0 && (

@@ -204,7 +204,10 @@ const camp = await db.campaign.findFirst({ where: { userId: c.user.id } });
   const sent = declined.find((x) => x.p.opportunity.status === "submitted") ?? declined[0];
   if (sent) {
     const app = vis((await c.get(`/app/applications/${sent.p.opportunity.id}`)).text);
-    check(!/I prefer not to answer/.test(app), "J16.optout.application", "application page shows the opt-out in Russian, not \"I prefer not to answer\"", app.match(/.{0,80}I prefer not to answer.{0,20}/)?.[0]);
+    // Round 10 (SentAnswer): the Russian answer leads; the exact English the employer received stays visible only as
+    // «работодатель видит: I prefer not to answer».
+    const bare = app.replace(/работодатель видит: I prefer not to answer/g, "");
+    check(/Предпочитаю не указывать работодатель видит: I prefer not to answer/.test(app) && !/I prefer not to answer/.test(bare), "J16.optout.application", "application page shows the opt-out in Russian first; the English only as «работодатель видит: …»", app.match(/.{0,80}I prefer not to answer.{0,20}/)?.[0]);
   }
 }
 {

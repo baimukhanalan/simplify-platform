@@ -7,7 +7,7 @@ import { parseCV } from "../engine/profile";
 import { logEvent } from "../engine/agent";
 import { ROLE_FAMILIES, REGIONS, SENIORITY, SENIORITY_LABEL, classifyRole, fmtMoney, seniorityFromYears } from "../engine/taxonomy";
 import { marketRange } from "../engine/market";
-import { TO_USD, fromUSD } from "../engine/fx";
+import { TO_USD, fromUSD, toUSD, usdToGoalAmount } from "../engine/fx";
 import { rateLimitUser, retryText } from "../rate-limit";
 import { confirmSeniority, syncSeniorityFromYears, syncYearsFromFacts } from "../onboarding";
 
@@ -299,9 +299,11 @@ export async function applyReadinessFix(form: FormData) {
     await logEvent(user.id, "readiness_fix", `Уровень цели изменён на ${SENIORITY_LABEL[suggested] ?? suggested}`);
   } else if (fix === "salary") {
     const range = marketRange(classifyRole(goal.primaryRole), goal.seniority, j(goal.countries, []));
-    if (goal.currency === "USD" && goal.minSalary > range.mid) {
-      await db.goal.update({ where: { userId: user.id }, data: { minSalary: range.mid } });
-      await logEvent(user.id, "readiness_fix", `Минимальная зарплата снижена до рыночной медианы ${fmtMoney(range.mid)}`);
+    // The market model is yearly USD; the goal keeps its own currency (₸ stays ₸).
+    const target = usdToGoalAmount(range.mid, goal.currency);
+    if (target > 0 && toUSD(goal.minSalary, goal.currency) > range.mid) {
+      await db.goal.update({ where: { userId: user.id }, data: { minSalary: target } });
+      await logEvent(user.id, "readiness_fix", `Минимальная зарплата снижена до рыночной медианы ${fmtMoney(target, goal.currency)} в год`);
     }
   } else if (fix === "role") {
     const role = str(form, "role", 60);

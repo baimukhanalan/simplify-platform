@@ -60,6 +60,7 @@ export default async function OffersPage({ searchParams }: { searchParams: Promi
               regions={regions}
               strengths={strengths}
               name={user.name}
+              minimum={user.goal?.minSalary ? { amount: user.goal.minSalary, currency: user.goal.currency } : undefined}
             />
           ))}
           {closed.length > 0 && (

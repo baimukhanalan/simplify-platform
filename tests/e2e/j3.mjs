@@ -48,8 +48,12 @@ const q3 = await opp({ status: "qualified", decision: "" });
 r = await decide(q3.id, "apply");
 o = await byId(q3.id);
 const pend = await db.approval.count({ where: { opportunityId: q3.id, status: "pending" } });
-console.log("  apply result:", JSON.stringify(r.result), "status:", o.status, "pending approvals:", pend);
-check(r.result?.ok && (o.status === "submitted" || (o.status === "prepared" && pend > 0)), "J3.apply", "Apply -> submitted or prepared+approvals", { st: o.status, pend });
+// Round 10: a standing question (sponsorship, self-ID…) is ONE card for all roles — it may live on another role, and this
+// package then waits with the answer «pending» in its own answers list until that card is resolved.
+const q3open = (JSON.parse((await db.applicationPackage.findUnique({ where: { opportunityId: q3.id } }))?.answers ?? "[]")).filter((a) => a.status === "pending").length;
+const userPend = await db.approval.count({ where: { userId: c.user.id, status: "pending", kind: { not: "handoff" } } });
+console.log("  apply result:", JSON.stringify(r.result), "status:", o.status, "pending approvals:", pend, "shared open answers:", q3open);
+check(r.result?.ok && (o.status === "submitted" || (o.status === "prepared" && (pend > 0 || (q3open > 0 && userPend > 0)))), "J3.apply", "Apply -> submitted or prepared+approvals (own or the shared standing-question card)", { st: o.status, pend, q3open, userPend });
 
 // APPLY on a blocked role -> error
 const blocked = await opp({ eligibility: "blocked" });
@@ -99,7 +103,11 @@ check(pg.status === 200, "J3.detail.after", "detail renders after prepare", pg.s
 
 // Applications kanban: submit something first
 const sub = await db.opportunity.findFirst({ where: { campaignId: camp.id, status: "prepared" } });
-await db.approval.updateMany({ where: { opportunityId: sub.id, status: "pending" }, data: { status: "approved", answer: "x", resolvedAt: new Date() } });
+// Answer every open question through the real action (round 10: shared standing-question cards may sit on other roles,
+// and only resolveApproval propagates the answer into every package that waits for it).
+for (const a of await db.approval.findMany({ where: { userId: c.user.id, status: "pending", kind: { not: "handoff" } } })) {
+  await c.action("ops.resolveApproval", [form({ id: a.id, decision: "edit", answer: a.proposed || "Yes" })], { page: "/app/approvals" });
+}
 r = await decide(sub.id, "apply");
 o = await byId(sub.id);
 check(o.status === "submitted", "J3.submit", "prepared role with no approvals -> Apply submits", { st: o.status, res: r.result });

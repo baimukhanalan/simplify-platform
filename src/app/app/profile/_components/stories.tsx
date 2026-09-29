@@ -6,17 +6,10 @@ import { j } from "@/lib/db";
 import { saveStory, deleteStory, type StoryTag } from "@/lib/actions/profile";
 import { ActionForm, FormSubmit } from "./action-form";
 import { Disclosure } from "./bits";
+import { STORY_TAGS, STORY_TAG_RU } from "@/lib/ru";
 
-const TAGS: { key: StoryTag; label: string }[] = [
-  { key: "conflict", label: "Конфликт" },
-  { key: "failure", label: "Неудача" },
-  { key: "leadership", label: "Лидерство" },
-  { key: "impact", label: "Результат" },
-  { key: "pressure", label: "Давление" },
-  { key: "initiative", label: "Инициатива" },
-  { key: "data", label: "Данные" },
-  { key: "customer", label: "Клиенты" },
-];
+/** Tags and their labels from one map (lib STORY_TAG_RU) — the Interview Room's STAR library reads the same. */
+const TAGS: { key: StoryTag; label: string }[] = STORY_TAGS.map((key) => ({ key, label: STORY_TAG_RU[key] }));
 
 const TAG_LABEL: Record<string, string> = Object.fromEntries(TAGS.map((t) => [t.key, t.label]));
 

@@ -14,8 +14,7 @@ import { betterPayingRoles, careerHistory } from "@/lib/career";
 import { loadCareer } from "./_components/data";
 import { HistoryChart } from "./_components/history-chart";
 import { BREAKDOWN, baseRole, nextMilestone, recommendation } from "./_components/next-step";
-import { WORK_MODE_RU, marketBasisRu, plural } from "../../_components/ru";
-import { placeRu } from "@/lib/ru";
+import { marketBasisRu, placeWithFormat, plural } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Режим карьеры" };
 
@@ -205,7 +204,7 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
           <nav aria-label="Разделы карьеры" className="grid animate-rise grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2" style={{ animationDelay: "240ms" }}>
             <HubLink href="/app/profile" icon={<UserRound className="size-4" strokeWidth={1.7} aria-hidden />} title="Career Profile" sub="опыт, навыки" />
             <HubLink href="/app/goal" icon={<Target className="size-4" strokeWidth={1.7} aria-hidden />} title="Цель" sub="роль, регионы" />
-            <HubLink href="/app/readiness" icon={<Gauge className="size-4" strokeWidth={1.7} aria-hidden />} title="Readiness" sub="интервью" />
+            <HubLink href="/app/readiness" icon={<Gauge className="size-4" strokeWidth={1.7} aria-hidden />} title="Readiness" sub="готовность к цели" />
             <HubLink href="/app/insights" icon={<Lightbulb className="size-4" strokeWidth={1.7} aria-hidden />} title="Стратегия агента" sub="что приносит ответы" />
           </nav>
         </div>
@@ -231,7 +230,7 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="break-words text-[15px] text-head">{jb.title}</div>
-                      <div className="truncate text-[13px] text-ink-3">{jb.company} · {jb.remote === "remote" ? WORK_MODE_RU.remote : placeRu(jb.location) || (WORK_MODE_RU[jb.remote] ?? jb.remote)}</div>
+                      <div className="truncate text-[13px] text-ink-3">{jb.company} · {placeWithFormat(jb.location, jb.remote)}</div>
                     </div>
                     <Chip tone="green" className="shrink-0"><span className="sr-only">В среднем </span>+{uplift}%</Chip>
                   </div>

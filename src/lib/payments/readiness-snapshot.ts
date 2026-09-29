@@ -16,7 +16,7 @@ export async function readinessInputFor(userId: string): Promise<ReadinessInput 
   return {
     profile: { yearsExperience: p.yearsExperience, skills: j(p.skills, []), englishLevel: p.englishLevel, cvText: p.cvText, summary: p.summary, workAuth: j(p.workAuth, []), needsSponsorship: p.needsSponsorship, linkedin: p.linkedin, github: p.github, portfolio: p.portfolio },
     facts: u.facts, stories: u._count.stories, mockScores,
-    goal: { primaryRole: g.primaryRole, seniority: g.seniority, minSalary: toUSD(g.minSalary, g.currency), countries: j(g.countries, []), workModes: j(g.workModes, []), dreamCompanies: j(g.dreamCompanies, []), sponsorshipNeeded: g.sponsorshipNeeded },
+    goal: { primaryRole: g.primaryRole, seniority: g.seniority, minSalary: toUSD(g.minSalary, g.currency), countries: j(g.countries, []), workModes: j(g.workModes, []), dreamCompanies: j(g.dreamCompanies, []), sponsorshipNeeded: g.sponsorshipNeeded, currency: g.currency },
   };
 }
 

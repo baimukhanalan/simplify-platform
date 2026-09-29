@@ -13,7 +13,7 @@ import { STAGES, dayLabel, hhmm, type StageKey, type TimelineDay, type TimelineI
  * `open`: stages that still have something in progress (an upcoming test or interview, an offer awaiting a decision).
  * A stage behind the current one is shown as done only when nothing in it is open; otherwise it reads «в процессе».
  */
-export function StageBar({ stage, values, open = {} }: { stage: number; values: Record<StageKey, string>; open?: Partial<Record<StageKey, boolean>> }) {
+export function StageBar({ stage, values, open = {}, openCount = {} }: { stage: number; values: Record<StageKey, string>; open?: Partial<Record<StageKey, boolean>>; openCount?: Partial<Record<StageKey, number>> }) {
   const value = values;
   const pctDone = (stage / (STAGES.length - 1)) * 100;
   return (
@@ -43,10 +43,11 @@ export function StageBar({ stage, values, open = {} }: { stage: number; values: 
                 <span className={cx("sr-only sm:not-sr-only sm:text-center", i === 0 && "sm:!text-left", i === STAGES.length - 1 && "sm:!text-right")}>
                   <span className={cx("block text-[12.5px] leading-tight", current ? "font-medium text-head" : done || inProgress ? "text-ink-2" : "text-ink-3")}>
                     {s.label}
-                    <span className="sr-only">{current ? " — текущий этап" : inProgress ? " — в процессе" : done ? " — пройден" : " — впереди"}{value[s.key] ? `, ${value[s.key]}` : ""}</span>
+                    <span className="sr-only">{current ? " — текущий этап" : inProgress ? ` — в процессе${openCount[s.key] ? `: ${openCount[s.key]}` : ""}` : done ? " — пройден" : " — впереди"}{value[s.key] ? `, ${value[s.key]}` : ""}</span>
                   </span>
                   {value[s.key] && s.key !== "goal" && <span aria-hidden className={cx("num block text-[12px]", current || inProgress ? "text-green" : "text-ink-3")}>{value[s.key]}</span>}
-                  {inProgress && <span aria-hidden className="block text-[11px] text-green">в процессе</span>}
+                  {/* The number above is the total reached; this line is what is still ahead, so «3» never reads as «3 в процессе». */}
+                  {inProgress && <span aria-hidden className="block text-[11px] text-green">в процессе{openCount[s.key] ? `: ${openCount[s.key]}` : ""}</span>}
                 </span>
               </li>
             );
@@ -180,15 +181,18 @@ export function Timeline({ days, now }: { days: TimelineDay[]; now: number }) {
             {d.items.map((it) => {
               const Icon = KIND_ICON[it.kind];
               const muted = it.kind === "system" || it.kind === "skipped";
+              // A past cycle line keeps what the cycle did, not the «… ждут» count it saw then — that count is stale
+              // by now; the live one is in «Следующий шаг».
+              const text = it.kind === "system" && /^Цикл агента:/.test(it.text) ? it.text.split(" · ")[0] : it.text;
               return (
                 <li key={it.id} className="grid grid-cols-[44px_28px_1fr] items-start gap-2.5 border-b border-line/60 py-2.5 last:border-0 sm:grid-cols-[52px_28px_1fr]">
                   <time dateTime={it.at.toISOString()} className="num pt-1 text-[12.5px] text-ink-3">{hhmm(it.at)}</time>
                   <span className={cx("grid size-7 place-items-center rounded-full border", KIND_TONE[it.kind] ?? "border-stroke bg-white text-teal")}><Icon className="size-3.5" strokeWidth={1.7} aria-hidden /></span>
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 pt-0.5">
                     {it.href && !it.cta ? (
-                      <Link href={it.href} className={cx("relative min-w-0 break-words text-[14px] leading-snug after:absolute after:inset-x-0 after:-inset-y-[11px] after:content-[''] hover:underline focus-visible:outline-2 focus-visible:outline-green", muted ? "text-ink-3" : "text-ink")}>{it.text}</Link>
+                      <Link href={it.href} className={cx("relative min-w-0 break-words text-[14px] leading-snug after:absolute after:inset-x-0 after:-inset-y-[11px] after:content-[''] hover:underline focus-visible:outline-2 focus-visible:outline-green", muted ? "text-ink-3" : "text-ink")}>{text}</Link>
                     ) : (
-                      <span className={cx("min-w-0 break-words text-[14px] leading-snug", muted ? "text-ink-3" : "text-ink")}>{it.text}</span>
+                      <span className={cx("min-w-0 break-words text-[14px] leading-snug", muted ? "text-ink-3" : "text-ink")}>{text}</span>
                     )}
                     {it.match != null && <span className="num rounded-full bg-head/[.06] px-2 py-0.5 text-[11.5px] text-head">Match {it.match}%</span>}
                     {it.detail && <span className="font-mono text-[11px] uppercase tracking-[.06em] text-amber">{it.detail}</span>}

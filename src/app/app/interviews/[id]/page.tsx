@@ -186,7 +186,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
             generatedBy={packRaw?.generatedBy}
             generatedAt={packRaw?.generatedAt}
             debug={debug}
-            ctx={{ ...ctx, round: iv.round, technologies, salary, companyWhat: brief.company.what }}
+            ctx={{ ...ctx, round: iv.round, technologies, jdText: [job.description, ...requirements].join("\n"), salary, companyWhat: brief.company.what }}
             stories={storyLite}
           />
         )}
@@ -198,7 +198,8 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
             mocks={iv.mocks}
             assessment={isAssessment}
             ctx={{ ...ctx, salary }}
-            jdTerms={[...technologies, ...requirements.flatMap((r) => r.split(/\W+/).filter((w) => w.length > 5)).slice(0, 12)]}
+            // The vacancy's technologies — the same terms the server scores the saved session with (saveMockSession).
+            jdTerms={technologies}
           />
         )}
         {tab === "debrief" && (

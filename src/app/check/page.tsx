@@ -23,7 +23,7 @@ export default async function CheckPage() {
   return (
     <div className="min-h-dvh overflow-x-clip">
       <SiteHeader right={signedIn ? <ButtonLink href="/app" variant="glass" size="sm">Открыть кабинет</ButtonLink> : <ButtonLink href="/login" variant="ghost" size="sm">Войти</ButtonLink>} />
-      <main className="mx-auto grid w-full max-w-[1180px] gap-8 px-4 pb-20 pt-4 sm:px-8 lg:grid-cols-[1.15fr_.85fr] lg:gap-12 lg:pt-10">
+      <main id="main-content" tabIndex={-1} className="mx-auto grid w-full max-w-[1180px] gap-8 px-4 pb-20 pt-4 sm:px-8 lg:grid-cols-[1.15fr_.85fr] lg:gap-12 lg:pt-10">
         <section className="flex min-w-0 flex-col gap-7">
           <div className="flex flex-col gap-3 animate-rise">
             <Label>Бесплатная проверка CV · без регистрации</Label>
@@ -35,7 +35,7 @@ export default async function CheckPage() {
           </Card>
           <p className="text-[12.5px] leading-relaxed text-ink-3">
             Текст CV используется только для этой проверки и хранится обезличенно. Продолжая, ты принимаешь <LegalLinks newTab /> и соглашаешься на обработку CV для анализа.{" "}
-            Уже есть аккаунт? <Link href="/login" className="text-head underline decoration-line underline-offset-2 hover:decoration-teal">Войти</Link>
+            Уже есть аккаунт? <Link href="/login" className="relative text-head underline decoration-line underline-offset-2 after:absolute after:-inset-x-1 after:-inset-y-3 after:content-[''] hover:decoration-teal focus-visible:rounded focus-visible:outline-2 focus-visible:outline-green">Войти</Link>
           </p>
         </section>
 

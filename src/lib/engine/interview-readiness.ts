@@ -26,12 +26,16 @@ export type InterviewReadiness = ReturnType<typeof interviewReadiness>;
  * Readiness for ONE specific interview (Interview Room aside) — a different measure, so it has a different name:
  * «Готовность к этому интервью». Match with the vacancy, the best mock for this room, stories, brief/answers.
  */
+/**
+ * `value` weighs into the total (a mock not taken yet counts as NO_MOCK — no practice lowers readiness); `score` is what
+ * the line shows: null for «Пробное интервью · ещё не пройдено» (no invented 40 next to «not done»).
+ */
 export function roomReadiness(i: { match: number; bestMock: number | null; stories: number; hasPack: boolean }) {
-  const parts = [
-    { label: "Match с вакансией", value: clamp(i.match), w: 0.45 },
-    { label: "Пробное интервью", value: clamp(i.bestMock ?? NO_MOCK), w: 0.25, hint: i.bestMock == null ? "ещё не пройдено" : "лучший результат" },
-    { label: "STAR-истории", value: clamp(i.stories * 25), w: 0.2, hint: `${i.stories} в библиотеке` },
-    { label: "Бриф и ответы", value: i.hasPack ? 100 : 60, w: 0.1 },
+  const parts: { label: string; value: number; score: number | null; w: number; hint?: string }[] = [
+    { label: "Match с вакансией", value: clamp(i.match), score: clamp(i.match), w: 0.45 },
+    { label: "Пробное интервью", value: clamp(i.bestMock ?? NO_MOCK), score: i.bestMock == null ? null : clamp(i.bestMock), w: 0.25, hint: i.bestMock == null ? "ещё не пройдено" : "лучший результат" },
+    { label: "STAR-истории", value: clamp(i.stories * 25), score: clamp(i.stories * 25), w: 0.2, hint: `${i.stories} в библиотеке` },
+    { label: "Бриф и ответы", value: i.hasPack ? 100 : 60, score: i.hasPack ? 100 : 60, w: 0.1 },
   ];
   return { title: "Готовность к этому интервью", score: clamp(parts.reduce((a, p) => a + p.value * p.w, 0)), parts };
 }

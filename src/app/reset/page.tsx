@@ -18,7 +18,7 @@ export default function ResetPage() {
   return (
     <div className="min-h-dvh overflow-x-clip">
       <SiteHeader />
-      <main className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 pb-20 pt-6 sm:px-8 sm:pt-12">
+      <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-xl flex-col gap-6 px-4 pb-20 pt-6 sm:px-8 sm:pt-12">
         <div className="flex flex-col gap-3 animate-rise">
           <span className="label">Восстановление доступа</span>
           <h1 className="h-serif text-[clamp(32px,5vw,48px)]">Не помнишь <Script>пароль</Script>?</h1>

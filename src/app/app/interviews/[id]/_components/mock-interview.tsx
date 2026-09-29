@@ -2,7 +2,7 @@
 import { useId, useRef, useState, useTransition } from "react";
 import { Mic, MicOff, RotateCcw, ArrowRight, Check, SkipForward, Play } from "lucide-react";
 import { Button, Card, Chip, Label, Progress, Ring, cx } from "@/components/ui";
-import { scoreAnswer } from "@/lib/engine/interview";
+import { scoreAnswer, summarizeMock, type MockSummary } from "@/lib/engine/interview";
 import { PERSONAS } from "@/lib/rounds";
 import { count } from "../../../../_components/ru";
 import { saveMockSession } from "@/lib/actions/interview";
@@ -12,14 +12,8 @@ import { MOCK_SETS, missingPoints, personaRu, suggestion, type MockCtx } from ".
 type Score = ReturnType<typeof scoreAnswer>;
 type Turn = { question: string; answer: string; score: Score | null };
 type Current = { score: Score; missing: string[]; better: ReturnType<typeof suggestion> };
-export type MockFeedback = {
-  overall: number;
-  answered: number;
-  dims: Record<"content" | "structure" | "clarity" | "length" | "confidence", number>;
-  fillers: number;
-  plan: string[];
-  perQuestion: { question: string; overall: number | null; tips: string[] }[];
-};
+/** The session summary — the same shape and computation the server stores (summarizeMock). */
+export type MockFeedback = MockSummary;
 
 const DIMS: { key: keyof MockFeedback["dims"]; label: string }[] = [
   { key: "content", label: "Содержание" },
@@ -30,31 +24,12 @@ const DIMS: { key: keyof MockFeedback["dims"]; label: string }[] = [
 ];
 const STAR_RU = { s: "ситуация", t: "задача", a: "действие", r: "результат" } as const;
 
-const DIM_ADVICE: Record<keyof MockFeedback["dims"], string> = {
-  content: "Каждый ответ — с одной цифрой результата из твоего опыта.",
-  structure: "Отвечай по STAR: 1 фраза контекста, 1 — задача, 2–3 — твои действия, 1 — результат.",
-  clarity: "Короткие предложения и паузы вместо слов-паразитов.",
-  length: "Держи ответ в 60–120 секунд (≈ 80–220 слов).",
-  confidence: "Убери «I think maybe / наверное» — говори о своих решениях в первом лице.",
-};
-
-function summarize(turns: Turn[]): MockFeedback {
-  const scored = turns.filter((t) => t.score).map((t) => t.score!);
-  const avg = (f: (s: Score) => number) => (scored.length ? Math.round(scored.reduce((a, s) => a + f(s), 0) / scored.length) : 0);
-  const dims = { content: avg((s) => s.content), structure: avg((s) => s.structure), clarity: avg((s) => s.clarity), length: avg((s) => s.length), confidence: avg((s) => s.confidence) };
-  const tipCount = new Map<string, number>();
-  scored.flatMap((s) => s.tips).forEach((t) => tipCount.set(t.replace(/\d+/g, "N"), (tipCount.get(t.replace(/\d+/g, "N")) ?? 0) + 1));
-  const weakest = (Object.keys(dims) as (keyof typeof dims)[]).sort((a, b) => dims[a] - dims[b]).slice(0, 2);
-  const plan = [...weakest.map((k) => DIM_ADVICE[k]), ...[...tipCount.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t.replace(/N/g, "несколько"))].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
-  return {
-    overall: avg((s) => s.overall),
-    answered: scored.length,
-    dims,
-    fillers: scored.reduce((a, s) => a + s.fillers, 0),
-    plan,
-    perQuestion: turns.map((t) => ({ question: t.question, overall: t.score?.overall ?? null, tips: t.score?.tips ?? [] })),
-  };
-}
+/**
+ * The end-of-session summary with the server's own function and inputs (summarizeMock on the transcript, the vacancy's
+ * terms), so the result shown here is exactly what gets saved.
+ */
+const summarize = (turns: Turn[], skills: string[], jdTerms: string[]): MockFeedback =>
+  summarizeMock(turns.map((t) => ({ question: t.question, answer: t.answer })), { skills, jdTerms });
 
 export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, assessment = false }: { interviewId: string; defaultPersona: string; ctx: MockCtx; jdTerms: string[]; assessment?: boolean }) {
   const [phase, setPhase] = useState<"select" | "run" | "done">("select");
@@ -104,7 +79,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
     const text = draftRef.current.trim();
     if (!text) return;
     const score = scoreAnswer(question, text, { skills: ctx.skills, jdTerms: jdTerms.length ? jdTerms : ctx.skills, spoken: spokenRef.current });
-    setCurrent({ score, missing: missingPoints(question, text, score, ctx), better: suggestion(question, ctx) });
+    setCurrent({ score, missing: missingPoints(question, text, score, ctx), better: suggestion(question, ctx, jdTerms) });
   };
 
   const advance = async (skip = false) => {
@@ -125,7 +100,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
   };
 
   const save = (all: Turn[]) => {
-    const feedback = summarize(all);
+    const feedback = summarize(all, ctx.skills, jdTerms);
     if (!feedback.answered) return;
     startTransition(async () => {
       try {
@@ -165,7 +140,7 @@ export function MockInterview({ interviewId, defaultPersona, ctx, jdTerms, asses
     );
 
   if (phase === "done") {
-    const fb = summarize(turns);
+    const fb = summarize(turns, ctx.skills, jdTerms);
     return (
       <Card strong className="flex flex-col gap-6">
         <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-center">

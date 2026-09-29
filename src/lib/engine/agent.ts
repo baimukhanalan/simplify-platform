@@ -288,6 +288,28 @@ export async function closeCampaignApprovals(campaignId: string) {
   return r.count;
 }
 
+/**
+ * A campaign ended with HIRED: its rounds still marked upcoming (other companies' interviews, open assessments) are
+ * cancelled, so nothing of a finished search waits on the user any more. Returns how many were closed.
+ */
+export async function closeCampaignRounds(campaignId: string) {
+  const r = await db.interview.updateMany({ where: { status: "upcoming", opportunity: { campaignId } }, data: { status: "cancelled" } });
+  return r.count;
+}
+
+/**
+ * Questions that hold one role's package: its own pending question cards plus package answers still pending because the
+ * same standing question waits on another role's card (one card per question). Both are answered in «Подтверждения».
+ */
+export async function blockingQuestions(opportunityId: string) {
+  const [own, pkg] = await Promise.all([
+    db.approval.count({ where: { opportunityId, status: "pending", kind: { not: "handoff" } } }),
+    db.applicationPackage.findUnique({ where: { opportunityId }, select: { answers: true } }),
+  ]);
+  const pendingAnswers = j<Answer[]>(pkg?.answers ?? "[]", []).filter((a) => a.status === "pending").length;
+  return Math.max(own, pendingAnswers);
+}
+
 /** A pending standing approval (same kind + question) of this user in a campaign that is still running. */
 function openStandingApproval(userId: string, kind: string, question: string) {
   return db.approval.findFirst({ where: { userId, kind, question, status: "pending", opportunity: { campaign: { userId, status: { in: ["active", "paused"] } } } }, select: { id: true } });

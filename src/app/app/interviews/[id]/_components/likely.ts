@@ -1,4 +1,5 @@
-import { retrieveStories, scaffold, type FactLite, type Pack, type StoryLite } from "@/lib/engine/interview";
+import { englishTitle, retrieveStories, scaffold, type FactLite, type Pack, type StoryLite } from "@/lib/engine/interview";
+import { hasCyrillic, jdSkillsYouHave, latinName } from "@/lib/engine/taxonomy";
 import { achievementClause, achievementLines, possessive } from "@/lib/engine/personalize";
 
 // «Скорее всего спросят». Answer text (opener + points) is English, the interview language, and is assembled
@@ -13,6 +14,8 @@ export type LikelyCtx = {
   role: string;
   round: string;
   technologies: string[];
+  /** The vacancy text (description + requirements): skills it names count as «what they need» too. */
+  jdText?: string;
   salary?: { low: number; high: number };
   companyWhat?: string;
 };
@@ -42,26 +45,37 @@ function factClause(f: FactLite | undefined): string | null {
   return line ? achievementClause(line) : null;
 }
 
+/** «I studied X at Y, …» — a Cyrillic degree title is left out rather than spliced into English. */
+function eduLine(edu: FactLite, org: (o: string | null | undefined) => string) {
+  const title = hasCyrillic(edu.title) ? "" : edu.title;
+  if (!title && !edu.org) return "";
+  return `I studied${title ? ` ${title}` : ""}${edu.org ? ` at ${org(edu.org)}` : ""}, which is where I started working with data.`;
+}
+
 /** Present → Past → Future, filled from the profile. */
 function intro(ctx: LikelyCtx): Pick<Likely, "opener" | "points" | "tips"> {
   const jobs = ctx.facts.filter((f) => f.kind === "employment");
   const [now, prev] = jobs;
   const edu = ctx.facts.find((f) => f.kind === "education");
-  const noun = roleNoun(now?.title || ctx.role);
+  // English answer text: a Cyrillic CV title becomes English («Аналитик данных» → "Data Analyst"), an org is transliterated.
+  const nowTitle = now ? englishTitle(now.title, ctx.role) : "";
+  const prevTitle = prev ? englishTitle(prev.title, ctx.role) : "";
+  const org = (o: string | null | undefined) => (o ? latinName(o) : "");
+  const noun = roleNoun(nowTitle || ctx.role);
   const exp = years(ctx.yearsExperience);
   const opener = `I'm ${article(noun)} ${noun}${exp ? ` with ${exp} of hands-on experience` : ""}.`;
   const tools = ctx.skills.slice(0, 3);
 
   const nowClause = factClause(now);
   const present = now
-    ? `Right now I work as ${article(now.title)} ${now.title}${now.org ? ` at ${now.org}` : ""}${tools.length ? `, mostly with ${list(tools)}` : ""}.${nowClause ? ` Recently I ${nowClause}.` : ""}`
+    ? `Right now I work as ${article(nowTitle)} ${nowTitle}${now.org ? ` at ${org(now.org)}` : ""}${tools.length ? `, mostly with ${list(tools)}` : ""}.${nowClause ? ` Recently I ${nowClause}.` : ""}`
     : `I work mostly with ${list(tools) || "data"}, and I've built my experience through hands-on projects.`;
 
   const prevClause = factClause(prev);
   const past = prev
-    ? `Before that I was ${article(prev.title)} ${prev.title}${prev.org ? ` at ${prev.org}` : ""}${prevClause ? `, where I ${prevClause}` : ""}.`
+    ? `Before that I was ${article(prevTitle)} ${prevTitle}${prev.org ? ` at ${org(prev.org)}` : ""}${prevClause ? `, where I ${prevClause}` : ""}.`
     : edu
-      ? `I studied ${edu.title}${edu.org ? ` at ${edu.org}` : ""}, which is where I started working with data.`
+      ? eduLine(edu, org)
       : "";
 
   const future = `Now I want to take that further, and the ${ctx.role} role at ${ctx.company} is the logical next step for me.`;
@@ -94,10 +108,11 @@ function storyAnswer(q: string, ctx: LikelyCtx, tips: string[]): Pick<Likely, "o
 export function buildLikely(_pack: Pack | null, ctx: LikelyCtx): Likely[] {
   const topFact = ctx.facts.find((f) => f.kind === "employment");
   const topClause = factClause(topFact);
-  const matched = ctx.technologies.filter((t) => ctx.skills.some((s) => s.toLowerCase() === t.toLowerCase()));
-  const toGrow = ctx.technologies.filter((t) => !matched.includes(t));
-  const tools = matched.length ? matched.slice(0, 3) : ctx.skills.slice(0, 3);
-  const proof = topClause ? { k: "Доказательство", v: `At ${topFact?.org || "my current job"}, I ${topClause}.` } : null;
+  // Only the user's skills this vacancy asks for (jdSkillsYouHave) — never a profile skill the JD doesn't mention.
+  const matched = jdSkillsYouHave(ctx.skills, ctx.technologies, ctx.jdText ?? "");
+  const toGrow = ctx.technologies.filter((t) => !matched.some((m) => m.toLowerCase() === t.toLowerCase()));
+  const tools = matched.slice(0, 3);
+  const proof = topClause ? { k: "Доказательство", v: `At ${topFact?.org ? latinName(topFact.org) : "my current job"}, I ${topClause}.` } : null;
 
   const items: Likely[] = [
     {

@@ -13,7 +13,7 @@ import { benchmarkOffer, negotiationPlan } from "../src/lib/engine/offer";
 import { marketRange, percentileIn } from "../src/lib/engine/market";
 import { parseCVHeuristic } from "../src/lib/engine/profile";
 import { buildPackageHeuristic, achievementClause, achievementGerund, achievementLines, possessive, stripTitle, type ProfileLite, type FactLite, type JobLite } from "../src/lib/engine/personalize";
-import { segmentStats, type OppLite } from "../src/lib/engine/insights";
+import { STOP_WEIGHT, segmentStats, type OppLite } from "../src/lib/engine/insights";
 import { AUTONOMY_DEFAULTS, AUTONOMY_LABELS, agentMaySubmit, readAutonomy } from "../src/lib/engine/autonomy";
 import { startOfToday } from "../src/lib/time";
 
@@ -450,7 +450,8 @@ describe("insights.segmentStats", () => {
     assert.ok(da.smoothed < da.rate && da.smoothed > 0.1);
     assert.equal(sup.verdict, "stop");
     assert.equal(da.verdict, "scale");
-    for (const x of s) assert.ok(x.weight >= 0.25 && x.weight <= 2.2);
+    assert.equal(sup.weight, STOP_WEIGHT, "a stopped segment shows the weight the agent uses");
+    assert.ok(da.weight >= 0.25 && da.weight <= 2.2);
   });
 
   test("empty input → []", () => {

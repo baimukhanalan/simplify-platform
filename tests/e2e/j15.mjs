@@ -124,14 +124,15 @@ check(!!iv1 && !!iv2, "J15.iv.created", "interview + assessment rounds created f
   const { id: _i, ...jobData } = base.job;
   const job = await db.job.create({ data: { ...jobData, externalId: `j15-q-${Date.now()}`, dedupeKey: `j15-q-${Date.now()}`, company: "ThresholdCo", postedAt: new Date() } });
   const q = await db.opportunity.create({ data: { campaignId: camp.id, jobId: job.id, match: 90, eligibility: "eligible", status: "qualified", pInterview: 0.3, priority: 0.5, segment: base.segment, matchReasons: base.matchReasons } });
-  let found = null;
+  let found = null, pageText = "";
   for (let p = 1; p < 30 && !found; p++) {
     const h = (await c.get(`/app/opportunities?tab=all&page=${p}`)).text.replace(/<script[\s\S]*?<\/script>/g, "");
     const i = h.indexOf(`id="opp-${q.id}"`);
-    if (i >= 0) { found = cardAt(h, i); break; }
+    if (i >= 0) { found = cardAt(h, i); pageText = visible(h); break; }
     if (!new RegExp(`page=${p + 1}`).test(h.replace(/&amp;/g, "&"))) break;
   }
-  check(!!found && found.includes("Match ниже порога автоподачи — нажми Apply или Auto"), "J15.queue.reason", "card explains why it is not queued (below-threshold)", found?.slice(0, 400) ?? "card not found");
+  // Round 10: an account-level hold (Match below the auto-apply threshold) is said ONCE above the feed, not on every card.
+  check(!!found && /У части вакансий Match ниже порога автоподачи \(99%\) — агент подаёт на них только после Apply или Auto/.test(pageText) && !found.includes("Match ниже порога автоподачи"), "J15.queue.reason", "below-threshold hold is explained once above the feed (with the 99% threshold), not repeated on the card", found ? pageText.match(/.{0,40}порога автоподачи.{0,80}/)?.[0] ?? found.slice(0, 300) : "card not found");
   await c.action("agent.saveAutonomy", [{}, form({ findJobs: "on", personalizeCv: "on", answerStandard: "on", sensitive: "ask", submitApplications: "on", autoApplyMinMatch: "85" })], { page: "/app/agent" });
 }
 
@@ -291,8 +292,12 @@ Languages: English C1, Russian native
     const at = v.indexOf(`${o.company} Data Analyst Оклад`);
     const next = v.indexOf("CapCo", at + 10);
     const sec = at < 0 ? "" : v.slice(at, next < 0 ? undefined : next);
-    const market = sec.match(/Рынок: \$(\d+)k–(\d+)k/);
-    const ask = sec.match(/Контрпредложение \$(\d+)k/);
+    // Round 10: fmtMoney everywhere — «Рынок: $63 000–$89 000», «Контрпредложение $73 000» (no «$63k»).
+    const num = (x) => Math.round(Number(x.replace(/[^\d]/g, "")) / 1000);
+    const m1 = sec.match(/Рынок: \$([\d\s\u202f\u00a0]+?)–\$([\d\s\u202f\u00a0]+\d)/);
+    const a1 = sec.match(/Контрпредложение \$([\d\s\u202f\u00a0]+\d)/);
+    const market = m1 && [m1[0], num(m1[1]), num(m1[2])];
+    const ask = a1 && [a1[0], num(a1[1])];
     if (!check(!!market && !!ask, `J15.offer.parse.${k(o.base)}k`, `${o.company}: market range and counteroffer rendered`, sec.slice(0, 200))) continue;
     const high = +market[2], a = +ask[1], base = k(o.base);
     const ok = base >= high ? a === base : a <= high && a >= base;

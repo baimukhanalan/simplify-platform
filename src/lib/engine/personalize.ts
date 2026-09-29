@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { aiJSON } from "../ai";
-import { ROLE_FAMILIES, extractSkills } from "./taxonomy";
+import { ROLE_FAMILIES, englishTitle, extractSkills, hasCyrillic, jdSkillsYouHave, latinName } from "./taxonomy";
 import { parseCvDate, rangeMonths } from "./dates";
 import { yearsForEmployer } from "../ops";
 
@@ -108,7 +108,7 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
     `Dear ${job.company} hiring team,`,
     ``,
     `I'm applying for the ${job.title} role. My background is in ${framing}, and the overlap with what you need is concrete: ${(matched.length ? matched : skillsOrder).slice(0, 4).join(", ")}.`,
-    best ? relevantSentence(best) : "",
+    best ? relevantSentence(best, roleLabel) : "",
     `${job.remote === "remote" ? (overlapsEurope(p) ? "I work remotely and overlap comfortably with European business hours." : "") : p.relocation ? "I'm open to relocation." : ""} I'd welcome the chance to discuss how I can contribute to ${industryClause(job) ? `${possessive(job.company)} work in ${job.industry}` : job.company}.`.trim(),
     ``,
     `Best regards,`,
@@ -173,16 +173,23 @@ export function newestFirst(a: Pick<FactLite, "startDate" | "endDate">, b: Pick<
   return y.e - x.e || y.s - x.s;
 }
 
-/** "Most relevant: …" sentence for the cover letter, built from the single strongest achievement of a fact. */
-function relevantSentence(f: FactLite): string {
-  const lines = achievementLines(f.details).map((l) => (f.kind === "project" ? stripTitle(l, f.title) : l)).filter(Boolean);
-  const line = (f.metrics && lines.find((l) => l.includes(f.metrics))) || lines[0] || "";
+/**
+ * "Most relevant: …" sentence for the (English) cover letter, built from the single strongest achievement of a fact.
+ * Russian CV text is never spliced in: a Cyrillic title becomes its English form (englishTitle, else `fallbackTitle`), a
+ * Cyrillic company / city is written in Latin (latinName), and a Russian achievement line is left out.
+ */
+function relevantSentence(f: FactLite, fallbackTitle = "specialist"): string {
+  const lines = achievementLines(f.details).map((l) => (f.kind === "project" ? stripTitle(l, f.title) : l)).filter((l) => l && !hasCyrillic(l));
+  const metrics = f.metrics && !hasCyrillic(f.metrics) ? f.metrics : "";
+  const line = (metrics && lines.find((l) => l.includes(metrics))) || lines[0] || "";
+  const title = englishTitle(f.title, fallbackTitle);
+  const org = f.org ? latinName(f.org) : "";
   const where = f.kind === "project"
-    ? `in my ${f.title} project`
-    : `in my role as ${f.title}${f.org ? ` at ${f.org}` : ""}`;
+    ? (hasCyrillic(f.title) ? "in one of my projects" : `in my ${f.title} project`)
+    : `in my role as ${title}${org ? ` at ${org}` : ""}`;
   if (!line) return `Most relevant is my work ${where}.`;
   const clause = achievementClause(line);
-  const metricNote = f.metrics && !line.includes(f.metrics) ? ` The measurable result: ${lcFirstWord(tidyAchievement(f.metrics))}.` : "";
+  const metricNote = metrics && !line.includes(metrics) ? ` The measurable result: ${lcFirstWord(tidyAchievement(metrics))}.` : "";
   return clause
     ? `Most relevant: ${where}, I ${clause}.${metricNote}`
     : `Most relevant is my work ${where}: ${lcFirstWord(tidyAchievement(line))}.${metricNote}`;
@@ -329,11 +336,17 @@ export function screeningAnswers(p: ProfileLite, facts: FactLite[], job: JobLite
   out.push({ q: "What are your salary expectations?", a: p.salaryExpectation ? `$${Math.round(p.salaryExpectation / 1000)}k–$${Math.round((p.salaryExpectation * 1.15) / 1000)}k base, open to discussing the full package` : "Open to a market-rate offer; happy to discuss the full package", category: "rule", status: "filled", kind: "salary" });
   if (job.remote !== "remote") out.push({ q: "Are you willing to relocate?", a: p.relocation ? "Yes" : "No", category: "rule", status: "filled" });
   out.push({ q: "When can you start / what is your notice period?", a: p.noticePeriod || "2 weeks", category: "rule", status: "filled" });
-  out.push({ q: `Why do you want to work at ${job.company}?`, a: `The ${job.title} role maps directly onto my experience (${p.skills.slice(0, 3).join(", ")}), and ${industryClause(job) ? `${possessive(job.company)} ${job.industry} focus` : `${possessive(job.company)} product`} is where I want to grow.`, category: "auto", status: "filled" });
+  out.push({ q: `Why do you want to work at ${job.company}?`, a: `The ${job.title} role maps directly onto my experience${whyJdSkills(p.skills, job)}, and ${industryClause(job) ? `${possessive(job.company)} ${job.industry} focus` : `${possessive(job.company)} product`} is where I want to grow.`, category: "auto", status: "filled" });
   // Sensitive / legal — never answered by the agent alone.
   out.push({ q: "Voluntary self-identification (gender, veteran status, disability)", a: "", category: "approval", status: "pending", kind: "sensitive" });
   if (/\b(US|CA|GB)\b/.test(jobCountries.join(" "))) out.push({ q: "Do you consent to a background check if you receive an offer?", a: "", category: "approval", status: "pending", kind: "legal" });
   return out;
+}
+
+/** « (SQL, Power BI)» — only skills the vacancy lists (jdSkillsYouHave); nothing when none match. */
+function whyJdSkills(skills: string[], job: JobLite) {
+  const jd = jdSkillsYouHave(skills, job.technologies, `${job.description}\n${job.requirements.join("\n")}`).slice(0, 3);
+  return jd.length ? ` (${jd.join(", ")})` : "";
 }
 
 function yearsWith(tech: string, facts: FactLite[], total: number) {

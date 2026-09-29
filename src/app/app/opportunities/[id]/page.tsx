@@ -11,7 +11,7 @@ import { SOURCE_LABEL, salaryLabel } from "@/lib/ops";
 import { DREAM_DECISION, blockerRu, fitVerdict } from "@/lib/engine/matching";
 import { Card, Chip, Label, PageHeader, Ring, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../../_components/agent-status";
-import { industryRu, plural, shortDate } from "../../../_components/ru";
+import { industryRu, placeWithFormat, plural, shortDate } from "../../../_components/ru";
 import { fmtNum } from "@/lib/ru";
 import { SubmitButton } from "@/components/client";
 import { LaneChip, StatusChip } from "../_components/bits";
@@ -20,7 +20,7 @@ import { Announcer } from "../_components/announcer";
 import { fitCandidate } from "../_lib/candidate";
 import { blockedNote, cleanRequirement, cvVersionLabel, eligibilityVerdict, interviewChance, isDreamCompany, overrideNote, risks, whyFits, type Reason } from "../_lib/fit";
 import { experiencePair } from "./_lib/compare";
-import { agoRu, placeRu } from "../_lib/when";
+import { agoRu } from "../_lib/when";
 
 /** Tab title = the role; a missing or foreign id gets the 404 title, not «Вакансия». */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -63,8 +63,11 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
   const verdict = eligibilityVerdict(opp.eligibility, fit.kind);
   const isDemo = job.source === "demo";
   // Blocked only by level lines (isOverridable): the user may still send it. Dream-company level mismatch: the user's call.
-  const override = overrideNote(opp.eligibility, opp.blockers, isDreamCompany(job.company, j<string[]>(user.goal?.dreamCompanies ?? "[]", [])));
-  const userDecision = j<string[]>(opp.softGaps, []).includes(DREAM_DECISION) && opp.decision !== "apply" && opp.decision !== "auto";
+  const dream = isDreamCompany(job.company, j<string[]>(user.goal?.dreamCompanies ?? "[]", []));
+  const override = overrideNote(opp.eligibility, opp.blockers, dream);
+  // Dream company + level off-goal — whether the engine set it aside (qualified + DREAM_DECISION) or blocked it on a
+  // level line — is one case: the user's call, Apply or Skip.
+  const userDecision = (j<string[]>(opp.softGaps, []).includes(DREAM_DECISION) || (dream && Boolean(override))) && opp.decision !== "apply" && opp.decision !== "auto";
   const pending = opp.approvals.filter((a) => a.kind !== "handoff").length;
   const handoff = !isDemo && !applied && Boolean(pkg) && pending === 0 && opp.status === "prepared";
 
@@ -74,7 +77,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
 
   const originalSummary = (user.profile?.summary || user.profile?.headline || "").trim();
   const exp = pkg ? experiencePair(facts, pkg.cvText) : null;
-  const place = placeRu(job.location, job.remote);
+  const place = placeWithFormat(job.location, job.remote);
 
   return (
     <div className="flex flex-col gap-5">
@@ -86,8 +89,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
         title={job.title}
         sub={
           <span className="flex flex-wrap items-center gap-2">
-            {place.location && <span className="inline-flex items-center gap-1"><MapPin className="size-3.5 text-ink-4" aria-hidden />{place.location}</span>}
-            {place.showMode && <Chip tone={job.remote === "remote" ? "green" : "neutral"}>{place.mode}</Chip>}
+            {place && <span className="inline-flex items-center gap-1"><MapPin className="size-3.5 text-ink-4" aria-hidden />{place}</span>}
             {salary && <span className="num text-head">{salary}</span>}
             <span className="text-ink-3">опубликована {agoRu(job.postedAt)}</span>
             {isDemo && <span className="text-ink-3">· демо-вакансия: подача и ответы симулируются</span>}
@@ -104,7 +106,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
         </p>
       )}
 
-      <AgentStatus needs={needs} hereNeeds={!applied} skip={["offer", "decisions"]} working={applied ? "Заявка отправлена — агент следит за ответом работодателя." : undefined} className="-mt-3" />
+      <AgentStatus needs={needs} hereNeeds={!applied} skip={opp.status === "offer" ? ["offer", "decisions"] : ["decisions"]} working={applied ? "Заявка отправлена — агент следит за ответом работодателя." : undefined} className="-mt-3" />
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Decision first in the DOM so it is near the top on mobile; on desktop it is the sticky right column. */}
@@ -149,7 +151,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                     <b className="font-medium text-head">Skip</b> — больше не показывать.
                   </p>
                 )}
-                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} blockedBy={fit.kind ?? undefined} pending={pending} size="md" override={override} userDecision={userDecision} />
+                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} blockedBy={fit.kind ?? undefined} pending={pending} size="md" override={userDecision ? null : override} forceEnable={userDecision} userDecision={userDecision} />
               </>
             )}
           </Card>
@@ -312,6 +314,8 @@ function Fact({ k, v }: { k: string; v: string }) {
 
 /** Side by side on desktop, stacked on mobile: what the user wrote vs what went into this application. */
 function Compare({ title, original, simplify, list }: { title: string; original: string | string[]; simplify: string | string[] | null; list?: boolean }) {
+  const norm = (v: string | string[]) => (Array.isArray(v) ? v.join("\n") : v).replace(/\s+/g, " ").trim().toLowerCase();
+  const same = simplify != null && norm(simplify) === norm(original);
   const body = (v: string | string[]) =>
     list && Array.isArray(v) ? (
       <ul className="flex flex-col gap-1.5">{v.map((l, i) => <li key={`${i}-${l}`} className="flex gap-2"><span className="mt-2 size-1 shrink-0 rounded-full bg-current opacity-50" aria-hidden />{l}</li>)}</ul>
@@ -328,7 +332,7 @@ function Compare({ title, original, simplify, list }: { title: string; original:
         </div>
         <div className="flex flex-col gap-2 rounded-2xl border border-green/20 bg-mint-2/80 p-4">
           <span className="label !text-[11px] !text-green">Версия агента</span>
-          <div className="text-[13.5px] leading-relaxed text-ink">{simplify ? body(simplify) : <p className="text-ink-3">Появится после подготовки пакета.</p>}</div>
+          <div className="text-[13.5px] leading-relaxed text-ink">{same ? <p className="text-ink-3">Без изменений</p> : simplify ? body(simplify) : <p className="text-ink-3">Появится после подготовки пакета.</p>}</div>
         </div>
       </div>
     </section>

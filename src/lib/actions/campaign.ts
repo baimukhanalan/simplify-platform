@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
 import { db, j } from "../db";
 import { PLANS } from "../engine/taxonomy";
-import { runTick, simulateResponses, logEvent, notify, prepare, closeCampaignApprovals } from "../engine/agent";
+import { runTick, simulateResponses, logEvent, notify, prepare, closeCampaignApprovals, closeCampaignRounds } from "../engine/agent";
 import { demoToolsEnabled } from "../demo";
 import { createInvoice } from "../payments/kaspi";
 import { toUSD } from "../engine/fx";
@@ -100,8 +100,8 @@ export async function markHired(form: FormData) {
   const acceptedNow = offer ? (await db.offer.updateMany({ where: { id: offer.id, userId: user.id, status: { not: "accepted" } }, data: { status: "accepted" } })).count > 0 : false;
   const hiredNow = c ? (await db.campaign.updateMany({ where: { id: c.id, status: { not: "hired" } }, data: { status: "hired", hiredAt: new Date() } })).count > 0 : false;
   if (!acceptedNow && !hiredNow) redirect(c || offer ? "/app/hired" : "/app/career");
-  // A finished campaign stops asking: its open questions are closed.
-  if (c) await closeCampaignApprovals(c.id);
+  // A finished campaign stops asking: its open questions are closed and its upcoming rounds / tests are cancelled.
+  if (c) await Promise.all([closeCampaignApprovals(c.id), closeCampaignRounds(c.id)]);
 
   if (offer && acceptedNow) {
     if (offer.opportunityId) await db.opportunity.update({ where: { id: offer.opportunityId }, data: { status: "hired" } });

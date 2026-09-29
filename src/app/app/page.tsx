@@ -11,7 +11,7 @@ import { ButtonLink, Card, Chip, Label, Script, cx } from "@/components/ui";
 import { RunAgentButton, SimulateButton } from "./_components/demo-tools";
 import { dayKey, greeting, hhmm, loadToday, type Today } from "./_components/today-data";
 import { KeyNumbers, NextActionCard, StageBar, StatusDot, Timeline, TodayStrip, type NextAction } from "./_components/today";
-import { count, handoffsWaiting, plural, questionsWaiting } from "../_components/ru";
+import { assessmentDeadline, count, handoffsWaiting, plural, questionsWaiting } from "../_components/ru";
 
 export const metadata: Metadata = { title: "Today" };
 
@@ -55,7 +55,7 @@ function pickNext(d: Today, n: NeedsYou): { action: NextAction; also: { label: s
   if (a) cands.push({
     eyebrow: "Тестовое задание",
     title: `Тестовое задание от ${a.opportunity.job.company}`,
-    sub: a.scheduledAt ? `Дедлайн: ${a.scheduledAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" })}. Ты на следующем этапе.` : "Ты на следующем этапе.",
+    sub: a.scheduledAt ? `Дедлайн: ${assessmentDeadline(a.scheduledAt)}. Ты на следующем этапе.` : "Ты на следующем этапе.",
     href: `/app/interviews/${a.id}`, cta: "Подготовиться", icon: ClipboardCheck,
   });
   // Queue numbers come from needsYou (src/lib/ops-data.ts) — the same as Opportunities, Applications and Inbox.
@@ -147,7 +147,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
 
         <section aria-label="Что делает агент" className="glass-strong flex animate-rise flex-col gap-6 p-5 sm:p-8 lg:col-start-1 lg:row-start-2 lg:-mt-5 lg:!rounded-t-none lg:!border-t-0 lg:pt-4">
           {d.goalLine && (
-            <Link href="/app/goal" className="group inline-flex w-fit max-w-full items-center gap-2 font-mono text-[11.5px] uppercase tracking-[.08em] text-ink-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
+            <Link href="/app/goal" className="group -my-2.5 inline-flex min-h-10 w-fit max-w-full items-center gap-2 rounded py-1 font-mono text-[11.5px] uppercase tracking-[.08em] text-ink-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
               <span className="text-ink-4">Цель</span><span className="min-w-0 break-words">{d.goalLine}</span>
             </Link>
           )}
@@ -166,11 +166,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
           <Label>Где ты сейчас</Label>
           <Link href="/app/applications" className="inline-flex min-h-10 items-center gap-1 text-[13px] text-teal hover:text-head">Applications <ArrowRight className="size-3.5" aria-hidden /></Link>
         </div>
-        <StageBar stage={d.stage} values={d.stageValues} open={{
-          assessments: d.upcoming.some((i) => i.round === "assessment"),
-          interviews: d.upcoming.some((i) => i.round !== "assessment"),
-          offers: d.offers.length > 0,
-        }} />
+        {/* «в процессе» only with a round / open test still ahead (interviewCounts via loadToday), never for a past one. */}
+        <StageBar stage={d.stage} values={d.stageValues} open={d.stageOpen} openCount={{ assessments: d.interviews.assessments, interviews: d.interviews.upcoming, offers: d.offers.length }} />
         <div className="flex flex-col gap-4 border-t border-line pt-6">
           <KeyNumbers t={d.totals} />
           <TodayStrip d={{ found: d.todayBreakdown.found, qualified: d.todayBreakdown.qualified, submitted: t.submitted, responses: t.responses }} />

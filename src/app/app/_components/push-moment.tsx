@@ -2,7 +2,7 @@ import { ArrowRight, CalendarClock } from "lucide-react";
 import { openNotification } from "@/lib/actions/notifications";
 import type { PushMoment as Moment } from "@/lib/ops-data";
 import { cx } from "@/components/ui";
-import { count } from "../../_components/ru";
+import { assessmentDeadline, count } from "../../_components/ru";
 import { DismissButton, PushGate } from "./push-controls";
 
 /** «пятница, 3 октября, 18:00» — lowercase inside a sentence («Дедлайн: пятница…»), capitalised when it starts the line. */
@@ -88,7 +88,7 @@ function MomentBar({ m, more }: { m: Moment; more: number }) {
             {time && (
               <span className="ml-0 mt-0.5 flex items-center gap-1.5 text-[13px] text-white/70 sm:ml-2 sm:mt-0 sm:inline-flex">
                 <CalendarClock className="size-3.5 shrink-0" strokeWidth={1.7} aria-hidden />
-                {m.type === "assessment" ? "Дедлайн: " : ""}{time}
+                {m.type === "assessment" && m.when ? `Дедлайн: ${assessmentDeadline(m.when)}` : time}
               </span>
             )}
           </p>

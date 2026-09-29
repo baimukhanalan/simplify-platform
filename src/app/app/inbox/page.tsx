@@ -7,14 +7,14 @@ import { db } from "@/lib/db";
 import { roundDate } from "@/lib/engine/agent";
 import { realUrl } from "@/lib/links";
 import { demoToolsEnabled } from "@/lib/demo";
-import { INBOX_CLASS, fmtDate, fmtDateTime } from "@/lib/ops";
+import { INBOX_CLASS, fmtDateTime } from "@/lib/ops";
 import { agoRu } from "../opportunities/_lib/when";
 import { ButtonLink, Chip, Empty, PageHeader, cx } from "@/components/ui";
 import { SimulateButton } from "../_components/demo-tools";
 import { PasteEmail } from "./_components/paste-email";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { needsList, needsYouCached } from "../../_components/global-needs";
-import { plural, statusRu } from "../../_components/ru";
+import { assessmentDeadline, plural, statusRu } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Ответы работодателей" };
 
@@ -161,8 +161,8 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
         <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4 text-[13.5px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
           <span className="label !text-[11px]">Инструменты</span>
           <span>{demo ? "Вставить письмо вручную · демо-симуляция ответов" : "Вставить письмо вручную"}</span>
-          <span className="ml-auto font-mono text-[11px] text-ink-3 group-open:hidden">показать</span>
-          <span className="ml-auto hidden font-mono text-[11px] text-ink-3 group-open:inline">скрыть</span>
+          <span className="ml-auto font-mono text-[11px] text-ink-3 group-open:hidden">Показать</span>
+          <span className="ml-auto hidden font-mono text-[11px] text-ink-3 group-open:inline">Скрыть</span>
         </summary>
         <div className="flex flex-col gap-6 border-t border-line px-5 pb-6 pt-5">
           <div className="flex flex-col gap-2">
@@ -246,7 +246,7 @@ function ResponseCard({ m }: { m: Msg }) {
       {deadline && (m.classification === "assessment" || m.classification === "interview") && (
         <p className={cx("flex items-center gap-2 text-[14px]", m.classification === "assessment" ? "text-amber" : "text-head")}>
           <CalendarClock className="size-4" strokeWidth={1.7} aria-hidden />
-          {m.classification === "assessment" ? "Дедлайн: " : "Когда: "}{m.classification === "assessment" ? fmtDate(deadline) : fmtDateTime(deadline)}
+          {m.classification === "assessment" ? `Дедлайн: ${assessmentDeadline(deadline)}` : <>Когда: {fmtDateTime(deadline)}</>}
         </p>
       )}
 

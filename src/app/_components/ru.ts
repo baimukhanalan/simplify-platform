@@ -24,6 +24,30 @@ export function shortDate(d: Date | null | undefined) {
   return d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short" });
 }
 
+const almatyKey = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
+
+/**
+ * Calendar-day distance in Asia/Almaty: +1 for any time tomorrow, −1 for any time yesterday — never a rounded
+ * 24-hour count (30 Sep 10:00 seen on 29 Sep 20:00 is «завтра», not «послезавтра»).
+ */
+export function almatyDayDiff(d: Date, now: number | Date = Date.now()) {
+  const a = Date.parse(almatyKey(d));
+  const b = Date.parse(almatyKey(now instanceof Date ? now : new Date(now)));
+  return Math.round((a - b) / 86400000);
+}
+
+/**
+ * An assessment deadline, one wording on every screen: «ср, 30 сентября, до 23:59» (Almaty time). `withTime: false`
+ * drops the time for a deadline known only by its day («ср, 30 сентября»).
+ */
+export function assessmentDeadline(d: Date | null | undefined, withTime = true) {
+  if (!d) return "не указан";
+  const wd = d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", weekday: "short" }).replace(/\.$/, "");
+  const dm = d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" });
+  const hm = d.toLocaleTimeString("ru-RU", { timeZone: "Asia/Almaty", hour: "2-digit", minute: "2-digit" });
+  return withTime ? `${wd}, ${dm}, до ${hm}` : `${wd}, ${dm}`;
+}
+
 /** Ends a sentence: adds a period unless the text already ends with one. */
 export const endSentence = (s: string) => (/[.!?…]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`);
 
@@ -54,6 +78,7 @@ export const statusRu = (s: string) => STATUS_RU[s] ?? s;
 
 /** Years of experience: "1 год", "2 года", "5 лет", "2,5 года" (same wording as the engine). */
 export { fmtYearsRu as yearsRu } from "@/lib/ru";
+import { placeRu as placeRuLib } from "@/lib/ru";
 
 /**
  * Industry names for the Russian UI (stored values stay English). Chip/list labels are capitalised («Финтех»);
@@ -70,13 +95,21 @@ export function industryRu(industry: string, inSentence = false) {
 }
 export const industriesRu = (xs: string[]) => xs.map((x) => industryRu(x)).join(", ");
 
-/** Place plus work format without repeating it: ("Удалённо — Европа", "remote") → «Удалённо — Европа», ("Алматы", "hybrid") → «Алматы · Гибрид». */
+const FORMAT_LC: Record<string, string> = { remote: "удалённо", hybrid: "гибрид", onsite: "офис" };
+
+/**
+ * The one place format for cards, Today and briefs: localized place plus the work format in lower case, never said
+ * twice — ("Warsaw, Poland", "hybrid") → «Варшава, Польша · гибрид», ("Remote — Europe", "remote") → «Удалённо — Европа»,
+ * ("", "remote") → «Удалённо».
+ */
 export function placeWithFormat(place: string | null | undefined, format: string | null | undefined) {
-  const p = (place ?? "").trim();
-  const f = format ? (WORK_MODE_RU[format] ?? format) : "";
-  if (!f || f === WORK_MODE_RU.any) return p;
-  if (!p) return f;
-  return p.toLowerCase().includes(f.toLowerCase()) ? p : `${p} · ${f}`;
+  const f = FORMAT_LC[(format ?? "").toLowerCase()] ?? "";
+  // "Warsaw, Poland (Hybrid)": the format in brackets is said once, after the dot.
+  const raw = placeRuLib((place ?? "").trim());
+  const p = f ? raw.replace(/\s*\((?:удалённо|гибрид|офис)\)\s*$/i, "").trim() : raw;
+  if (!f) return p;
+  if (!p) return f.charAt(0).toUpperCase() + f.slice(1);
+  return p.toLowerCase().includes(f) ? p : `${p} · ${f}`;
 }
 
 /** What a market figure is read for: «Middle · Европа, Удалённо» (Career marketBasis / benchmarkOffer().basis). */

@@ -33,12 +33,21 @@ export function parseEquity(text: string): number | null {
   return v >= 100 ? Math.round(v) : null;
 }
 
+const SYMBOL_CODE: Record<string, string> = { $: "USD", "€": "EUR", "£": "GBP", "₸": "KZT" };
+
+/** Money inside our own perk strings in the UI's style: "Learning budget $1,000" → «Learning budget $1 000». */
+export function moneyInText(text: string) {
+  return text
+    .replace(/([$€£₸])\s?(\d{1,3}(?:[,\s\u202f\u00a0]\d{3})+|\d{4,})(?![\d.,]*\d)/g, (_, sym: string, num: string) => fmtMoney(Number(num.replace(/\D/g, "")), SYMBOL_CODE[sym]))
+    .replace(/\b(\d{1,3}(?:,\d{3})+|\d{4,})\s?(USD|EUR|GBP|KZT)\b/g, (_, num: string, code: string) => fmtMoney(Number(num.replace(/\D/g, "")), code));
+}
+
 export function compBreakdown(o: Offer) {
   const base = o.finalBase ?? o.base;
   const equityYear = parseEquity(o.equity);
   const total = base + o.bonus + o.signingBonus + (equityYear ?? 0);
   const bonusPct = base ? Math.round((o.bonus / base) * 100) : 0;
-  const benefits = j<string[]>(o.benefits, []);
+  const benefits = j<string[]>(o.benefits, []).map(moneyInText);
   const money = (n: number) => fmtMoney(n, o.currency);
   return { base, equityYear, total, bonusPct, benefits, money };
 }

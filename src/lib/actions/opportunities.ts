@@ -2,11 +2,11 @@
 // Opportunities feed + detail: the user's three decisions (Apply / Auto / Skip) and the global auto-apply switch.
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
-import { db, j, s } from "../db";
+import { db, s } from "../db";
 import { APPLIED_OR_LATER } from "../engine/taxonomy";
 import { readAutonomy } from "../engine/autonomy";
-import { QUEUE_MATCH, currentEligibility, duplicateOf, logEvent, prepare, settleSharedAnswers, submit } from "../engine/agent";
-import { blockerKind, isOverridable } from "../engine/matching";
+import { QUEUE_MATCH, blockingQuestions, currentEligibility, duplicateOf, logEvent, prepare, settleSharedAnswers, submit } from "../engine/agent";
+import { blockerKind } from "../engine/matching";
 import { count } from "../ru";
 
 export type DecisionState = {
@@ -69,14 +69,14 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
   }
 
   if (applied) return { ok: true, message: "Заявка уже отправлена.", href: `/app/applications/${id}`, hrefLabel: "Открыть заявку" };
-  if (opp.eligibility === "blocked") {
-    // Only level lines are the user's to override («Уровень ниже цели»; any level line at a dream company).
-    const goal = await db.goal.findUnique({ where: { userId: user.id }, select: { dreamCompanies: true } });
-    const dream = j<string[]>(goal?.dreamCompanies ?? "[]", []).some((d) => d && opp.job.company.toLowerCase().includes(d.toLowerCase()));
-    if (!isOverridable(opp.blockers, { dream })) {
-      const filterOnly = j<string[]>(opp.blockers, []).every((b) => blockerKind(b) === "filter");
-      return { error: filterOnly ? "Вакансия вне твоих настроек поиска — агент не может подать. Измени настройки, если хочешь её рассмотреть." : "Эта вакансия не проходит по требованиям — агент не может подать." };
-    }
+  // Goal settings may have changed since the last cycle (stop-list, countries, salary floor, level…): judge the role as it
+  // is now, with the user's pick (level lines the user may override — «Уровень ниже цели», a dream company's level — become
+  // notes, exactly isOverridable). Whatever is still blocked stops the Apply / Auto here, before anything is prepared.
+  const fresh = await currentEligibility({ ...opp, decision });
+  if (fresh.eligibility === "blocked") {
+    const filterOnly = fresh.blockers.every((b) => blockerKind(b) === "filter");
+    refresh(id);
+    return { error: filterOnly ? "Вакансия вне твоих настроек поиска — агент не может подать. Измени настройки, если хочешь её рассмотреть." : "Эта вакансия не проходит по требованиям — агент не может подать." };
   }
   // One application per role in a campaign: the same company + title from another location is already prepared or sent.
   const dup = await duplicateOf(opp);
@@ -86,8 +86,6 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
 
   if (decision === "auto") {
     await db.opportunity.update({ where: { id }, data: { decision: "auto", status: revived } });
-    // The user's pick turns overridable level lines into notes: store the re-scored eligibility.
-    await currentEligibility({ ...opp, decision: "auto" });
     await logEvent(user.id, "decision", `Auto: агент подаст сам — ${who}`, id, { decision: "auto" });
     // Campaign.autoSubmit is the auto-submit consent: without it the agent never sends anything on its own.
     if (!opp.campaign.autoSubmit) {
@@ -98,7 +96,8 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
       refresh(id);
       return { ok: true, message: "Отмечено, но кампания завершена — агент больше не подаёт сам. Отправить можно кнопкой Apply." };
     }
-    const pending = await db.approval.count({ where: { opportunityId: id, status: "pending", kind: { not: "handoff" } } });
+    // Its own question cards and a standing question asked on another role both hold it (answered in Подтверждения).
+    const pending = await blockingQuestions(id);
     // Already prepared with nothing pending on an active campaign: hand it to the agent now.
     if (revived === "prepared" && opp.campaign.status === "active" && !pending) {
       const r = await submit(id);
@@ -113,7 +112,6 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
 
   // decision === "apply": the user explicitly confirmed this role.
   await db.opportunity.update({ where: { id }, data: { decision: "apply", status: revived } });
-  await currentEligibility({ ...opp, decision: "apply" });
   await logEvent(user.id, "decision", `Apply: заявка подтверждена тобой — ${who}`, id, { decision: "apply" });
   try {
     const hasPkg = await db.applicationPackage.findUnique({ where: { opportunityId: id }, select: { id: true } });
@@ -124,7 +122,7 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
         return { error: `На эту роль в ${opp.job.company} уже есть заявка — второй раз агент не подаёт.` };
       }
     }
-    const pending = await db.approval.count({ where: { opportunityId: id, status: "pending", kind: { not: "handoff" } } });
+    const pending = await blockingQuestions(id);
     if (pending) {
       refresh(id);
       return { ok: true, message: `Пакет готов. ${count(pending, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа — после этого заявка уйдёт.`, href: "/app/approvals", hrefLabel: "Ответить" };

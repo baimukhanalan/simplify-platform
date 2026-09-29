@@ -1,7 +1,7 @@
 import { Clock, Lightbulb } from "lucide-react";
 import { ButtonLink, Card, Chip, Label } from "@/components/ui";
 import { aiEnabled } from "@/lib/ai";
-import type { Pack, StoryLite } from "@/lib/engine/interview";
+import { packRedFlags, packTips, type Pack, type StoryLite } from "@/lib/engine/interview";
 import { buildLikely, type LikelyCtx } from "./likely";
 import { StarLibrary } from "./star-library";
 import { DebugLine, RegenerateForm } from "./regenerate-form";
@@ -10,10 +10,9 @@ type Props = { id: string; pack: Pack | null; generatedBy?: string; generatedAt?
 
 export function QuestionsTab({ id, pack, generatedBy, generatedAt, debug, ctx, stories }: Props) {
   const likely = buildLikely(pack, ctx);
-  // Claude's list is written for this user; the engine fallback is replaced with «ты»-copy.
-  const redFlags = generatedBy === "claude" && pack
-    ? pack.redFlags
-    : [ctx.yearsExperience < 2 ? "Не преувеличивай стаж — рассказывай о глубине задач." : "Жди вопросов о масштабе задач.", "Не называй цифру зарплаты первым без вилки."];
+  // Claude's list is written for this user; otherwise the engine's «ты»-copy (packRedFlags / packTips, by experience).
+  const redFlags = generatedBy === "claude" && pack ? pack.redFlags : packRedFlags(ctx.yearsExperience);
+  const tips = packTips(ctx.yearsExperience);
   return (
     <div className="flex flex-col gap-8">
       <section aria-labelledby="likely-h" className="flex flex-col gap-4">
@@ -84,12 +83,24 @@ export function QuestionsTab({ id, pack, generatedBy, generatedAt, debug, ctx, s
               ))}
             </ol>
           </Card>
-          {redFlags.length > 0 && (
-            <Card>
-              <Label className="mb-3">Чего избегать</Label>
-              <ul className="flex flex-col gap-2">
-                {redFlags.map((r) => <li key={r} className="flex gap-2.5 text-[14px] text-ink-2"><span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-amber" />{r}</li>)}
-              </ul>
+          {(redFlags.length > 0 || tips.length > 0) && (
+            <Card className="flex flex-col gap-5">
+              {tips.length > 0 && (
+                <div>
+                  <Label className="mb-3">Чего ждать</Label>
+                  <ul className="flex flex-col gap-2">
+                    {tips.map((t) => <li key={t} className="flex gap-2.5 text-[14px] text-ink-2"><Lightbulb className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />{t}</li>)}
+                  </ul>
+                </div>
+              )}
+              {redFlags.length > 0 && (
+                <div>
+                  <Label className="mb-3">Чего избегать</Label>
+                  <ul className="flex flex-col gap-2">
+                    {redFlags.map((r) => <li key={r} className="flex gap-2.5 text-[14px] text-ink-2"><span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-amber" />{r}</li>)}
+                  </ul>
+                </div>
+              )}
             </Card>
           )}
         </div>

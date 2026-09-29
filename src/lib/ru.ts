@@ -76,11 +76,32 @@ export function jobPlaceRu(job: { location?: string | null; remote?: string | nu
   const place = placeRu(/\s[—–-]\s/.test(loc) ? loc : loc.split(",")[0].trim());
   if (!place) return fmt ? fmt.charAt(0).toUpperCase() + fmt.slice(1) : "";
   if (!fmt || place.toLowerCase().includes(fmt)) return place;
-  return `${place}, ${fmt}`;
+  return `${place} · ${fmt}`; // same «Варшава · гибрид» format as the cards (placeWithFormat)
 }
 
-/** «Vantage Media · BI Analyst (Алматы, офис)» — a role named so that two locations of the same posting never look alike. */
+/** «Vantage Media · BI Analyst (Алматы · офис)» — a role named so that two locations of the same posting never look alike. */
 export function roleLabelRu(job: { company: string; title: string; location?: string | null; remote?: string | null }) {
   const where = jobPlaceRu(job);
   return `${job.company} · ${job.title}${where ? ` (${where})` : ""}`;
 }
+
+/* ——— STAR story tags: one Russian label per tag, for Profile and the Interview Room ——— */
+
+/** Story tags in display order (the keys stored in Story.tags). */
+export const STORY_TAGS = ["conflict", "failure", "leadership", "impact", "pressure", "initiative", "data", "customer"] as const;
+export type StoryTagKey = (typeof STORY_TAGS)[number];
+
+/** THE Russian label of a story tag. Profile («Истории») and Interview Room (STAR-библиотека) both read this map. */
+export const STORY_TAG_RU: Record<StoryTagKey, string> = {
+  conflict: "Конфликт",
+  failure: "Неудача и вывод",
+  leadership: "Лидерство",
+  impact: "Влияние на результат",
+  pressure: "Давление и сроки",
+  initiative: "Инициатива",
+  data: "Работа с данными",
+  customer: "Клиенты",
+};
+
+/** Label for any stored tag (unknown tags are shown as written). */
+export const storyTagRu = (tag: string) => STORY_TAG_RU[tag as StoryTagKey] ?? tag;

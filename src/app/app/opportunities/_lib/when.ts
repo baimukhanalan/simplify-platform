@@ -1,6 +1,6 @@
 // Small display helpers shared by Opportunities, Applications, Inbox and Approvals. Pure: safe on server and client.
 import { ago } from "@/lib/ops";
-import { WORK_MODE_RU, plural } from "../../../_components/ru";
+import { WORK_MODE_RU, almatyDayDiff, plural } from "../../../_components/ru";
 import { placeRu as placeRuLib } from "@/lib/ru";
 
 const DAY = 86400000;
@@ -15,7 +15,9 @@ export function agoRu(date: Date | null | undefined, now: number = Date.now()) {
   const diff = now - date.getTime();
   const days = (n: number) => `${n} ${plural(n, ["день", "дня", "дней"])}`;
   if (diff < 0) {
-    const d = Math.round(-diff / DAY);
+    const d = almatyDayDiff(date, now);
+    if (d === 0) return ago(date, now);
+    if (d === 1) return "завтра";
     return d >= 1 && d < 30 ? `через ${days(d)}` : ago(date, now);
   }
   if (diff < DAY) {
@@ -23,7 +25,7 @@ export function agoRu(date: Date | null | undefined, now: number = Date.now()) {
     if (dayKey(date) !== dayKey(new Date(now)) && diff >= 6 * 3600000) return "вчера";
     return ago(date, now);
   }
-  const d = Math.round(diff / DAY);
+  const d = -almatyDayDiff(date, now);
   if (d <= 1) return "вчера";
   if (d < 30) return `${days(d)} назад`;
   return ago(date, now);

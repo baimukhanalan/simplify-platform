@@ -77,7 +77,12 @@ body {
   .field::placeholder { color: var(--color-ink-4); }
   .shimmer-text { background-image: linear-gradient(100deg, var(--color-head) 0 35%, #8fc7ad 50%, var(--color-head) 65% 100%); background-size: 200%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: var(--animate-shimmer); }
   .scroll-thin { scrollbar-width: thin; scrollbar-color: rgb(35 59 59 / 0.2) transparent; }
+  /* «Перейти к содержимому»: off-screen until focused by keyboard, then a pill in the top-left corner. */
+  .skip-link { position: fixed; left: 16px; top: 12px; z-index: 100; transform: translateY(-160%); border-radius: 9999px; background: var(--color-cta); color: #fff; padding: 10px 18px; min-height: 40px; font-size: 14px; font-weight: 500; box-shadow: var(--shadow-glass); transition: transform .15s; }
+  .skip-link:focus { transform: none; outline: 2px solid var(--color-green); outline-offset: 3px; }
 }
+/* The skip link's target takes focus programmatically only; no ring around the whole page. */
+#main-content:focus { outline: none; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

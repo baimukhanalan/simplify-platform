@@ -1,5 +1,6 @@
-import { ROLE_FAMILIES, SENIORITY_LABEL, classifyRole, fmtMoney, fmtMoneyRange, seniorityFromYears, seniorityIndex, REGIONS } from "./taxonomy";
+import { ROLE_FAMILIES, SENIORITY_LABEL, classifyRole, englishTitle, fmtMoney, fmtMoneyRange, roleSkillEvidence, seniorityFromYears, seniorityIndex, REGIONS } from "./taxonomy";
 import { marketRange } from "./market";
+import { fromUSD } from "./fx";
 import { interviewReadiness, type InterviewReadiness } from "./interview-readiness";
 import { count, fmtYearsRu } from "../ru";
 
@@ -15,10 +16,16 @@ export type ReadinessInput = {
     countriesGiven?: boolean;
     /** Regions the salary market is read for; default = countries. The /check passes the candidate's likely market (KZ/CIS). */
     marketRegions?: string[];
+    /** The goal's currency (minSalary itself is USD here): the market line is written in it (₸ per month for KZT). */
+    currency?: string;
   };
 };
 
-export type ReadinessCheck = { key: string; label: string; score: number; weight: number; note: string; status: "ok" | "warn" | "bad" };
+/**
+ * One Readiness line. status "neutral" = the input is missing (e.g. no target countries on /check): shown as «не указано»,
+ * weight 0 (does not move the total), never a strength or a weakness.
+ */
+export type ReadinessCheck = { key: string; label: string; score: number; weight: number; note: string; status: "ok" | "warn" | "bad" | "neutral" };
 export type Eligibility = {
   /** 0–100; capped at 65 whenever a named foreign market needs a visa. */
   score: number;
@@ -30,7 +37,7 @@ export type Eligibility = {
   visaMarkets: string[];
   visaLimited: boolean;
 };
-export type Readiness = { score: number; verdict: "ready" | "stretch" | "unrealistic"; probability: "high" | "medium" | "low" | "very_low"; checks: ReadinessCheck[]; suggestions: string[]; suggestedSeniority: string; suggestedRoles: string[]; interview: InterviewReadiness; eligibility: Eligibility };
+export type Readiness = { family: string; market: ReturnType<typeof marketInGoalCurrency>; score: number; verdict: "ready" | "stretch" | "unrealistic"; probability: "high" | "medium" | "low" | "very_low"; checks: ReadinessCheck[]; suggestions: string[]; suggestedSeniority: string; suggestedRoles: string[]; interview: InterviewReadiness; eligibility: Eligibility };
 
 const NAMED_FOREIGN = ["EU", "UK", "US", "CA", "MENA"];
 
@@ -44,12 +51,31 @@ export const usdYearToKztMonth = (usd: number) => Math.round((usd * 500) / 12 / 
  * The salary market line. A local (KZ/CIS) market reads in ₸ per month with USD per year second:
  * «Рынок Казахстана и СНГ ≈ 480 000–680 000 ₸ в месяц (≈ $11 000–16 000 в год)»; otherwise «Рынок ≈ $52 000–73 000 в год».
  */
-export function marketNote(range: { low: number; high: number }, regions: string[]) {
-  if (isLocalMarket(regions)) {
-    const where = regions.includes("CIS") ? "Рынок Казахстана и СНГ" : "Рынок Казахстана";
+export function marketNote(range: { low: number; high: number }, regions: string[], currency = "USD") {
+  const cur = (currency || "USD").toUpperCase();
+  // A ₸ goal (or a local market) reads in ₸ per month, USD per year second — never a bare «$22 000–$31 000» for a ₸ goal.
+  if (isLocalMarket(regions) || cur === "KZT") {
+    const where = isLocalMarket(regions) ? (regions.includes("CIS") ? "Рынок Казахстана и СНГ" : "Рынок Казахстана") : "Рынок";
     return `${where} ≈ ${fmtMoneyRange(usdYearToKztMonth(range.low), usdYearToKztMonth(range.high), "KZT")} в месяц (≈ ${fmtMoneyRange(range.low, range.high)} в год)`;
   }
+  // Another goal currency (EUR, GBP…): per year in that currency, USD second.
+  if (cur !== "USD" && fromUSD(1000, cur) !== 1000) {
+    const step = (n: number) => Math.round(fromUSD(n, cur) / 1000) * 1000;
+    return `Рынок ≈ ${fmtMoneyRange(step(range.low), step(range.high), cur)} в год (≈ ${fmtMoneyRange(range.low, range.high)})`;
+  }
   return `Рынок ≈ ${fmtMoneyRange(range.low, range.high)} в год`;
+}
+
+/**
+ * The market range in the goal's own currency, for any screen that shows numbers (Readiness, /check): ₸ per month for a
+ * ₸ goal or a local market, else per year in the goal currency. `line` = marketNote.
+ */
+export function marketInGoalCurrency(range: { low: number; mid: number; high: number }, regions: string[], currency = "USD") {
+  const cur = (currency || "USD").toUpperCase();
+  const line = marketNote(range, regions, cur);
+  if (isLocalMarket(regions) || cur === "KZT") return { currency: "KZT", period: "month" as const, low: usdYearToKztMonth(range.low), mid: usdYearToKztMonth(range.mid), high: usdYearToKztMonth(range.high), usdYear: range, line };
+  const conv = (n: number) => (cur === "USD" ? n : Math.round(fromUSD(n, cur) / 1000) * 1000);
+  return { currency: cur, period: "year" as const, low: conv(range.low), mid: conv(range.mid), high: conv(range.high), usdYear: range, line };
 }
 const VISA_CAP = 65;
 
@@ -77,9 +103,36 @@ export function internationalEligibility(i: { countries: string[]; workAuth: str
 
 const EN = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 } as Record<string, number>;
 
+/** The role family the user's skills are the strongest evidence for (roleSkillEvidence first, then plain coverage). */
+export function bestFamilyBySkills(skills: string[]) {
+  const have = new Set(skills.map((x) => x.toLowerCase()));
+  const evidenced = Object.keys(ROLE_FAMILIES).filter((k) => roleSkillEvidence(k, skills).ok);
+  let best = "other", bestCov = 0;
+  for (const [k, f] of Object.entries(ROLE_FAMILIES)) {
+    if (k === "other" || !f.skills.length || (evidenced.length && !evidenced.includes(k))) continue;
+    const cov = f.skills.filter((x) => have.has(x.toLowerCase())).length / Math.min(5, f.skills.length);
+    if (cov > bestCov) { best = k; bestCov = cov; }
+  }
+  return best;
+}
+
+/**
+ * THE role family of a target, for Readiness, /check and the market range alike: the title as typed (English keywords),
+ * then its English form («Аналитик данных» → Data Analyst), then — for a title no rule knows — the skills' best guess.
+ * One resolver, so /check never shows two market ranges for one target.
+ */
+export function resolveFamily(target: string, skills: string[] = []) {
+  const direct = classifyRole(target || "");
+  if (direct !== "other") return direct;
+  const en = englishTitle(target || "", "");
+  const translated = en ? classifyRole(en) : "other";
+  if (translated !== "other") return translated;
+  return skills.length ? bestFamilyBySkills(skills) : "other";
+}
+
 export function assessReadiness(input: ReadinessInput): Readiness {
   const { profile, facts, goal } = input;
-  const family = classifyRole(goal.primaryRole || "");
+  const family = resolveFamily(goal.primaryRole || "", profile.skills);
   const fam = ROLE_FAMILIES[family] ?? ROLE_FAMILIES.other;
   const checks: ReadinessCheck[] = [];
   const suggestions: string[] = [];
@@ -125,8 +178,10 @@ export function assessReadiness(input: ReadinessInput): Readiness {
   const marketRegions = goal.marketRegions ?? goal.countries;
   const range = marketRange(family, goal.seniority, marketRegions);
   const salScore = !goal.minSalary ? 80 : goal.minSalary <= range.mid ? 100 : goal.minSalary <= range.high ? 60 : 20;
-  push({ key: "salary", label: "Зарплатные ожидания", score: salScore, weight: 1, note: marketNote(range, marketRegions) });
-  if (salScore < 50) suggestions.push(`Ожидание ${fmtMoney(goal.minSalary)} выше рынка для ${SENIORITY_LABEL[goal.seniority] ?? goal.seniority}. Снизь минимум до ~${fmtMoney(range.mid)} или подними уровень.`);
+  const market = marketInGoalCurrency(range, marketRegions, goal.currency);
+  push({ key: "salary", label: "Зарплатные ожидания", score: salScore, weight: 1, note: market.line });
+  const inGoal = (usd: number) => (goal.currency && goal.currency.toUpperCase() !== "USD" ? fmtMoney(Math.round(fromUSD(usd, goal.currency) / 1000) * 1000, goal.currency) : fmtMoney(usd));
+  if (salScore < 50) suggestions.push(`Ожидание ${inGoal(goal.minSalary)} выше рынка для ${SENIORITY_LABEL[goal.seniority] ?? goal.seniority}. Снизь минимум до ~${inGoal(range.mid)} или подними уровень.`);
 
   // Geography & authorization
   const authCountries = new Set(profile.workAuth);
@@ -135,8 +190,10 @@ export function assessReadiness(input: ReadinessInput): Readiness {
   const authorizedSomewhere = targetCountries.includes("*") || targetCountries.some((c) => authCountries.has(c));
   const geoScore = !onsiteOnly ? (authorizedSomewhere ? 100 : 70) : authorizedSomewhere ? 90 : profile.needsSponsorship ? 25 : 60;
   const countriesGiven = goal.countriesGiven !== false && goal.countries.length > 0;
-  push({ key: "geo", label: "География и право на работу", score: geoScore, weight: 1.2, note: !countriesGiven ? "Страны не указаны" : authorizedSomewhere ? "Есть право работы в целевых странах" : "Нужна виза/спонсорство" });
-  if (geoScore < 50) suggestions.push("Onsite-роли за рубежом без права на работу почти всегда блокируются. Добавь remote или страны со спонсорством.");
+  // No target countries named: nothing to judge — a neutral «не указано» line, not a 100 and not a strength.
+  if (!countriesGiven) checks.push({ key: "geo", label: "География и право на работу", score: 0, weight: 0, note: "Страны не указаны", status: "neutral" });
+  else push({ key: "geo", label: "География и право на работу", score: geoScore, weight: 1.2, note: authorizedSomewhere ? "Есть право работы в целевых странах" : "Нужна виза/спонсорство" });
+  if (countriesGiven && geoScore < 50) suggestions.push("Onsite-роли за рубежом без права на работу почти всегда блокируются. Добавь remote или страны со спонсорством.");
 
   // Portfolio / links
   const links = [profile.linkedin, profile.github, profile.portfolio].filter(Boolean).length;
@@ -147,7 +204,7 @@ export function assessReadiness(input: ReadinessInput): Readiness {
   const interview = interviewReadiness({ stories: input.stories, mockScores: input.mockScores ?? [] });
   push({ key: "interview", label: "Готовность к интервью", score: interview.score, weight: 0.6, note: interview.note });
 
-  const wsum = checks.reduce((a, c) => a + c.weight, 0);
+  const wsum = checks.reduce((a, c) => a + c.weight, 0) || 1;
   const score = Math.round(checks.reduce((a, c) => a + c.score * c.weight, 0) / wsum);
   const hardFail = senScore <= 10 || (intl && en <= 2);
   const verdict = hardFail ? "unrealistic" : score >= 70 ? "ready" : "stretch";
@@ -155,13 +212,18 @@ export function assessReadiness(input: ReadinessInput): Readiness {
   const suggestedRoles = suggestAdjacentRoles(family, profile.skills);
   if (goal.dreamCompanies.length && score < 70) suggestions.push("Для Target Mode по компаниям мечты сначала подними Readiness до 70+.");
   const eligibility = internationalEligibility({ countries: goal.countries, workAuth: profile.workAuth, englishLevel: profile.englishLevel, geoScore, langScore });
-  return { score, verdict, probability, checks, suggestions, suggestedSeniority: gap > 0 ? actual : goal.seniority, suggestedRoles, interview, eligibility };
+  return { family, market, score, verdict, probability, checks, suggestions, suggestedSeniority: gap > 0 ? actual : goal.seniority, suggestedRoles, interview, eligibility };
 }
 
+/**
+ * Adjacent roles whose skills the user already has («навыки уже подходят»): coverage ≥ 40% of the role's core skills AND
+ * roleSkillEvidence — two core skills including a signature one (ML for Data Scientist, ETL/Airflow/dbt/Spark for Data
+ * Engineer). SQL / Excel / Python alone never suggest a role.
+ */
 export function suggestAdjacentRoles(family: string, skills: string[]): string[] {
   const have = new Set(skills.map((s) => s.toLowerCase()));
   return Object.entries(ROLE_FAMILIES)
-    .filter(([k]) => k !== "other" && k !== family)
+    .filter(([k]) => k !== "other" && k !== family && roleSkillEvidence(k, skills).ok)
     .map(([, f]) => ({ label: f.label, cov: f.skills.filter((s) => have.has(s.toLowerCase())).length / Math.max(1, Math.min(5, f.skills.length)) }))
     .filter((r) => r.cov >= 0.4)
     .sort((a, b) => b.cov - a.cov)

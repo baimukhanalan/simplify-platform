@@ -39,16 +39,20 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
   const isActive = (it: Item) =>
     it.href === "/app" ? path === "/app" : [it.href, ...(it.also ?? [])].some((h) => path === h || path.startsWith(`${h}/`));
 
-  // Close the mobile sheet on Escape; lock the page behind it.
+  // Close the mobile sheet on Escape; lock the page behind it — no scroll, and `inert` so Tab, clicks and screen readers
+  // stay inside the menu while it covers the page.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    const page = document.getElementById("main-content");
+    page?.setAttribute("inert", "");
     return () => {
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
+      page?.removeAttribute("inert");
     };
   }, [open]);
 
@@ -138,7 +142,7 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
   return (
     <>
       <div className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-mint-2/80 px-4 py-3 backdrop-blur-xl lg:hidden">
-        <Link href="/app" aria-label="Simplify — Today">
+        <Link href="/app" aria-label="Simplify — Today" className="inline-flex min-h-10 items-center rounded-lg pr-2 focus-visible:outline-2 focus-visible:outline-green">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/nav_logo.svg" alt="Simplify" className="h-5" />
         </Link>

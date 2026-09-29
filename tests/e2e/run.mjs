@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
-const ALL = ["j1", "j2", "j3", "j4", "j5", "j6", "j7", "j7b", "j8", "j9", "j10", "j11", "j12", "j13", "j14", "j15", "j16"]; // jlive: run explicitly against a server started without KASPI_MODE (see jlive.mjs)
+const ALL = ["j1", "j2", "j3", "j4", "j5", "j6", "j7", "j7b", "j8", "j9", "j10", "j11", "j12", "j13", "j14", "j15", "j16", "j17"]; // jlive: run explicitly against a server started without KASPI_MODE (see jlive.mjs)
 const pick = process.argv.slice(2).length ? process.argv.slice(2) : ALL;
 const fails = [];
 for (const j of pick) {

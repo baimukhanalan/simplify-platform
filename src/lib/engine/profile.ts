@@ -89,6 +89,10 @@ export function parseCVHeuristic(text: string, now = new Date()): ParsedCV {
         const after = k === ranges.length - 1 ? line.slice(r.index + r.length) : "";
         cursor = r.index + r.length;
         let head = `${before} ${after}`.replace(BULLET, "").replace(/[()[\]]/g, " ").replace(/\s{2,}/g, " ").trim().replace(/(?:^|[\s,])(?:с|со|from|since)$/iu, "").replace(/^[\s,|·•–—-]+|[\s,|·•–—-]+$/g, "");
+        // One-line entry: «Аналитик, Kaspi — 2021 – 2023 — сократил время отчётов на 30%». The result part after a dash /
+        // semicolon is the fact's detail (and its metric), not part of the title or the company.
+        const { head: cleanHead, results } = splitResults(head);
+        head = cleanHead;
         if (!head && k === 0) {
           // Role on its own line: above the dates (usual) or right below them.
           if (usable(lines[i - 1]) && lines[i - 1] !== headline && i - 1 > 1) {
@@ -106,9 +110,10 @@ export function parseCVHeuristic(text: string, now = new Date()): ParsedCV {
         }
         const [title, org] = splitTitleOrg(head);
         const kind = section === "edu" || EDU_WORDS.test(head) ? "education" : "employment";
-        const fact = { kind, title, org, startDate: r.start, endDate: r.end, details: "", metrics: "", tech: [] as string[] } as ParsedCV["facts"][number];
+        const detail = results.join("\n");
+        const fact = { kind, title, org, startDate: r.start, endDate: r.end, details: detail, metrics: extractMetric(detail), tech: extractSkills(detail) } as ParsedCV["facts"][number];
         facts.push(fact);
-        if (k === ranges.length - 1) open = { fact, details: [] };
+        if (k === ranges.length - 1) open = { fact, details: [...results] };
       });
       continue;
     }
@@ -139,6 +144,23 @@ export function parseCVHeuristic(text: string, now = new Date()): ParsedCV {
   };
 }
 
+/**
+ * Split «Title, Org — result; result» into the head (title + org) and the result segments. A segment counts as a result
+ * when it carries a measurable result (extractMetric) or starts with a lowercase word (a verb: «построил дашборды…»).
+ * The first segment is always the head.
+ */
+function splitResults(head: string): { head: string; results: string[] } {
+  const parts = head.split(/\s+(?:[—–;]\s*)+|;\s*/).map((x) => x.trim()).filter(Boolean);
+  if (parts.length < 2) return { head, results: [] };
+  const results: string[] = [];
+  const keep = [parts[0]];
+  for (const p of parts.slice(1)) {
+    if (extractMetric(p) || /^\p{Ll}{3,}/u.test(p)) results.push(p);
+    else keep.push(p);
+  }
+  return { head: keep.join(" — "), results };
+}
+
 function splitTitleOrg(s: string): [string, string] {
   for (const sep of [" at ", " @ ", " — ", " – ", " - ", " | ", ", ", " в "]) {
     const idx = s.indexOf(sep);
@@ -157,8 +179,10 @@ const METRIC_PATTERNS: RegExp[] = [
   new RegExp(String.raw`${NUM}\s*${UNIT}?\s*(?:→|->|—>|=>)\s*${NUM}\s*${UNIT}?`, "iu"),
   // "reduced churn by 12%", "cut costs by $40k", "increased retention by 3 pp", "сократил время на 30%"
   new RegExp(String.raw`(?<![\p{L}])(?:reduc|cut|decreas|lower|increas|grew|grow|boost|improv|rais|sav|shrank|shrunk|accelerat|speed|sped|halv|doubl|tripl|сократ|снизи|увелич|ускор|вырос|подня|сэконом)\p{L}*[^.\n]{0,60}?(?:by|на)\s+${NUM}\s*${UNIT}?(?![\p{L}])`, "iu"),
-  // "halved", "doubled", "3x faster"
-  /(?<![\p{L}])(?:halved|doubled|tripled|вдвое|втрое)(?![\p{L}])|\d+(?:[.,]\d+)?\s?[xх](?![\p{L}\p{N}])/iu,
+  // "halved", "doubled", "3x faster", «увеличил конверсию в 2 раза», «в 1,5 раза быстрее», «в 3 раза»
+  /(?<![\p{L}])(?:halved|doubled|tripled|вдвое|втрое)(?![\p{L}])|\d+(?:[.,]\d+)?\s?[xх](?![\p{L}\p{N}])|(?<![\p{L}])в\s+\d+(?:[.,]\d+)?\s+раз(?:а)?(?![\p{L}])/iu,
+  // scale of the work: «для 50 магазинов», «для 12 отделов», "for 200 stores", "across 30 teams" (never a span of years)
+  /(?<![\p{L}])(?:для|на|по|for|across|in)\s+\d[\d\s]*\+?\s+(?!(?:лет|года?|месяц\p{L}*|years?|months?)(?![\p{L}]))\p{L}{3,}/iu,
   // bare figures: "12%", "$40k", "3.5k tickets", "10 000 users"
   /\d+(?:[.,]\d+)?\s?%|\d+(?:[.,]\d+)?[kK]\+?(?![\p{L}\p{N}])|[$€]\s?\d[\d,.]*[kKmM]?|\d[\d\s]{2,}\s?(?:users|клиентов|пользователей|customers|clients|orders|заказов)/iu,
 ];

@@ -1,6 +1,7 @@
 import { Check, Hourglass, ListChecks, Timer } from "lucide-react";
 import { Card, Chip, Label, cx } from "@/components/ui";
 import { daysWord } from "../../_components/format";
+import { assessmentDeadline } from "../../../../_components/ru";
 import { assessmentInfo } from "./assessment";
 
 type Props = {
@@ -27,7 +28,7 @@ export function AssessmentTab({ job, skills, emails, deadline, now }: Props) {
         </div>
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { icon: Hourglass, k: "Дедлайн", v: leftText, hint: deadline ? deadline.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", weekday: "long", day: "numeric", month: "short" }).toLowerCase() : "", warn: left != null && left > 0 && left < 24 },
+            { icon: Hourglass, k: "Дедлайн", v: leftText, hint: deadline ? assessmentDeadline(deadline) : "", warn: left != null && left > 0 && left < 24 },
             { icon: Timer, k: "Длительность", v: `${a.durationMin} мин`, hint: "без пауз" },
             { icon: ListChecks, k: "Темы", v: String(a.topics.length), hint: a.topics.map((t) => t.short).join(", ") },
           ].map(({ icon: Icon, k, v, hint, warn }) => (

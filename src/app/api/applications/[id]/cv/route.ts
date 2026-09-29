@@ -1,7 +1,8 @@
 import { currentUserId } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { rateLimitUser } from "@/lib/rate-limit";
-import { textToPdf, toWinAnsi } from "./pdf";
+import { cvPdfFilename } from "@/lib/links";
+import { textToPdf } from "./pdf";
 
 /** The exact CV text that went out with an application, as a PDF. Owner-scoped through the campaign. */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -12,13 +13,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const { id } = await params;
   const opp = await db.opportunity.findFirst({
     where: { id, campaign: { userId } },
-    select: { job: { select: { company: true, title: true } }, pkg: { select: { cvText: true, cvVersion: true } } },
+    select: { job: { select: { company: true, title: true } }, pkg: { select: { cvText: true } } },
   });
   if (!opp?.pkg) return Response.json({ error: "not found" }, { status: 404 });
 
-  const pdf = textToPdf(opp.pkg.cvText, { title: `CV - ${opp.job.title} - ${opp.job.company}`, footer: `${opp.job.company} · CV ${opp.pkg.cvVersion}` });
-  const slug = (s: string) => String.fromCharCode(...toWinAnsi(s.slice(0, 120))).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "cv";
-  const filename = `CV-${slug(opp.job.company)}-${slug(opp.pkg.cvVersion)}.pdf`;
+  // Employer-facing: company + role only — the internal version id never appears in the file or its name.
+  const pdf = textToPdf(opp.pkg.cvText, { title: `CV - ${opp.job.title} - ${opp.job.company}`, footer: `${opp.job.company} · ${opp.job.title}` });
+  const filename = cvPdfFilename(opp.job.company, opp.job.title);
   return new Response(pdf as BodyInit, {
     headers: {
       "Content-Type": "application/pdf",

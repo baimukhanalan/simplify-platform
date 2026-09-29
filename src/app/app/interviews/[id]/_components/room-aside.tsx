@@ -6,6 +6,7 @@ import { setCopilotAllowed } from "@/lib/actions/interview";
 import { ROUND_LABEL } from "@/lib/rounds";
 import type { roomReadiness } from "@/lib/engine/interview-readiness";
 import { daysWord } from "../../_components/format";
+import { almatyDayDiff } from "../../../../_components/ru";
 
 type Props = {
   iv: { id: string; round: string; status: string; scheduledAt: Date | null; copilotAllowed: boolean; opportunityId: string };
@@ -22,7 +23,7 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
   const at = iv.scheduledAt;
   const ms = at ? at.getTime() - now : null;
   const countdown =
-    ms == null ? null : ms <= 0 ? null : ms < 3600000 ? `${Math.max(1, Math.round(ms / 60000))}\u00a0мин` : ms < 86400000 ? `${Math.round(ms / 3600000)}\u00a0ч` : daysWord(Math.round(ms / 86400000));
+    ms == null ? null : ms <= 0 ? null : ms < 3600000 ? `${Math.max(1, Math.round(ms / 60000))}\u00a0мин` : ms < 86400000 ? `${Math.round(ms / 3600000)}\u00a0ч` : daysWord(Math.max(1, almatyDayDiff(at!, now)));
   const isAssessment = iv.round === "assessment";
   const live = iv.status === "upcoming" && !isAssessment;
 
@@ -66,7 +67,8 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
           {readiness.parts.map((p) => (
             <li key={p.label} className="flex items-baseline justify-between gap-3 text-[13px]">
               <span className="text-ink-3">{p.label}{p.hint && <span className="text-ink-4"> · {p.hint}</span>}</span>
-              <span className={cx("num", p.value >= 70 ? "text-green" : "text-head")}>{Math.round(p.value)}</span>
+              {/* A part not done yet (no mock) shows «—», not the placeholder value that feeds the total. */}
+              <span className={cx("num", p.score == null ? "text-ink-4" : p.score >= 70 ? "text-green" : "text-head")}>{p.score == null ? "—" : Math.round(p.score)}</span>
             </li>
           ))}
         </ul>

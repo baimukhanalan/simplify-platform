@@ -39,7 +39,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
   return (
     <div className="min-h-dvh overflow-x-clip">
       <SiteHeader right={<><ButtonLink href="/check" variant="ghost" size="sm" className="max-sm:!hidden">Проверить другое CV</ButtonLink><ButtonLink href="/login?mode=signup" size="sm">Начать кампанию</ButtonLink></>} />
-      <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 pb-24 pt-4 sm:px-8 lg:pt-8">
+      <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 pb-24 pt-4 sm:px-8 lg:pt-8">
         {/* Summary */}
         <section className="grid items-center gap-6 animate-rise md:grid-cols-[1fr_auto]">
           <div className="flex min-w-0 flex-col gap-3">
@@ -101,9 +101,14 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                 <li key={c.key} className="flex flex-col gap-1.5">
                   <div className="flex items-baseline justify-between gap-3 text-[13.5px]">
                     <span className="text-head">{CHECK_LABEL_RU[c.key] ?? c.label}</span>
-                    <span className="num text-ink-3">{c.score}</span>
+                    {/* «neutral» = the input was not given: no number, an empty neutral bar (not a red 0). */}
+                    {c.status === "neutral" ? <span className="text-ink-3">не указано</span> : <span className="num text-ink-3">{c.score}</span>}
                   </div>
-                  <Progress value={c.score} tone={c.status === "ok" ? "green" : c.status === "warn" ? "amber" : "rose"} />
+                  {c.status === "neutral" ? (
+                    <div aria-hidden className="h-1.5 w-full rounded-full bg-head/10" />
+                  ) : (
+                    <Progress value={c.score} tone={c.status === "ok" ? "green" : c.status === "warn" ? "amber" : "rose"} />
+                  )}
                   <span className="text-[12px] text-ink-3">{c.key === "salary" && r.market?.line ? r.market.line : c.note}</span>
                 </li>
               ))}

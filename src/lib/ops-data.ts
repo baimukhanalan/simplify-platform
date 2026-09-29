@@ -155,8 +155,31 @@ export const NOT_QUEUED_LABEL: Record<NotQueuedReason, string> = {
   "dream-decision": "Компания мечты, но уровень не совпадает с целью — реши сам: Apply или Skip",
 };
 
-/** Reasons that mean «the next move is the user's Apply» (needsYou.applyDecisions counts prepared/qualified roles with these). */
-export const APPLY_DECISION_REASONS: ReadonlySet<NotQueuedReason> = new Set(["auto-apply-off", "below-threshold", "no-consent", "dream-decision"]);
+/**
+ * Reasons that mean «the next move is the user's Apply / Auto / Skip». Stale (> 30 days) and off-goal roles are here too:
+ * the agent takes them only after the user's Apply, so they wait for a decision exactly like below-threshold ones.
+ */
+export const APPLY_DECISION_REASONS: ReadonlySet<NotQueuedReason> = new Set(["auto-apply-off", "below-threshold", "no-consent", "dream-decision", "stale", "off-goal"]);
+
+/** Statuses of a role that can still wait for the user's decision (not sent, not skipped). */
+export const AWAITING_DECISION_STATUSES = ["found", "qualified", "prepared"] as const;
+
+/** Ids of the roles that wait for the user's decision, from one nextCycleQueue run (APPLY_DECISION_REASONS). */
+export const awaitingDecisionIds = (queue: Pick<NextCycle, "notQueued">) =>
+  Object.entries(queue.notQueued).filter(([, r]) => APPLY_DECISION_REASONS.has(r)).map(([id]) => id);
+
+/**
+ * THE definition of «Ждут решения»: the Opportunities tab (its list and its counter) and needsYou.applyDecisions (Today,
+ * nav, Inbox, the agent-cycle line) all use this filter, so the tab never shows a role the count leaves out.
+ * `queue` = nextCycleQueue(campaign, autonomy) for the same campaign; an inactive campaign has nothing waiting (queue null).
+ */
+export const awaitingDecisionWhere = (campaignId: string, queue: Pick<NextCycle, "notQueued"> | null) => ({
+  campaignId,
+  id: { in: queue ? awaitingDecisionIds(queue) : [] },
+  status: { in: [...AWAITING_DECISION_STATUSES] },
+  eligibility: { not: "blocked" },
+  decision: { not: "skip" },
+});
 
 export type NextCycle = {
   /** Opportunity ids the next agent cycle would submit on its own (demo roles; live roles become handoffs instead). */
@@ -262,6 +285,45 @@ export async function nextCycleQueue(
   return { ids, when, reason, left, dailyLimit: campaign.dailyLimit, notQueued, reasons: labels() };
 }
 
+// ——— Interview counts: one definition for Today (stage «Интервью»), the nav badge, Applications and Interviews ———
+
+/**
+ * An upcoming interview ROUND (not an assessment): status "upcoming" and scheduled in the future. A round whose time
+ * has passed but still waits for «Как прошло?» is not upcoming any more (it counts as completed).
+ */
+export const upcomingRoundWhere = (userId: string, now = new Date()) => ({ userId, status: "upcoming", round: { not: "assessment" }, scheduledAt: { gte: now } });
+
+/** An open assessment: status "upcoming" and its deadline not passed (no deadline = open). */
+export const openAssessmentWhere = (userId: string, now = new Date()) => ({ userId, status: "upcoming", round: "assessment", OR: [{ scheduledAt: null }, { scheduledAt: { gte: now } }] });
+
+/** Interview rows whose campaign did not end with HIRED. */
+const NOT_HIRED_CAMPAIGN = { campaign: { status: { not: "hired" } } };
+
+export type InterviewCounts = {
+  /** Interview rounds scheduled in the future, not done (upcomingRoundWhere). The nav badge. */
+  upcoming: number;
+  /** Applications with at least one upcoming round: «в процессе» (Applications column, Today's stage). 0 = nothing in process. */
+  activeRounds: number;
+  /** Rounds that took place: done / passed / failed, or their time has passed (a debrief may still be due). */
+  completed: number;
+  /** Past rounds still marked upcoming: they wait for «Как прошло?» (part of `completed`). */
+  awaitingDebrief: number;
+  /** Open assessments (deadline not passed). Counted apart from interviews. */
+  assessments: number;
+};
+
+/** THE interview numbers. «В процессе» only when a future round exists — never for a round that already happened. */
+export async function interviewCounts(userId: string, now = new Date()): Promise<InterviewCounts> {
+  const [upcoming, active, finished, awaitingDebrief, assessments] = await Promise.all([
+    db.interview.count({ where: upcomingRoundWhere(userId, now) }),
+    db.interview.findMany({ where: upcomingRoundWhere(userId, now), select: { opportunityId: true }, distinct: ["opportunityId"] }),
+    db.interview.count({ where: { userId, round: { not: "assessment" }, status: { in: ["done", "passed", "failed"] } } }),
+    db.interview.count({ where: { userId, round: { not: "assessment" }, status: "upcoming", scheduledAt: { lt: now } } }),
+    db.interview.count({ where: openAssessmentWhere(userId, now) }),
+  ]);
+  return { upcoming, activeRounds: active.length, completed: finished + awaitingDebrief, awaitingDebrief, assessments };
+}
+
 // ——— «Нужно тебе»: one source for every screen and the agent-cycle line ———
 
 export type NeedsYou = {
@@ -269,7 +331,7 @@ export type NeedsYou = {
   questions: number;
   /** Live roles whose package is ready and waits for the user to send it through the official form. */
   handoffs: number;
-  /** Strong prepared / qualified roles waiting for the user's Apply (nextCycleQueue reasons in APPLY_DECISION_REASONS). */
+  /** Roles waiting for the user's Apply / Auto / Skip: awaitingDecisionWhere — the same filter as the «Ждут решения» tab. */
   applyDecisions: number;
   /** Offers received or in negotiation. */
   offer: number;
@@ -292,15 +354,12 @@ export async function needsYouFor(
     db.approval.count({ where: pendingApprovalsWhere(userId, now) }),
     db.approval.count({ where: pendingHandoffsWhere(userId, now) }),
     db.offer.count({ where: { userId, status: { in: ["received", "negotiating"] } } }),
-    db.interview.count({ where: { userId, status: "upcoming", round: { not: "assessment" }, scheduledAt: { gte: now, lte: new Date(now.getTime() + 48 * 3600000) } } }),
-    db.interview.count({ where: { userId, status: "upcoming", round: "assessment", OR: [{ scheduledAt: null }, { scheduledAt: { gte: now } }] } }),
+    // Rounds of a campaign that ended with HIRED never wait on the user (markHired also cancels them).
+    db.interview.count({ where: { ...upcomingRoundWhere(userId, now), scheduledAt: { gte: now, lte: new Date(now.getTime() + 48 * 3600000) }, opportunity: NOT_HIRED_CAMPAIGN } }),
+    db.interview.count({ where: { ...openAssessmentWhere(userId, now), opportunity: NOT_HIRED_CAMPAIGN } }),
     campaign && campaign.status === "active" ? nextCycleQueue(campaign, autonomy) : null,
   ]);
-  let applyDecisions = 0;
-  if (queue) {
-    const ids = Object.entries(queue.notQueued).filter(([, r]) => APPLY_DECISION_REASONS.has(r)).map(([id]) => id);
-    applyDecisions = ids.length ? await db.opportunity.count({ where: { id: { in: ids }, status: { in: ["prepared", "qualified"] } } }) : 0;
-  }
+  const applyDecisions = campaign && queue ? await db.opportunity.count({ where: awaitingDecisionWhere(campaign.id, queue) }) : 0;
   return { questions, handoffs, applyDecisions, offer, interviews48h, assessments, total: questions + handoffs + applyDecisions + offer + interviews48h + assessments };
 }
 

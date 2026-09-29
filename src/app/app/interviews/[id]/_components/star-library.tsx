@@ -3,17 +3,10 @@ import { useId, useState } from "react";
 import { Plus } from "lucide-react";
 import { ButtonLink, Label, cx } from "@/components/ui";
 import type { StoryLite } from "@/lib/engine/interview";
+import { STORY_TAG_RU } from "@/lib/ru";
 
-export const THEME_LABEL: Record<string, string> = {
-  leadership: "Лидерство",
-  conflict: "Конфликт",
-  failure: "Ошибка и вывод",
-  impact: "Влияние",
-  initiative: "Инициатива",
-  data: "Аналитика",
-  customer: "Клиенты",
-  pressure: "Давление и сроки",
-};
+/** Story tag labels: the same map as Profile («Истории») — lib STORY_TAG_RU. */
+export const THEME_LABEL: Record<string, string> = STORY_TAG_RU;
 
 const STAR = [
   { k: "situation", letter: "S", l: "Ситуация" },

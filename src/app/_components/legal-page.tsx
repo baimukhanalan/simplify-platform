@@ -7,7 +7,7 @@ export const SUPPORT_EMAIL = "support@simplify.kz";
 
 export function LegalPage({ eyebrow, title, notice, sections }: { eyebrow: string; title: string; notice?: string; sections: { h: string; p: string[] }[] }) {
   return (
-    <main className="mx-auto max-w-3xl px-5 py-10 sm:py-16">
+    <main id="main-content" tabIndex={-1} className="mx-auto max-w-3xl px-5 py-10 sm:py-16">
       <Link href="/" className="inline-flex min-h-10 shrink-0 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green" aria-label="Simplify — на главную"><Logo /></Link>
       <div className="mt-12 animate-rise">
         <div className="label">{eyebrow}</div>
@@ -35,7 +35,8 @@ export function LegalPage({ eyebrow, title, notice, sections }: { eyebrow: strin
 /** Inline "условия и политика данных" links for consent text. Opens in the same tab unless `newTab`. */
 export function LegalLinks({ newTab, className }: { newTab?: boolean; className?: string }) {
   const t = newTab ? { target: "_blank", rel: "noopener noreferrer" } : {};
-  const cls = "text-head underline decoration-line underline-offset-2 hover:decoration-teal focus-visible:rounded focus-visible:outline-2 focus-visible:outline-green";
+  // Inline in consent text: a transparent ::after extends the hit area to ≥40px tall without moving the line.
+  const cls = "relative text-head underline after:absolute after:-inset-x-1 after:-inset-y-3 after:content-['']  decoration-line underline-offset-2 hover:decoration-teal focus-visible:rounded focus-visible:outline-2 focus-visible:outline-green";
   return (
     <span className={className}>
       <Link href="/terms" className={cls} {...t}>условия сервиса{newTab && <span className="sr-only"> (откроется в новой вкладке)</span>}</Link>

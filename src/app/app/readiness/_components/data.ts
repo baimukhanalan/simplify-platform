@@ -1,8 +1,7 @@
 import "server-only";
 import { db, j } from "@/lib/db";
 import { assessReadiness } from "@/lib/engine/readiness";
-import { marketRange } from "@/lib/engine/market";
-import { ROLE_FAMILIES, classifyRole, seniorityFromYears } from "@/lib/engine/taxonomy";
+import { ROLE_FAMILIES, seniorityFromYears } from "@/lib/engine/taxonomy";
 import { readinessInputFor } from "@/lib/payments/readiness-snapshot";
 import type { ReadinessData } from "./model";
 
@@ -14,8 +13,9 @@ export async function loadReadiness(userId: string): Promise<ReadinessData | nul
   const g = await db.goal.findUniqueOrThrow({ where: { userId }, select: { minSalary: true, currency: true, extraRoles: true } });
   const readiness = assessReadiness(input);
   const { profile: p, goal } = input;
-  const family = classifyRole(goal.primaryRole);
-  const range = marketRange(family, goal.seniority, goal.countries);
+  // The engine's own family and market (in the goal currency, per month for ₸) — never a second classifyRole / USD range.
+  const family = readiness.family;
+  const range = readiness.market;
   const jobsForRole = family === "other" ? 0 : await db.job.count({ where: { active: true, roleFamily: family } });
   const have = new Set(p.skills.map((x) => x.toLowerCase()));
   return {

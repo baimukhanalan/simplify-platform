@@ -21,7 +21,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ru" className={`${inter.variable} ${pinyon.variable} ${serifCyr.variable} ${monoCyr.variable} ${scriptCyr.variable}`}>
-      <body>{children}</body>
+      <body>
+        <a href="#main-content" className="skip-link">Перейти к содержимому</a>
+        {children}
+      </body>
     </html>
   );
 }

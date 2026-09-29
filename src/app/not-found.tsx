@@ -11,7 +11,7 @@ const secondary = "glass inline-flex h-11 items-center !rounded-full px-5 text-[
 export default async function NotFound() {
   const signedIn = Boolean(await currentUser());
   return (
-    <main className="mx-auto flex min-h-dvh max-w-xl flex-col items-center justify-center gap-6 px-5 text-center">
+    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-dvh max-w-xl flex-col items-center justify-center gap-6 px-5 text-center">
       <Link href="/" aria-label="Simplify — на главную" className="inline-flex min-h-10 shrink-0 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
       <div className="flex flex-col gap-3 animate-rise">
         <span className="label">404</span>

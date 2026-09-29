@@ -22,7 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </form>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-[1180px] px-4 pb-16 pt-8 sm:px-8">{children}</main>
+      <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1180px] px-4 pb-16 pt-8 sm:px-8">{children}</main>
     </div>
   );
 }

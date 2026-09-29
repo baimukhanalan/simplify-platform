@@ -26,6 +26,8 @@ type Props = {
   override?: string | null;
   /** A decision only the user makes (dream company, level off-goal): Apply / Skip, no Auto. */
   userDecision?: boolean;
+  /** Apply stays enabled on a blocked role whose override line is said by the card itself (dream company). */
+  forceEnable?: boolean;
 };
 
 const pill =
@@ -39,9 +41,9 @@ const ru = (s: string) => s.replace(/У вакансии hard blocker/i, "Ты �
  * Auto and Skip are one click because both are reversible. The result goes to the page toast (<Announcer/>, a polite
  * live region) — the card itself may leave the list after the refresh, the toast stays.
  */
-export function DecisionBar({ id, company, decision, status, blocked, blockedBy = "requirement", pending = 0, size = "sm", override = null, userDecision = false }: Props) {
+export function DecisionBar({ id, company, decision, status, blocked, blockedBy = "requirement", pending = 0, size = "sm", override = null, userDecision = false, forceEnable = false }: Props) {
   // Blocked but overridable: the engine set it aside, the user may still pick it.
-  const canAct = !blocked || Boolean(override);
+  const canAct = !blocked || Boolean(override) || forceEnable;
   const [confirming, setConfirming] = useState(false);
   const [intent, setIntent] = useState<string>("");
   const applyRef = useRef<HTMLButtonElement>(null);
@@ -78,7 +80,7 @@ export function DecisionBar({ id, company, decision, status, blocked, blockedBy 
     setIntent(((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value ?? "");
   };
 
-  if (decision === "skip" || (status === "skipped" && !(blocked && override))) {
+  if (decision === "skip" || (status === "skipped" && !(blocked && (override || forceEnable)))) {
     return (
       <form action={action} onSubmit={onSubmit} className="flex flex-col gap-2">
         <input type="hidden" name="id" value={id} />

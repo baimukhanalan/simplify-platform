@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { logout } from "@/lib/actions/auth";
-import { currentCampaign, unreadMoments } from "@/lib/ops-data";
+import { currentCampaign, interviewCounts, unreadMoments } from "@/lib/ops-data";
 import { needsYouCached } from "../_components/global-needs";
 import { Nav } from "./nav";
 import { PushMoment } from "./_components/push-moment";
@@ -16,7 +16,8 @@ async function shellData(userId: string) {
     // needsYou: the same numbers as every «Нужно от тебя» block; the badge = everything on the «Подтверждения» screen.
     needsYouCached(userId),
     db.inboxMessage.count({ where: { userId, receivedAt: { gte: since }, classification: { in: ["interview", "assessment", "offer"] } } }),
-    db.interview.count({ where: { userId, status: "upcoming" } }),
+    // Upcoming interview rounds in the future — the same number as Today, Applications and Interviews (interviewCounts).
+    interviewCounts(userId).then((c) => c.upcoming),
     // Offers join the primary nav only once one exists; declined ones don't count.
     db.offer.count({ where: { userId, status: { not: "declined" } } }),
     // Same filter as Today's «Следующий шаг» offer (loadToday): when it's there, Today doesn't repeat it as a push.
@@ -41,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
       <Nav counts={counts} role={user.role} campaign={clock} userName={user.name} />
-      <main className="min-w-0 flex-1 px-4 pb-16 pt-4 sm:px-8 lg:pt-6">
+      <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-16 pt-4 sm:px-8 lg:pt-6">
         <div className="mx-auto flex w-full max-w-[1180px] items-center justify-end gap-2 lg:mb-5">
           {/* One Notifier instance: pinned into the sticky mobile header (left of the menu button), inline on desktop. */}
           <div className="fixed right-[64px] top-[14px] z-40 lg:static">

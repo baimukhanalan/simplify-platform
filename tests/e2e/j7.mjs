@@ -71,7 +71,8 @@ const lastTick = async (userId) => (await db.event.findFirst({ where: { userId, 
   await newDay(camp.id);
   await run(c);
   check((await db.opportunity.findUnique({ where: { id: autoRole.id } })).status !== "qualified", "J7.submit.off.prepared", "Auto role is prepared by the next cycle", autoRole.status);
-  for (const ap of await db.approval.findMany({ where: { opportunityId: autoRole.id, status: "pending" } })) await c.action("ops.resolveApproval", [form({ id: ap.id, decision: "edit", answer: "Yes" })], { page: "/app/approvals" });
+  // Round 10: standing questions are one card per user (it may sit on another role) — answer every open card.
+  for (const ap of await db.approval.findMany({ where: { userId: c.user.id, status: "pending", kind: { not: "handoff" } } })) await c.action("ops.resolveApproval", [form({ id: ap.id, decision: "edit", answer: "Yes" })], { page: "/app/approvals" });
   await newDay(camp.id);
   const before = await db.opportunity.count({ where: { campaignId: camp.id, status: "submitted" } });
   await run(c);

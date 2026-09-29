@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { yearsForEmployer } from "../ops";
+import { englishTitle, hasCyrillic, jdSkillsYouHave, latinName } from "./taxonomy";
+
+export { englishTitle };
 
 // Pure module: safe to import from client components (Copilot runs scaffold() in the browser).
 
@@ -121,7 +124,8 @@ export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite
   const current = latestEmployment(ctx.facts);
   const topFact = ctx.facts.find((f) => f.kind === "employment" && f.metrics) ?? current;
   // Who the candidate is NOW: their latest job title, not the vacancy they are interviewing for.
-  const nowTitle = (ctx.currentTitle || current?.title || "").trim();
+  // English text: a Russian CV title is said in English («Аналитик данных» → "data analyst"), never spliced in as is.
+  const nowTitle = englishTitle((ctx.currentTitle || current?.title || "").trim(), "");
   const short = (s: string, n = 70) => (s.length > n ? `${s.slice(0, n - 1).trim()}…` : s);
   let bullets: string[] = [];
   let opener = "";
@@ -175,7 +179,7 @@ export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite
         opener = `A good example is ${short(story.title, 60).toLowerCase()}.`;
         bullets = [`S: ${short(story.situation)}`, `T: ${short(story.task)}`, `A: ${short(story.action)}`, `R: ${short(story.result)}`];
       } else if (topFact) {
-        opener = `At ${topFact.org || "my last role"}, …`;
+        opener = `At ${topFact.org ? latinName(topFact.org) : "my last role"}, …`;
         bullets = [`Контекст: ${short(topFact.title)}`, `Твоя часть: ${short(topFact.details.split("\n")[0] ?? "")}`, `Результат: ${short(topFact.metrics || "назови итог")}`];
       } else bullets = ["Выбери свой самый сильный реальный пример", "Твоё конкретное действие", "Итог + вывод"];
       if (intent === "behavioral" || intent === "leadership") bullets.push("Закончи выводом: чему это научило");
@@ -193,6 +197,25 @@ export const PackSchema = z.object({
   questionsToAsk: z.array(z.string()),
   redFlags: z.array(z.string()),
 });
+
+/**
+ * «Чего избегать»: real pitfalls only — things that hurt when said. «Жди вопросов о масштабе задач» is preparation, not
+ * a pitfall: it lives in packTips. Used by the engine pack and by the Interview Room when the pack is not Claude's.
+ */
+export function packRedFlags(yearsExperience: number) {
+  return [
+    ...(yearsExperience < 2 ? ["Не преувеличивай стаж — рассказывай о глубине задач."] : []),
+    "Не называй цифру зарплаты первым без вилки.",
+    "Не ругай прошлого работодателя или команду.",
+  ];
+}
+
+/** Preparation tips for the Interview Room (not pitfalls). */
+export function packTips(yearsExperience: number) {
+  return yearsExperience >= 2
+    ? ["Жди вопросов о масштабе задач: сколько данных, людей, денег — подготовь цифры."]
+    : ["Жди вопросов о глубине задач: что именно ты сделал сам и чему научился."];
+}
 export type Pack = z.infer<typeof PackSchema>;
 
 const ROUND_TOPICS: Record<string, string[]> = {
@@ -203,21 +226,31 @@ const ROUND_TOPICS: Record<string, string[]> = {
   assessment: ["Timed test format", "Core skills from the JD", "Practice under time pressure"],
 };
 
+export { jdSkillsYouHave };
+
+/** «Why this company?»: cites only skills the JD lists (jdSkillsYouHave), never the profile's first two skills blindly. */
+export function whyCompanyAnswer(ctx: { company: string; skills: string[]; technologies: string[]; jd: string }) {
+  const jd = jdSkillsYouHave(ctx.skills, ctx.technologies, ctx.jd).slice(0, 2);
+  const proof = jd.length ? `Connect it to your experience in ${jd.join(" and ")} — the skills this role asks for.` : "Connect it to one requirement from the job description you already meet, with an example.";
+  return `Name one specific thing about ${ctx.company} (product, market, recent news). ${proof} End with what you want to build there.`;
+}
+
 export function buildPackHeuristic(ctx: { name: string; role: string; company: string; round: string; jd: string; technologies: string[]; skills: string[]; yearsExperience: number; stories: StoryLite[]; facts: FactLite[] }): Pack {
   const top = latestEmployment(ctx.facts);
-  const metric = ctx.facts.find((f) => f.metrics)?.metrics;
+  const metric = ctx.facts.find((f) => f.metrics && !hasCyrillic(f.metrics))?.metrics; // English text: no Russian line spliced in
+  const jd = jdSkillsYouHave(ctx.skills, ctx.technologies, ctx.jd);
   const behavioralQs = ["Tell me about a time you had a disagreement with a stakeholder.", "Tell me about a failure and what you learned.", "Describe a project where your work influenced a business decision.", "Tell me about a time you worked under a tight deadline."];
   return {
-    tellMeAboutYourself: `Present: ${top ? `${top.title} at ${top.org}` : ctx.role}, ${yearsForEmployer(ctx.yearsExperience) ?? "hands-on projects"} with ${ctx.skills.slice(0, 3).join(", ")}.\nPast: how you got here — one pivot, one proof${metric ? ` (${metric})` : ""}.\nFuture: why ${ctx.role} at ${ctx.company} is the logical next step. Keep it 60–90 seconds.`,
-    whyCompany: `Name one specific thing about ${ctx.company} (product, market, recent news). Connect it to your experience in ${ctx.skills.slice(0, 2).join(" and ")}. End with what you want to build there.`,
-    whyRole: `Map the JD to your proof: ${ctx.technologies.filter((t) => ctx.skills.includes(t)).slice(0, 3).join(", ") || ctx.skills.slice(0, 3).join(", ")}. Mention one requirement you're eager to grow into — honestly.`,
+    tellMeAboutYourself: `Present: ${top ? `${englishTitle(top.title, ctx.role)}${top.org ? ` at ${latinName(top.org)}` : ""}` : ctx.role}, ${yearsForEmployer(ctx.yearsExperience) ?? "hands-on projects"} with ${ctx.skills.slice(0, 3).join(", ")}.\nPast: how you got here — one pivot, one proof${metric ? ` (${metric})` : ""}.\nFuture: why ${ctx.role} at ${ctx.company} is the logical next step. Keep it 60–90 seconds.`,
+    whyCompany: whyCompanyAnswer(ctx),
+    whyRole: `Map the JD to your proof: ${jd.length ? jd.slice(0, 3).join(", ") : "the requirements you already meet"}. Mention one requirement you're eager to grow into — honestly.`,
     behavioral: behavioralQs.map((q) => {
       const [s] = retrieveStories(q, ctx.stories, 1);
       return { question: q, storyTitle: s?.title ?? "Добавь STAR-историю в профиль", outline: s ? `S: ${s.situation}\nT: ${s.task}\nA: ${s.action}\nR: ${s.result}` : "Нет подходящей истории — добавь её в профиль" };
     }),
     technicalTopics: [...ctx.technologies.slice(0, 4).map((t) => ({ topic: t, why: "Указано в описании вакансии", prep: ctx.skills.includes(t) ? "Повтори 2 рабочих примера и типичные вопросы" : "Нет в профиле — подготовь честный ответ и ближайший аналог" })), ...(ROUND_TOPICS[ctx.round] ?? []).map((t) => ({ topic: t, why: `Типично для раунда ${ctx.round}`, prep: "Подготовь 1 историю и 1 вопрос" }))],
     questionsToAsk: ["What does success look like in the first 90 days?", "What is the biggest challenge the team faces this quarter?", "How does this role work with product/engineering?", "What does the interview process look like from here?", "What do the best people on this team do differently?", `What's ${ctx.company}'s biggest priority for this year?`],
-    redFlags: [ctx.yearsExperience < 2 ? "Не преувеличивай стаж — говори о глубине задач" : "Готовься к вопросам о масштабе", "Не называй цифру зарплаты первым без вилки"],
+    redFlags: packRedFlags(ctx.yearsExperience),
   };
 }
 
@@ -256,16 +289,31 @@ export const SHORT_ANSWER_CAP = 30;
  * Structure of a non-STAR answer from what is actually there (no free default): ordering words, more than one sentence,
  * a concrete example, a conclusion. 0 cues = 20, each cue adds up to 100.
  */
-export function structureScore(answer: string) {
+export function structureCues(answer: string) {
   const sentences = answer.split(/[.!?]+(?:\s|$)/).filter((x) => x.trim().split(/\s+/).length >= 3).length;
-  const cues = [
-    /(?<![\p{L}])(first(?:ly)?|second(?:ly)?|then|next|after that|finally|во-первых|во-вторых|затем|потом|после этого|наконец)(?![\p{L}])/iu.test(answer),
-    sentences >= 2,
-    /(?<![\p{L}])(for example|for instance|e\.g\.|such as|например|к примеру)(?![\p{L}])/iu.test(answer),
-    /(?<![\p{L}])(so|as a result|in short|overall|in the end|that's why|итак|в итоге|в результате|поэтому)(?![\p{L}])/iu.test(answer),
-  ].filter(Boolean).length;
+  return {
+    order: /(?<![\p{L}])(first(?:ly)?|second(?:ly)?|then|next|after that|finally|во-первых|во-вторых|затем|потом|после этого|наконец)(?![\p{L}])/iu.test(answer),
+    sentences: sentences >= 2,
+    example: /(?<![\p{L}])(for example|for instance|e\.g\.|such as|например|к примеру)(?![\p{L}])/iu.test(answer),
+    conclusion: /(?<![\p{L}])(so|as a result|in short|overall|in the end|that's why|итак|в итоге|в результате|поэтому)(?![\p{L}])/iu.test(answer),
+  };
+}
+/** What each missing structure cue means for the user («Чего не хватило»). */
+export const STRUCTURE_CUE_RU: Record<keyof ReturnType<typeof structureCues>, string> = {
+  order: "порядок шагов (first → then → finally)",
+  sentences: "развёрнутый ответ из нескольких предложений",
+  example: "конкретный пример («for example…»)",
+  conclusion: "вывод в конце («so / as a result…»)",
+};
+export function structureScore(answer: string) {
+  const cues = Object.values(structureCues(answer)).filter(Boolean).length;
   return [20, 45, 65, 85, 100][cues];
 }
+
+/** Structure from which an answer counts as well-built (3 of 4 cues, or a full STAR). Below it «Все ключевые элементы» is never said. */
+export const STRUCTURE_OK = 85;
+/** Overall never runs more than this above structure: a well-worded answer without structure is not a strong answer. */
+export const STRUCTURE_HEADROOM = 25;
 
 export function scoreAnswer(question: string, answer: string, ctx: { skills: string[]; jdTerms: string[]; /** true when the answer came through the microphone */ spoken?: boolean }) {
   const words = answer.trim().split(/\s+/).filter(Boolean);
@@ -281,7 +329,9 @@ export function scoreAnswer(question: string, answer: string, ctx: { skills: str
   const structure = intent === "behavioral" || intent === "leadership" ? Math.round(starScore * 100) : structureScore(answer);
   const confidence = answerConfidence(answer, ctx.spoken);
   const content = Math.min(100, 45 + (hasNumber ? 25 : 0) + relevance * 10 + (/\bi\b|я /i.test(answer) ? 10 : 0));
-  const weighted = Math.round((content * 0.3 + structure * 0.2 + clarity * 0.15 + lengthScore * 0.15 + confidence * 0.1 + Math.min(100, relevance * 25) * 0.1));
+  // Structure weighs as much as content, and caps the overall (structure 45 → overall ≤ 70).
+  const blended = Math.round((content * 0.25 + structure * 0.3 + clarity * 0.15 + lengthScore * 0.1 + confidence * 0.1 + Math.min(100, relevance * 25) * 0.1));
+  const weighted = Math.min(blended, structure + STRUCTURE_HEADROOM);
   // A one-liner is not an answer, however well-worded: under SHORT_ANSWER_WORDS words the overall stays at SHORT_ANSWER_CAP.
   const overall = n < SHORT_ANSWER_WORDS ? Math.min(SHORT_ANSWER_CAP, weighted) : weighted;
   const tips: string[] = [];
@@ -293,5 +343,45 @@ export function scoreAnswer(question: string, answer: string, ctx: { skills: str
   else if (n < 40) tips.push("Слишком коротко — раскрой своё конкретное действие.");
   if (fillers > 2) tips.push(`Слова-паразиты: ${fillers}. Делай паузу вместо «um/like».`);
   if (!relevance) tips.push("Свяжи ответ с требованиями вакансии.");
-  return { overall, content, structure, clarity, length: lengthScore, confidence, fillers, words: n, star, tips, intent };
+  const cues = structureCues(answer);
+  return { overall, content, structure, clarity, length: lengthScore, confidence, fillers, words: n, star, cues, tips, intent };
+}
+
+// ——— Mock session summary (the one computation: client preview and the server's stored feedback) ———
+
+export type MockDims = Record<"content" | "structure" | "clarity" | "length" | "confidence", number>;
+export type MockSummary = { overall: number; answered: number; dims: MockDims; fillers: number; plan: string[]; perQuestion: { question: string; overall: number | null; tips: string[] }[] };
+
+export const MOCK_DIM_ADVICE: Record<keyof MockDims, string> = {
+  content: "Каждый ответ — с одной цифрой результата из твоего опыта.",
+  structure: "Отвечай по STAR: 1 фраза контекста, 1 — задача, 2–3 — твои действия, 1 — результат.",
+  clarity: "Короткие предложения и паузы вместо слов-паразитов.",
+  length: "Держи ответ в 60–120 секунд (≈ 80–220 слов).",
+  confidence: "Убери «I think maybe / наверное» — говори о своих решениях в первом лице.",
+};
+
+/** Skipped answers in a stored transcript. */
+const SKIPPED = /^\s*(\(пропущено\))?\s*$/;
+
+/**
+ * Score a whole mock session from its transcript with scoreAnswer — never trusting a score sent by the browser.
+ * `turns` = question/answer pairs; empty or «(пропущено)» answers are skipped (not scored).
+ */
+export function summarizeMock(turns: { question: string; answer: string; spoken?: boolean }[], ctx: { skills: string[]; jdTerms: string[] }): MockSummary {
+  const scored = turns.map((t) => ({ t, s: SKIPPED.test(t.answer) ? null : scoreAnswer(t.question, t.answer, { skills: ctx.skills, jdTerms: ctx.jdTerms.length ? ctx.jdTerms : ctx.skills, spoken: t.spoken }) }));
+  const ok = scored.filter((x): x is { t: (typeof x)["t"]; s: ReturnType<typeof scoreAnswer> } => x.s != null).map((x) => x.s);
+  const avg = (f: (s: ReturnType<typeof scoreAnswer>) => number) => (ok.length ? Math.round(ok.reduce((a, s) => a + f(s), 0) / ok.length) : 0);
+  const dims: MockDims = { content: avg((s) => s.content), structure: avg((s) => s.structure), clarity: avg((s) => s.clarity), length: avg((s) => s.length), confidence: avg((s) => s.confidence) };
+  const tipCount = new Map<string, number>();
+  ok.flatMap((s) => s.tips).forEach((t) => { const k = t.replace(/\d+/g, "N"); tipCount.set(k, (tipCount.get(k) ?? 0) + 1); });
+  const weakest = (Object.keys(dims) as (keyof MockDims)[]).sort((a, b) => dims[a] - dims[b]).slice(0, 2);
+  const plan = [...weakest.map((k) => MOCK_DIM_ADVICE[k]), ...[...tipCount.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t.replace(/N/g, "несколько"))].filter((v, i, a) => a.indexOf(v) === i).slice(0, 4);
+  return {
+    overall: avg((s) => s.overall),
+    answered: ok.length,
+    dims,
+    fillers: ok.reduce((a, s) => a + s.fillers, 0),
+    plan,
+    perQuestion: scored.map(({ t, s }) => ({ question: t.question, overall: s?.overall ?? null, tips: s?.tips ?? [] })),
+  };
 }

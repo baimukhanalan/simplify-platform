@@ -147,7 +147,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
         </Link>
       </header>
 
-      <main className="mx-auto grid w-full max-w-[1240px] items-center gap-6 px-4 pb-16 pt-2 sm:px-8 lg:min-h-[calc(100dvh-84px)] lg:grid-cols-[1.05fr_minmax(0,460px)] lg:gap-16 lg:pb-10">
+      <main id="main-content" tabIndex={-1} className="mx-auto grid w-full max-w-[1240px] items-center gap-6 px-4 pb-16 pt-2 sm:px-8 lg:min-h-[calc(100dvh-84px)] lg:grid-cols-[1.05fr_minmax(0,460px)] lg:gap-16 lg:pb-10">
         {/* Story + live preview */}
         <section className="flex min-w-0 flex-col gap-5 lg:gap-8" aria-label="О Simplify">
           <div className="flex flex-col gap-3 animate-rise">

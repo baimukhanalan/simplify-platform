@@ -5,6 +5,7 @@ import { requireUser } from "../auth";
 import { db, j, s, noNul } from "../db";
 import { aiJSON, aiText } from "../ai";
 import { buildPack } from "../engine/interview-ai";
+import { summarizeMock } from "../engine/interview";
 import { createInterview, loadCandidate, logEvent } from "../engine/agent";
 import { rateLimitUser, retryText } from "../rate-limit";
 
@@ -102,8 +103,17 @@ export async function saveMockSession(p: MockPayload): Promise<{ ok: boolean; id
   const iv = await db.interview.findFirst({ where: { id: String(p.interviewId), userId: user.id }, select: { id: true, opportunityId: true } });
   if (!iv || !PERSONA_KEYS.includes(p.persona) || !Array.isArray(p.transcript)) return { ok: false };
   const transcript = p.transcript.slice(0, 40).map((t) => ({ role: t.role === "interviewer" ? "interviewer" : "candidate", text: noNul(String(t.text ?? "")).slice(0, 4000) }));
-  const feedback = s(p.feedback ?? {});
-  if (feedback.length > 60000) return { ok: false };
+  // The score is recomputed here from the transcript (scoreAnswer) — the browser's numbers are never stored.
+  const turns: { question: string; answer: string }[] = [];
+  for (let i = 0; i < transcript.length; i++) {
+    if (transcript[i].role !== "interviewer") continue;
+    const next = transcript[i + 1];
+    turns.push({ question: transcript[i].text, answer: next?.role === "candidate" ? next.text : "" });
+  }
+  const opp = await db.opportunity.findUnique({ where: { id: iv.opportunityId }, select: { job: { select: { technologies: true } }, campaign: { select: { user: { select: { profile: { select: { skills: true } } } } } } } });
+  const summary = summarizeMock(turns, { skills: j<string[]>(opp?.campaign.user.profile?.skills ?? "[]", []), jdTerms: j<string[]>(opp?.job.technologies ?? "[]", []) });
+  if (!summary.answered) return { ok: false };
+  const feedback = s(summary);
   const m = await db.mockSession.create({ data: { interviewId: iv.id, persona: p.persona, transcript: s(transcript), feedback } });
   await logEvent(user.id, "mock_interview", `Mock Interview (${PERSONA_LABEL[p.persona] ?? p.persona}) сохранён`, iv.opportunityId);
   revalidatePath(room(iv.id));

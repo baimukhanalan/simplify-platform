@@ -4,7 +4,8 @@ import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { ROUND_CHAIN, ROUND_LABEL, ROUND_TONE, IV_STATUS_LABEL, IV_STATUS_TONE } from "@/lib/rounds";
-import { count, plural } from "../../_components/ru";
+import { interviewCounts } from "@/lib/ops-data";
+import { assessmentDeadline, count, plural } from "../../_components/ru";
 import { nowMs, relDays } from "./_components/format";
 
 export const metadata = { title: "Интервью" };
@@ -25,11 +26,20 @@ export default async function InterviewsPage() {
   const user = await requireUser();
   const all = await load(user.id);
   const now = nowMs();
+  // One rule with interviewCounts (lib/ops-data): a round is upcoming only while its time is ahead; a passed round still
+  // marked upcoming waits for «Как прошло?»; an assessment whose deadline passed is no longer open.
+  const ic = await interviewCounts(user.id, new Date(now));
+  const isPast = (i: Row) => i.scheduledAt != null && i.scheduledAt.getTime() < now;
   const upcoming = all.filter((i) => i.status === "upcoming");
-  const past = all.filter((i) => i.status !== "upcoming").sort((a, b) => (b.scheduledAt?.getTime() ?? 0) - (a.scheduledAt?.getTime() ?? 0));
-  // Interviews whose time has passed but that still wait for «Как прошло?».
-  const needDebrief = upcoming.filter((i) => i.round !== "assessment" && i.scheduledAt && i.scheduledAt.getTime() < now - 30 * 60000);
-  const future = upcoming.filter((i) => !needDebrief.includes(i));
+  const needDebrief = upcoming.filter((i) => i.round !== "assessment" && isPast(i));
+  const expired = upcoming.filter((i) => i.round === "assessment" && isPast(i));
+  const future = upcoming.filter((i) => !isPast(i));
+  const past = [...all.filter((i) => i.status !== "upcoming"), ...expired].sort((a, b) => (b.scheduledAt?.getTime() ?? 0) - (a.scheduledAt?.getTime() ?? 0));
+  const summary = [
+    ic.upcoming > 0 && `предстоит ${count(ic.upcoming, ["интервью", "интервью", "интервью"])}`,
+    ic.assessments > 0 && count(ic.assessments, ["тестовое задание", "тестовых задания", "тестовых заданий"]),
+    ic.awaitingDebrief > 0 && `${ic.awaitingDebrief} ${plural(ic.awaitingDebrief, ["ждёт", "ждут", "ждут"])} разбора`,
+  ].filter(Boolean).join(" · ");
   const next = future.find((i) => i.round !== "assessment") ?? future[0];
   const rest = future.filter((i) => i !== next);
   const reached = (r: string) => new Set(all.filter((i) => i.round === r).map((i) => i.opportunityId)).size;
@@ -45,6 +55,7 @@ export default async function InterviewsPage() {
         title={<>Твои <Script>интервью</Script></>}
         sub="Каждое приглашение — отдельная комната подготовки: обзор компании, вероятные вопросы, пробное интервью и разбор после звонка."
       />
+      {summary && <p className="-mt-3 mb-6 text-[14px] text-ink-2">{summary.charAt(0).toUpperCase() + summary.slice(1)}.</p>}
 
       {all.length === 0 ? (
         <Empty
@@ -160,7 +171,7 @@ function NextUp({ iv, now }: { iv: Row; now: number }) {
             {at && (
               <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/85">
                 <CalendarClock className="size-3.5" strokeWidth={1.7} aria-hidden />
-                {isAssessment ? "до " : ""}{day(at)}, <span className="num">{time(at)}</span>
+                {isAssessment ? assessmentDeadline(at) : <>{day(at)}, <span className="num">{time(at)}</span></>}
               </span>
             )}
             {iv._count.mocks > 0 && <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/70">{count(iv._count.mocks, ["пробное интервью", "пробных интервью", "пробных интервью"])}</span>}
@@ -207,7 +218,7 @@ function UpcomingCard({ iv, now }: { iv: Row; now: number }) {
           {isAssessment ? <ClipboardCheck className="size-4 text-amber" strokeWidth={1.7} aria-hidden /> : <CalendarClock className="size-4 text-teal" strokeWidth={1.7} aria-hidden />}
           {at ? (
             <span>
-              {isAssessment ? "до " : ""}{day(at)}, <span className="num">{time(at)}</span>{" "}
+              {isAssessment ? assessmentDeadline(at) : <>{day(at)}, <span className="num">{time(at)}</span></>}{" "}
               <span className={soon ? "font-medium text-green" : "text-ink-3"}>· {relDays(at, now)}</span>
             </span>
           ) : (
@@ -234,7 +245,12 @@ function PastRow({ iv }: { iv: Row }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{ROUND_LABEL[iv.round] ?? iv.round}</Chip>
-        <Chip tone={IV_STATUS_TONE[iv.status] ?? "neutral"}>{IV_STATUS_LABEL[iv.status] ?? iv.status}</Chip>
+        {iv.status === "upcoming" ? (
+          // An assessment whose deadline passed without a result.
+          <Chip tone="neutral">Срок истёк</Chip>
+        ) : (
+          <Chip tone={IV_STATUS_TONE[iv.status] ?? "neutral"}>{IV_STATUS_LABEL[iv.status] ?? iv.status}</Chip>
+        )}
         {typeof perf === "number" && <Chip tone="dark"><span className="num">{perf}</span>/100</Chip>}
       </div>
     </li>

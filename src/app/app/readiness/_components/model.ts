@@ -6,7 +6,8 @@ import { REGION_RU, plural } from "../../../_components/ru";
 
 export type ReadinessData = {
   readiness: Readiness;
-  range: { low: number; mid: number; high: number };
+  /** The goal's market in the goal currency (readiness.market): per year, or per month for a ₸ / local goal. */
+  range: Readiness["market"];
   family: string;
   goal: { primaryRole: string; seniority: string; minSalary: number; currency: string; countries: string[]; workModes: string[]; dreamCompanies: string[]; sponsorshipNeeded: boolean; extraRoles: string[] };
   actualSeniority: string;
@@ -22,6 +23,11 @@ export type ReadinessData = {
   jobsForRole: number;
   missingSkills: string[];
 };
+
+/** « в месяц» for a monthly (₸) market, nothing for a yearly one. */
+export const perPeriod = (m: Pick<Readiness["market"], "period">) => (m.period === "month" ? " в месяц" : "");
+/** «$48 000–$68 000» / «350 000–520 000 ₸ в месяц» — the market range in the goal currency. */
+export const marketRangeText = (m: Readiness["market"]) => `${fmtMoney(m.low, m.currency)}–${fmtMoney(m.high, m.currency)}${perPeriod(m)}`;
 
 export type Level = "strong" | "mid" | "weak";
 export type Param = { key: string; label: string; score: number; level: Level; note: string };
@@ -60,7 +66,7 @@ export function readinessView(d: ReadinessData) {
     { key: "experience", label: "Опыт под цель", score: experience, level: level(experience), note: `${fmtYears(d.yearsExperience)} опыта · цель ${SENIORITY_LABEL[d.goal.seniority] ?? d.goal.seniority}` },
     { key: "cv", label: "Качество CV", score: cv, level: level(cv), note: d.withMetrics ? `${d.withMetrics} ${plural(d.withMetrics, ["достижение", "достижения", "достижений"])} с цифрами` : "Нет достижений в цифрах" },
     { key: "interview", label: "Готовность к интервью", score: interview, level: level(interview), note: r.interview.note },
-    { key: "demand", label: "Спрос на рынке", score: demand, level: level(demand), note: `${d.jobsForRole} ${plural(d.jobsForRole, ["открытая вакансия", "открытые вакансии", "открытых вакансий"])} по роли · рынок ${fmtMoney(d.range.low)}–${fmtMoney(d.range.high)}` },
+    { key: "demand", label: "Спрос на рынке", score: demand, level: level(demand), note: `${d.jobsForRole} ${plural(d.jobsForRole, ["открытая вакансия", "открытые вакансии", "открытых вакансий"])} по роли · рынок ${marketRangeText(d.range)}` },
     { key: "eligibility", label: "Право на работу за рубежом", score: eligibility, level: level(eligibility), note: r.eligibility.note },
   ];
 
@@ -77,7 +83,7 @@ export function readinessView(d: ReadinessData) {
   if (!d.hasLinkedin) blockers.push("Нет LinkedIn — многие формы заявок его требуют.");
   if (skills < 60 && d.missingSkills.length) blockers.push(`Не хватает ключевых навыков под роль: ${d.missingSkills.join(", ")}.`);
   if (c("seniority").status === "bad") blockers.push(`Уровень цели (${SENIORITY_LABEL[d.goal.seniority] ?? d.goal.seniority}) выше твоего опыта — ${fmtYears(d.yearsExperience)}.`);
-  if (c("salary").score < 50) blockers.push(`Минимальная зарплата выше рынка для этого уровня (медиана ${fmtMoney(d.range.mid)}).`);
+  if (c("salary").score < 50) blockers.push(`Минимальная зарплата выше рынка для этого уровня (медиана ${fmtMoney(d.range.mid, d.range.currency)}${perPeriod(d.range)}).`);
   if (intl && c("language").score < 75) blockers.push("Английский ниже B2 — для международных ролей этого мало.");
   const fewJobs = d.jobsForRole < 5;
   if (fewJobs) blockers.push("По этой роли сейчас мало открытых вакансий.");

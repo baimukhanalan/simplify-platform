@@ -2,7 +2,7 @@ import { Lightbulb, Quote } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { currentCampaign } from "@/lib/ops-data";
-import { freshnessBucket, reachedInterview, recommendations, segmentLabel, segmentStats, type OppLite, type SegmentStat } from "@/lib/engine/insights";
+import { freshnessBucket, reachedInterview, segmentLabel, segmentStats, strategyView, type OppLite, type SegmentStat } from "@/lib/engine/insights";
 import { REGIONS } from "@/lib/engine/taxonomy";
 import { LANE, pctLabel } from "@/lib/ops";
 import { ButtonLink, Card, Chip, Empty, Label, PageHeader, Script, Stat, cx } from "@/components/ui";
@@ -18,13 +18,6 @@ const VERDICT: Record<SegmentStat["verdict"], { label: string; tone: "green" | "
   stop: { label: "Стоп", tone: "rose" },
   learning: { label: "Мало данных", tone: "neutral" },
 };
-/**
- * A verdict chip only when the segment has enough evidence to act on: at least MIN_EVIDENCE applications and a
- * reply from an employer. «Стоп» (15+ applications, no interview) is evidence by itself. Otherwise «Мало данных».
- */
-const MIN_EVIDENCE = 10;
-const shownVerdict = (r: SegmentStat): SegmentStat["verdict"] =>
-  r.verdict === "stop" || (r.applied >= MIN_EVIDENCE && r.responses > 0) ? r.verdict : "learning";
 /** «×1,14» — Russian decimal comma. */
 const weightLabel = (w: number) => `×${fmtNum(w, 2)}`;
 
@@ -73,18 +66,21 @@ export default async function InsightsPage() {
   const applied = opps.filter((o) => o.submittedAt);
   const allocation = j<Record<string, number>>(campaign.allocation, {});
 
-  const bySegment = segmentStats(opps, (o) => o.segment, segmentLabel);
   const byGeo = segmentStats(opps, geoKey, geoLabel);
+  // Weights, verdicts and the summary from one source (lib strategyView), so the table, the bars and the lines agree.
+  const view = strategyView(opps, allocation, byGeo);
+  const bySegment = view.rows;
   const byLane = segmentStats(opps, (o) => o.lane, (k) => LANE_LABEL[k] ?? k);
   const byCv = segmentStats(opps, cvVariant, (k) => (k === "без пакета" ? "Без пакета" : k === "базовая" ? "Базовая версия" : `CV · ${segmentLabel(k)}`));
   const byFresh = segmentStats(opps, freshnessBucket).sort((a, b) => FRESH_ORDER.indexOf(a.key) - FRESH_ORDER.indexOf(b.key));
   const byBand = segmentStats(opps, matchBand).sort((a, b) => BAND_ORDER.indexOf(a.key) - BAND_ORDER.indexOf(b.key));
-  const recs = recommendations(bySegment, byGeo);
+  const recs = view.summary;
+  const updating = view.rows.some((r) => r.updating);
 
   const interviews = applied.filter((o) => o.reachedInterview).length;
   const assessments = applied.filter((o) => o.reachedAssessment).length;
   const responses = applied.filter((o) => !["submitted", "pending"].includes(o.status)).length;
-  const alloc = Object.entries(allocation).sort((a, b) => b[1] - a[1]);
+  const alloc = view.enoughData ? view.rows.map((r) => [r.key, r.weight] as const).filter(([, w]) => w !== 1).sort((a, b) => b[1] - a[1]) : [];
   const maxW = Math.max(2.2, ...alloc.map(([, w]) => w));
 
   return (
@@ -121,9 +117,10 @@ export default async function InsightsPage() {
       <Card className="flex min-w-0 flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div><Label>По ролям</Label><h2 className="h-serif mt-2 text-[22px]">Какие роли дают интервью</h2></div>
-          <p className="max-w-md text-[12.5px] text-ink-3">Конверсия — доля заявок, дошедших до интервью. Вес — байесовски сглаженный множитель для новых заявок (1,0 = средний).</p>
+          <p className="max-w-md text-[12.5px] text-ink-3">Конверсия — доля заявок, дошедших до интервью. Вес — насколько чаще агент выбирает роли сегмента, с поправкой на малую выборку (1,0 = средний).</p>
         </div>
-        <StatsTable rows={bySegment} weight={(k) => allocation[k]} verdict />
+        <StatsTable rows={bySegment} verdict />
+        {updating && <p className="text-[12px] text-ink-3">Новые веса агент применит в следующем цикле.</p>}
       </Card>
 
       <Card className="flex min-w-0 flex-col gap-4">
@@ -195,7 +192,7 @@ function StatsTable({ rows, weight, verdict }: { rows: SegmentStat[]; weight?: (
                 <td className="num py-2.5 text-right">{r.offers}</td>
                 <td className="py-2.5 text-right"><span className="inline-flex justify-end"><RateBar rate={r.rate} /></span></td>
                 <td className="num py-2.5 text-right">{weightLabel(w)}</td>
-                {verdict && <td className="py-2.5 text-right"><Chip tone={VERDICT[shownVerdict(r)].tone}>{VERDICT[shownVerdict(r)].label}</Chip></td>}
+                {verdict && <td className="py-2.5 text-right"><Chip tone={VERDICT[r.verdict].tone}>{VERDICT[r.verdict].label}</Chip></td>}
               </tr>
             );
           })}

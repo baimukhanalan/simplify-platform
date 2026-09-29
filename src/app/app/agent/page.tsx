@@ -98,10 +98,7 @@ export default async function AgentPage() {
           <Card className="flex flex-col gap-3">
             <h2 className="label">Когда агент спрашивает тебя</h2>
             <p className="text-[13.5px] leading-relaxed text-ink-2">
-              Деликатные вопросы — пол, инвалидность, статус ветерана и похожие — агент по умолчанию оставляет тебе. Сам он отвечает на них, только если выбран вариант «Предпочитаю не указывать».
-            </p>
-            <p className="text-[13.5px] leading-relaxed text-ink-2">
-              Юридические декларации, спонсорство визы и нестандартные вопросы агент сам не решает: в первый раз они ждут тебя в <Link href="/app/approvals" className="inline-flex min-h-10 items-center rounded text-teal underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">Подтверждениях</Link>. Когда такой юридический вопрос или вопрос о спонсорстве повторится, агент повторит твой прошлый ответ.
+              Юридические декларации, спонсорство визы и нестандартные вопросы агент сам не решает: в первый раз они ждут тебя в <Link href="/app/approvals" className="inline-flex min-h-10 items-center rounded text-teal underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">Подтверждениях</Link>. Когда такой юридический вопрос или вопрос о спонсорстве повторится, агент повторит твой прошлый ответ. Как быть с деликатными вопросами (пол, инвалидность и похожие), выбираешь в блоке «Деликатные вопросы».
             </p>
           </Card>
         </div>

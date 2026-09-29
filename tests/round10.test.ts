@@ -16,6 +16,7 @@ import { usdToGoalAmount } from "../src/lib/engine/fx";
 import { marketNote, assessReadiness } from "../src/lib/engine/readiness";
 import { buildPackageHeuristic, overlapsEurope, type FactLite, type ProfileLite, type JobLite } from "../src/lib/engine/personalize";
 import { roleLabelRu, plural } from "../src/lib/ru";
+import { readAutonomy } from "../src/lib/engine/autonomy";
 
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-r10-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
@@ -131,7 +132,7 @@ const fact = (details: string, metrics = ""): FactLite => ({ id: "f", kind: "emp
 
 describe("4 · 7 · 8 · wording", () => {
   test("role labels carry city and format", () => {
-    assert.equal(roleLabelRu({ company: "Vantage Media", title: "BI Analyst", location: "Almaty, Kazakhstan", remote: "onsite" }), "Vantage Media · BI Analyst (Алматы, офис)");
+    assert.equal(roleLabelRu({ company: "Vantage Media", title: "BI Analyst", location: "Almaty, Kazakhstan", remote: "onsite" }), "Vantage Media · BI Analyst (Алматы · офис)");
     assert.equal(roleLabelRu({ company: "X", title: "Y", location: "Remote — Europe", remote: "remote" }), "X · Y (Удалённо — Европа)");
   });
   test("«Найдена 1 новая вакансия» / «Найдено 5 новых вакансий»", () => {
@@ -259,9 +260,15 @@ describe("3 (DB) · the agent prepares only Match ≥ 70 unless the user picked 
     assert.equal((await db.opportunity.findUniqueOrThrow({ where: { id: o.id } })).status, "qualified");
     assert.equal(await db.applicationPackage.count({ where: { opportunityId: o.id } }), 0);
     const n = await ops.needsYou(user.id);
-    assert.equal(n.applyDecisions, 1);
+    // The dream-company role waits for the user; so do strong stale (> 30 days) roles the agent takes only after Apply
+    // (round 12: the count and the «Ждут решения» tab are one definition — awaitingDecisionWhere).
+    const queue = await ops.nextCycleQueue(campaign, readAutonomy(JSON.stringify({ findJobs: false })));
+    assert.equal(queue.notQueued[o.id], "dream-decision");
+    assert.equal(n.applyDecisions, await db.opportunity.count({ where: ops.awaitingDecisionWhere(campaign.id, queue) }));
+    const stale = Object.values(queue.notQueued).filter((r) => r === "stale").length;
+    assert.equal(n.applyDecisions, 1 + stale);
     const tick = await db.event.findFirstOrThrow({ where: { userId: user.id, type: "tick" }, orderBy: { createdAt: "desc" } });
-    assert.match(tick.message, /1 вакансия ждёт твоего решения в Opportunities/);
+    assert.match(tick.message, new RegExp(`${n.applyDecisions} ваканси\\S+ жд\\S+ твоего решения в Opportunities`));
     assert.doesNotMatch(tick.message, /часть заявок/);
   });
 });

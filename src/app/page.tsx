@@ -35,7 +35,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </>}
       />
 
-      <main className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col px-4 sm:px-8">
+      <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col px-4 sm:px-8">
         {deleted && (
           <p role="status" className="mx-auto mt-2 flex w-full max-w-[620px] items-start gap-2.5 rounded-2xl border border-green/20 bg-green-soft px-4 py-3 text-[14px] text-head animate-fade">
             <CircleCheck className="mt-0.5 size-4 shrink-0 text-green" aria-hidden />

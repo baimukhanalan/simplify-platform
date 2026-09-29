@@ -6,6 +6,8 @@ import { ButtonLink, Empty, PageHeader, Script } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { applyReadinessFix } from "@/lib/actions/profile";
 import { SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
+import { marketRange } from "@/lib/engine/market";
+import { toUSD, usdToGoalAmount } from "@/lib/engine/fx";
 import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { loadReadiness } from "./_components/data";
@@ -30,10 +32,13 @@ export default async function ReadinessPage() {
     );
   }
 
-  const { readiness: r, range, goal } = data;
+  const { readiness: r, range, goal, family } = data;
   const view = readinessView(data);
   const fixSeniority = r.suggestedSeniority !== goal.seniority;
-  const fixSalary = goal.currency === "USD" && goal.minSalary > range.mid;
+  // The market model is yearly USD; the fix lowers the minimum to that median in the goal's own currency (₸ stays ₸).
+  const usdMid = marketRange(family, goal.seniority, goal.countries).mid;
+  const salaryTarget = usdToGoalAmount(usdMid, goal.currency);
+  const fixSalary = toUSD(goal.minSalary, goal.currency) > usdMid && salaryTarget > 0;
   const roles = r.suggestedRoles.filter((x) => x !== goal.primaryRole && !goal.extraRoles.includes(x)).slice(0, 2);
 
   const needs: Need[] = [];
@@ -68,7 +73,7 @@ export default async function ReadinessPage() {
             </div>
             <div className="grid gap-2 md:grid-cols-2">
               {fixSeniority && <FixForm fix="seniority" title={`Уровень: ${SENIORITY_LABEL[goal.seniority]} → ${SENIORITY_LABEL[r.suggestedSeniority]}`} note={`Под твои ${fmtYears(data.yearsExperience)} опыта`} cta="Применить" />}
-              {fixSalary && <FixForm fix="salary" title={`Минимум: ${fmtMoney(goal.minSalary, goal.currency)} → ${fmtMoney(range.mid)}`} note="Медиана рынка для цели" cta="Применить" />}
+              {fixSalary && <FixForm fix="salary" title={`Минимум: ${fmtMoney(goal.minSalary, goal.currency)} → ${fmtMoney(salaryTarget, goal.currency)} в год`} note="Медиана рынка для цели" cta="Применить" />}
               {roles.map((role) => (
                 <FixForm key={role} fix="role" role={role} title={`Добавить роль: ${role}`} note={adjacentNote(role, data.skills)} cta={<><Plus className="size-3.5" strokeWidth={1.8} aria-hidden />Добавить</>} />
               ))}

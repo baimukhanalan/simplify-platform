@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, ChevronDown, LayoutGrid, List } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { currentCampaign } from "@/lib/ops-data";
+import { currentCampaign, interviewCounts } from "@/lib/ops-data";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { ButtonLink, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
@@ -54,19 +54,23 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     );
   }
 
-  const [apps, waiting] = await Promise.all([
+  const [apps, waiting, ic] = await Promise.all([
     db.opportunity.findMany({
       where: { campaignId: campaign.id, status: { in: APPLIED_OR_LATER } },
       orderBy: [{ updatedAt: "desc" }],
       select: { id: true, status: true, submittedAt: true, job: { select: { company: true, title: true, source: true } }, pkg: { select: { cvVersion: true } } },
     }),
     needsYouCached(user.id),
+    interviewCounts(user.id),
   ]);
 
   if (!apps.length) {
+    // Nothing sent yet — but if something blocks sending (questions, handoffs, Apply decisions), say it here too.
+    const blocking = needsList(waiting, ["offer", "interview", "assessments"]);
     return (
       <>
         {header}
+        {blocking.length > 0 && <AgentStatus needs={blocking} className="-mt-3 mb-5" />}
         <Empty title="Заявок пока нет" sub="Агент подаёт на вакансии выше твоего порога Match — и на те, где ты нажимаешь Apply. Первые заявки появятся здесь." action={<ButtonLink href="/app/opportunities" variant="glass" size="sm">Смотреть Opportunities</ButtonLink>} />
       </>
     );
@@ -76,7 +80,9 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   const groups = GROUPS.map((g) => {
     const items = apps.filter((a) => (g.statuses as readonly string[]).includes(a.status));
     // «Ждём ответа»: newest submission first — the order the user sent them in, not the last background update.
-    return { ...g, items: g.key === "waiting" ? items.sort(bySubmitted) : items };
+    // The Interviews column says «идут раунды» only while a round is still ahead (interviewCounts).
+    const hint = g.key === "interview" && !ic.activeRounds ? "Раунды позади — ждём решения работодателя" : g.hint;
+    return { ...g, hint, items: g.key === "waiting" ? items.sort(bySubmitted) : items };
   });
   const rejected = apps.filter((a) => a.status === "rejected");
   const n = (k: string) => groups.find((g) => g.key === k)?.items.length ?? 0;
@@ -95,7 +101,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
       <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         <Summary k={plural(apps.length, ["заявка", "заявки", "заявок"])} v={apps.length} />
         <Summary k={plural(responded, ["ответ", "ответа", "ответов"])} v={responded} hint={`${Math.round((responded / apps.length) * 100)}%`} />
-        <Summary k="в процессе" v={n("assessment") + n("interview")} />
+        {/* «в процессе» = applications with a round still ahead (interviewCounts.activeRounds), not a status left over from a past call. */}
+        <Summary k="в процессе" v={ic.activeRounds} />
         <Summary k={plural(n("offer"), ["оффер", "оффера", "офферов"])} v={n("offer")} tone={n("offer") ? "green" : undefined} />
       </dl>
 

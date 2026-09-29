@@ -3,7 +3,7 @@ import { ArrowDown, Check } from "lucide-react";
 import { j } from "@/lib/db";
 import { Card, Chip, Field, Label, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
-import { benchmarkOffer, negotiationPlan, type Aggressiveness } from "@/lib/engine/offer";
+import { benchmarkOffer, negotiationPlan, negotiationUpside, type Aggressiveness } from "@/lib/engine/offer";
 import { fxToUsd } from "@/lib/engine/fx";
 import { fmtMoney, fmtMoneyRange } from "@/lib/engine/taxonomy";
 import { WORK_MODE_RU, count, marketBasisRu } from "../../../_components/ru";
@@ -27,15 +27,19 @@ export const STYLES: { level: Aggressiveness; label: string; hint: string }[] = 
 /** Russian ordinal in the prepositional case: 30 → "30-м". */
 const ordinal = (n: number) => `${n}-м`;
 
-type Props = { offer: Offer; level: Aggressiveness; roleFamily: string; seniority: string; regions: string[]; strengths: string[]; name: string };
+/** The user's salary minimum from Goal, in its own currency (0 = not set). */
+type Minimum = { amount: number; currency: string };
+type Props = { offer: Offer; level: Aggressiveness; roleFamily: string; seniority: string; regions: string[]; strengths: string[]; name: string; minimum?: Minimum };
 
-export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, strengths, name }: Props) {
+export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, strengths, name, minimum }: Props) {
+  const minLabel = minimum?.amount ? fmtMoney(minimum.amount, minimum.currency) : "";
   const fx = fxToUsd(o.currency); // the market model is USD; convert back so every number speaks the offer currency
   const bm = benchmarkOffer({ base: Math.round(o.base * fx), roleFamily, seniority, regions });
   const range = { low: Math.round(bm.range.low / fx), mid: Math.round(bm.range.mid / fx), high: Math.round(bm.range.high / fx) };
   const plans = Object.fromEntries(
     STYLES.map((s) => {
-      const plan = negotiationPlan({ company: o.company, role: o.role, base: o.base, currency: o.currency, range, strengths, name, level: s.level });
+      // With the goal minimum the lib keeps walk-away, target and ask at or above it (and says belowMinimum).
+      const plan = negotiationPlan({ company: o.company, role: o.role, base: o.base, currency: o.currency, range, strengths, name, level: s.level, minimum });
       const m = (n: number) => kMoney(n, o.currency);
       return [s.level, {
         ...plan,
@@ -49,10 +53,11 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
   const saved = j<{ level?: string; ask?: number; notes?: string; savedAt?: string }>(o.negotiation, {});
   const c = compBreakdown(o);
   const k = (n: number) => fmtMoney(n, o.currency);
-  const upLow = plans.soft.target - o.base;
-  const upHigh = plans.assertive.target - o.base;
+  // From the lowest target up to the highest ask across the styles (negotiationUpside) — always reaches the Aggressive ask.
+  const { low: upLow, high: upHigh } = negotiationUpside(plans, o.base);
+  const { belowMinimum: belowMin, minimum: minInOffer, minimumLine } = plans.balanced;
   const upside = upHigh > 0 ? `+${upLow === upHigh || upLow <= 0 ? k(upHigh) : fmtMoneyRange(Math.max(0, upLow), upHigh, o.currency)}` : "—";
-  const negotiate = bm.recommend;
+  const negotiate = bm.recommend || belowMin;
   const ids = { neg: `neg-${o.id}`, decide: `decide-${o.id}`, h: `offer-h-${o.id}` };
 
   return (
@@ -77,6 +82,12 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
           <div>
             <span className="font-mono text-[11px] uppercase tracking-[.1em] text-white/50">Оклад в год</span>
             <div className="num mt-1 text-[clamp(52px,13vw,112px)] leading-[.9] tracking-tight">{c.money(o.base)}</div>
+            {belowMin && (
+              <p className="mt-3 flex w-fit items-start gap-2 rounded-2xl bg-[#f5b86b]/15 px-3 py-1.5 text-[13.5px] leading-snug text-[#f5c98f]">
+                <span aria-hidden className="mt-[7px] size-1.5 shrink-0 rounded-full bg-[#f5b86b]" />
+                <span>{minimumLine}</span>
+              </p>
+            )}
             {o.finalBase != null && o.finalBase !== o.base && (
               <p className="mt-2 text-[14px] text-[#7fe3b6]">
                 После переговоров <span className="num">{c.money(o.finalBase)}</span> ({o.finalBase > o.base ? "+" : ""}{Math.round(((o.finalBase - o.base) / o.base) * 100)}%)
@@ -150,6 +161,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
           <p className="flex flex-col gap-0.5 rounded-2xl border border-line bg-white/60 px-4 py-3.5 text-[14.5px] leading-relaxed text-ink-2 sm:block">
             <Verdict k="Твой оффер" v={k(o.base)} />
             <Sep />
+            {belowMin && <><Verdict k="Твой минимум" v={minLabel} tone="amber" /><Sep /></>}
             <Verdict k="Рынок" v={fmtMoneyRange(range.low, range.high, o.currency)} />
             <Sep />
             <Verdict k="Рекомендация" v={negotiate ? "торговаться" : "можно принимать"} tone={negotiate ? "amber" : "green"} />
@@ -174,7 +186,9 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
         <span className="font-mono text-[11px] uppercase tracking-[.12em] text-[#8fc7ad]">Решение</span>
         <h3 id={`${ids.decide}-h`} className="h-serif mt-2 text-[clamp(24px,3vw,34px)] !text-white">Принять <span className="script !text-[#7fe3b6]">оффер</span>?</h3>
         <p className="mt-2 max-w-2xl text-[14px] text-white/65">
-          {negotiate
+          {belowMin
+            ? <>Оффер ниже твоего минимума (<span className="num">{minLabel}</span>) — сначала поторгуйся: нижняя граница в плане не ниже минимума. Когда условия устроят, прими оффер здесь.</>
+            : negotiate
             ? <>Оффер ниже медианы рынка — есть смысл сначала поторговаться. Когда условия устроят, прими оффер здесь.</>
             : <>Оффер на уровне рынка или выше. Можно принимать — или всё равно попробовать поднять оклад.</>}
           {" "}Принятие завершает кампанию статусом HIRED: агент перестаёт подавать заявки.
@@ -224,7 +238,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
             key: s.level,
             label: s.label,
             hint: s.hint,
-            panel: <PlanPanel offer={o} level={s.level} label={s.label} plan={plans[s.level]} saved={saved} strengths={strengths.length} />,
+            panel: <PlanPanel offer={o} level={s.level} label={s.label} plan={plans[s.level]} saved={saved} strengths={strengths.length} atMinimum={minInOffer > 0 && plans[s.level].walkaway === minInOffer} />,
           }))}
         />
         <form action={recordFinal} className="mt-6 flex flex-col gap-3 border-t border-line pt-5 sm:flex-row sm:items-end">
@@ -240,13 +254,14 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
   );
 }
 
-function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
+function PlanPanel({ offer: o, level, label, plan, saved, strengths, atMinimum }: {
   offer: Offer;
   level: Aggressiveness;
   label: string;
   plan: ReturnType<typeof negotiationPlan>;
   saved: { level?: string; ask?: number; notes?: string; savedAt?: string };
   strengths: number;
+  atMinimum?: boolean;
 }) {
   const money = (n: number) => fmtMoney(n, o.currency);
   const delta = (n: number) => (n > o.base ? `+${money(n - o.base)} к офферу` : "на уровне оффера");
@@ -261,7 +276,7 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
         <div className="rounded-2xl border border-line bg-white/60 px-4 py-4 sm:px-5">
           <div className="label">Запасной вариант</div>
           <div className="num mt-1.5 text-[clamp(32px,5vw,44px)] leading-none text-head">{money(plan.walkaway)}</div>
-          <div className="mt-1.5 text-[12.5px] text-ink-3">нижняя граница оклада · ниже — только с компенсацией</div>
+          <div className="mt-1.5 text-[12.5px] text-ink-3">{atMinimum ? "твой минимум из цели · ниже — только с компенсацией" : "нижняя граница оклада · ниже — только с компенсацией"}</div>
         </div>
       </div>
 

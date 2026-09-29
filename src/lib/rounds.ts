@@ -20,8 +20,8 @@ export const ROUND_TONE: Record<string, "amber" | "teal" | "green" | "dark" | "n
   final: "dark",
 };
 
-export const IV_STATUS_LABEL: Record<string, string> = { upcoming: "Предстоит", done: "Ждём ответа", passed: "Пройден", failed: "Не пройден" };
-export const IV_STATUS_TONE: Record<string, "green" | "rose" | "amber" | "neutral"> = { upcoming: "neutral", done: "amber", passed: "green", failed: "rose" };
+export const IV_STATUS_LABEL: Record<string, string> = { upcoming: "Предстоит", done: "Ждём ответа", passed: "Пройден", failed: "Не пройден", cancelled: "Отменено" };
+export const IV_STATUS_TONE: Record<string, "green" | "rose" | "amber" | "neutral"> = { upcoming: "neutral", done: "amber", passed: "green", failed: "rose", cancelled: "neutral" };
 
 /** Next step after a passed round. `null` after Final → the offer stage. Assessment feeds the recruiter screen. */
 export function nextRound(round: string): Round | null {

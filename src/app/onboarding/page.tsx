@@ -110,7 +110,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
       <SiteHeader right={<Link href="/app" className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Продолжить позже</Link>} />
       <div className="mx-auto grid w-full max-w-[1180px] gap-6 px-4 pb-24 sm:px-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12 lg:pt-6">
         <StepRail current={step} done={Array.from(done)} complete={Boolean(campaign)} />
-        <main className="flex min-w-0 flex-col gap-6" id="main">
+        <main className="flex min-w-0 flex-col gap-6" id="main-content" tabIndex={-1}>
           <div key={step} className="flex flex-col gap-2.5 animate-rise">
             <Label>Шаг {step} из {LAST_STEP} · {meta.label}</Label>
             <h1 className="h-serif text-[clamp(30px,4vw,46px)]">{TITLES[step]}</h1>

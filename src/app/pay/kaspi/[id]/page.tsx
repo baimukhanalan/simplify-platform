@@ -21,7 +21,7 @@ export default async function KaspiPayPage({ params, searchParams }: { params: P
   const back = hadCampaign ? "/app/campaign" : `/onboarding?step=5&plan=${encodeURIComponent(p.plan)}`;
   const debug = (Array.isArray(sp.debug) ? sp.debug[0] : sp.debug) === "1";
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 py-8 sm:py-14">
+    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-dvh w-full max-w-lg flex-col px-4 py-8 sm:py-14">
       {/*
         The mock pay buttons exist only when KASPI_MODE=mock; otherwise the page waits for the real Kaspi confirmation.
         The header (with «Отменить») lives in the client component: it disappears once the payment has gone through.

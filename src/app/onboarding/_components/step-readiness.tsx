@@ -1,7 +1,7 @@
 import { applyAdjustment } from "@/lib/actions/onboarding";
 import { SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
 import { SubmitButton } from "@/components/client";
-import { goalMarket, goalTitle, readinessView, type ReadinessData } from "../../app/readiness/_components/model";
+import { goalMarket, goalTitle, perPeriod, readinessView, type ReadinessData } from "../../app/readiness/_components/model";
 import { BlockersAndPlan, ParamTable, ReadinessHero } from "../../app/readiness/_components/readiness-view";
 import { ContinueBar } from "./shared";
 
@@ -11,7 +11,7 @@ export function StepReadiness({ data }: { data: ReadinessData }) {
   const bad = (key: string) => r.checks.some((c) => c.key === key && c.status === "bad");
   const fixes: { kind: string; label: string; extra?: Record<string, string> }[] = [];
   if (r.suggestedSeniority !== goal.seniority && bad("seniority")) fixes.push({ kind: "seniority", label: `Уровень: ${SENIORITY_LABEL[r.suggestedSeniority] ?? r.suggestedSeniority}` });
-  if (bad("salary")) fixes.push({ kind: "salary", label: `Минимум ${fmtMoney(range.mid)} (медиана рынка)` });
+  if (bad("salary")) fixes.push({ kind: "salary", label: `Минимум ${fmtMoney(range.mid, range.currency)}${perPeriod(range)} (медиана рынка)` });
   if (bad("geo") && !goal.workModes.includes("remote")) fixes.push({ kind: "remote", label: "Добавить удалённый формат" });
   for (const role of r.suggestedRoles.filter((x) => x !== goal.primaryRole && !goal.extraRoles.includes(x)).slice(0, r.verdict === "unrealistic" ? 2 : 1)) fixes.push({ kind: "role", label: `Добавить роль: ${role}`, extra: { role } });
 

@@ -1,14 +1,14 @@
 import "server-only";
 import { db, j, s } from "./db";
 import { parseCV, reliableYears, type ParsedCV } from "./engine/profile";
-import { assessReadiness, isLocalMarket, marketNote, suggestAdjacentRoles, usdYearToKztMonth, type Readiness, type ReadinessInput } from "./engine/readiness";
+import { assessReadiness, isLocalMarket, marketNote, resolveFamily, suggestAdjacentRoles, usdYearToKztMonth, type Readiness, type ReadinessInput } from "./engine/readiness";
 import { marketRange } from "./engine/market";
 import { count, plural } from "./ru";
 import { scoreJob, type CandidateCtx, type MatchResult } from "./engine/matching";
 import { jobCtx } from "./engine/agent";
 import { ensureSeedJobs } from "./engine/ingest";
 import { buildPackageHeuristic, type FactLite, type ProfileLite } from "./engine/personalize";
-import { ROLE_FAMILIES, REGIONS, SENIORITY_LABEL, classifyRole, fmtMoney, fmtMoneyRange, seniorityFromYears } from "./engine/taxonomy";
+import { ROLE_FAMILIES, REGIONS, SENIORITY_LABEL, fmtMoney, fmtMoneyRange, seniorityFromYears } from "./engine/taxonomy";
 import { toUSD } from "./engine/fx";
 
 /* ——————————————————————————— Goal level from experience ——————————————————————————— */
@@ -209,7 +209,7 @@ export function readinessInputFor(u: UserForReadiness, stories: number): Readine
     stories,
     goal: {
       primaryRole: g?.primaryRole ?? "", seniority: g?.seniority ?? "junior", minSalary: toUSD(g?.minSalary ?? 0, g?.currency), countries: j(g?.countries, []),
-      workModes: j(g?.workModes, ["remote"]), dreamCompanies: j(g?.dreamCompanies, []), sponsorshipNeeded: g?.sponsorshipNeeded ?? true,
+      workModes: j(g?.workModes, ["remote"]), dreamCompanies: j(g?.dreamCompanies, []), sponsorshipNeeded: g?.sponsorshipNeeded ?? true, currency: g?.currency ?? "USD",
     },
   };
 }
@@ -249,17 +249,6 @@ export type CheckResult = {
 
 const EN_IDX: Record<string, number> = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 };
 
-function bestFamilyBySkills(skills: string[]) {
-  const have = new Set(skills.map((x) => x.toLowerCase()));
-  let best = "other", bestCov = 0;
-  for (const [k, f] of Object.entries(ROLE_FAMILIES)) {
-    if (k === "other" || !f.skills.length) continue;
-    const cov = f.skills.filter((x) => have.has(x.toLowerCase())).length / Math.min(5, f.skills.length);
-    if (cov > bestCov) { best = k; bestCov = cov; }
-  }
-  return best;
-}
-
 const fmtSalary = (min: number | null, max: number | null, cur: string) => {
   if (!min && !max) return null;
   return min && max ? fmtMoneyRange(min, max, cur) : fmtMoney((min || max)!, cur);
@@ -270,8 +259,8 @@ export async function buildCareerCheck(cvText: string, targetRaw: string): Promi
   const { data: parsed, by } = await parseCV(cvText);
   const cv: ParsedCV = parsed;
   const target = targetRaw.trim();
-  let family = classifyRole(target || cv.headline || "");
-  if (family === "other") family = bestFamilyBySkills(cv.skills);
+  // The same resolver as assessReadiness (target → its English form → skills), so both read one market range.
+  const family = resolveFamily(target || cv.headline || "", cv.skills);
   // The user's title stays as written («Product Manager» never becomes «Senior Product Manager»); the level is separate.
   const roleLabel = target || ROLE_FAMILIES[family]?.label || "Other";
   const seniority = seniorityFromYears(cv.yearsExperience);
@@ -303,6 +292,7 @@ export async function buildCareerCheck(cvText: string, targetRaw: string): Promi
   const weaknesses: string[] = [];
   for (const c of readiness.checks) {
     if (c.key === "stories" || c.key === "experience") continue; // not meaningful before facts are reviewed
+    if (c.status === "neutral") continue; // missing input («не указано»): neither a strength nor a weakness
     (c.status === "ok" ? strengths : weaknesses).push(`${c.label}: ${c.note}`);
   }
   if (cv.skills.length >= 5) strengths.unshift(`В CV ${plural(cv.skills.length, ["найден", "найдено", "найдено"])} ${count(cv.skills.length, ["навык", "навыка", "навыков"])}`);

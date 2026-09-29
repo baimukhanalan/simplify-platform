@@ -2,7 +2,7 @@ import "server-only";
 import { db, j } from "@/lib/db";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { regionsFor } from "@/lib/regions";
-import { currentCampaign, isQualified, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, reachedAssessment, reachedInterviewRound, runningCampaign, windowNumbers } from "@/lib/ops-data";
+import { currentCampaign, interviewCounts, isQualified, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, reachedAssessment, reachedInterviewRound, runningCampaign, windowNumbers } from "@/lib/ops-data";
 import { APPLIED_OR_LATER, fmtMoney } from "@/lib/engine/taxonomy";
 import { blockerRu } from "@/lib/engine/matching";
 import { APP_TZ as TZ, startOfToday } from "@/lib/time";
@@ -307,7 +307,7 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
   // "Сегодня" = the Almaty calendar day, the same window and definitions as the Opportunities header.
   const dayStart = startOfToday(new Date(now));
   const autonomy = readAutonomy(user.autonomy);
-  const [opps, day, approvals, handoffs, upcoming, offers, responsesToday, timeline] = await Promise.all([
+  const [opps, day, approvals, handoffs, upcoming, offers, responsesToday, timeline, ivCounts] = await Promise.all([
     db.opportunity.findMany({
       where: { campaignId: campaign.id },
       select: { status: true, match: true, eligibility: true, createdAt: true, submittedAt: true, interviews: { select: { round: true } }, _count: { select: { offers: true } } },
@@ -316,8 +316,9 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
     // Only the running campaign's questions: a finished campaign no longer asks anything.
     pendingApprovalsCount(user.id),
     pendingHandoffsCount(user.id),
+    // Only rounds still ahead (a past round waiting for «Как прошло?» is not «upcoming»): the same rule as interviewCounts.
     db.interview.findMany({
-      where: { userId: user.id, status: "upcoming" },
+      where: { userId: user.id, status: "upcoming", OR: [{ scheduledAt: null, round: "assessment" }, { scheduledAt: { gte: new Date(now) } }] },
       orderBy: { scheduledAt: "asc" },
       take: 6,
       select: { id: true, round: true, scheduledAt: true, opportunity: { select: { job: { select: { company: true, title: true } } } } },
@@ -325,6 +326,7 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
     db.offer.findMany({ where: { userId: user.id, status: { in: ["received", "negotiating"] } }, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, company: true, role: true } }),
     db.inboxMessage.count({ where: { userId: user.id, receivedAt: { gte: dayStart }, classification: { in: ["interview", "assessment", "offer", "rejection"] } } }),
     loadTimeline(user.id, campaign.id, new Date(now - 3 * DAY)),
+    interviewCounts(user.id, new Date(now)),
   ]);
 
   const t = totals(opps);
@@ -357,6 +359,10 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
     handoffs,
     upcoming,
     offers,
+    /** interviewCounts (src/lib/ops-data.ts): the same numbers as the nav badge, Applications and Interviews. */
+    interviews: ivCounts,
+    /** Stages still open behind the current one («в процессе» on the rail): only when a future round / open test / offer exists. */
+    stageOpen: { assessments: ivCounts.assessments > 0, interviews: ivCounts.upcoming > 0, offers: offers.length > 0 } as Partial<Record<StageKey, boolean>>,
     timeline,
     now,
   };
