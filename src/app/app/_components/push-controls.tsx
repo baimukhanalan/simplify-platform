@@ -11,10 +11,11 @@ import { cx } from "@/components/ui";
  * add screens that already show this moment themselves (the Offer Desk, Today with the offer as its next step, the
  * push's own destination) — strings, since RegExps don't cross the server → client boundary.
  */
-export function PushGate({ children, hideExact = [], hidePrefix = [] }: { children: ReactNode; hideExact?: string[]; hidePrefix?: string[] }) {
+export function PushGate({ children, hideExact = [], hidePrefix = [], hidePattern }: { children: ReactNode; hideExact?: string[]; hidePrefix?: string[]; hidePattern?: string }) {
   const path = usePathname();
   if (isPushHiddenOn(path)) return null;
   if (path && (hideExact.includes(path) || hidePrefix.some((p) => path === p || path.startsWith(`${p}/`)))) return null;
+  if (path && hidePattern && new RegExp(hidePattern).test(path)) return null;
   return <>{children}</>;
 }
 

@@ -5,6 +5,7 @@ import { createNextRound, type Debrief } from "@/lib/actions/interview";
 import { IV_STATUS_LABEL, IV_STATUS_TONE, ROUND_LABEL, nextRound } from "@/lib/rounds";
 import { CopyButton } from "../../_components/copy-button";
 import { DebriefForm } from "./debrief-form";
+import { AlmatyDateTimeInput } from "./almaty-datetime";
 
 type Props = { iv: { id: string; round: string; status: string; company: string; upcoming: boolean }; debrief: Partial<Debrief>; debug?: boolean };
 
@@ -127,8 +128,8 @@ export function DebriefTab({ iv, debrief, debug }: Props) {
           {iv.status === "passed" && next && (
             <form action={createNextRound} className="flex flex-col gap-3 rounded-2xl border border-green/20 bg-green-soft/50 p-4">
               <input type="hidden" name="id" value={iv.id} />
-              <Field label={`Дата раунда «${ROUND_LABEL[next].toLowerCase()}»`} hint="Если ещё не назначили — оставь пустым">
-                <input type="datetime-local" name="scheduledAt" className="field" />
+              <Field label={`Дата раунда «${ROUND_LABEL[next].toLowerCase()}»`} hint="Время по Алматы. Если ещё не назначили — оставь пустым">
+                <AlmatyDateTimeInput name="scheduledAt" className="field" />
               </Field>
               <div><SubmitButton pendingText="Создаём комнату…">Создать раунд «{ROUND_LABEL[next].toLowerCase()}»<ArrowRight className="size-4" strokeWidth={1.7} aria-hidden /></SubmitButton></div>
             </form>

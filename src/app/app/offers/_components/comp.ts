@@ -2,7 +2,7 @@ import type { Offer } from "@prisma/client";
 import { j } from "@/lib/db";
 import { fmtMoney } from "@/lib/engine/taxonomy";
 
-/** "$72k" for USD, compact currency for everything else ("KZT 25M"). */
+/** "$72k" for USD, compact currency for everything else ("KZT 25M"). Employer-facing English text only — the UI uses fmtMoney. */
 export function kMoney(n: number, currency: string) {
   if (currency === "USD") {
     const abs = Math.abs(n);
@@ -11,11 +11,6 @@ export function kMoney(n: number, currency: string) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
-/** "$78k–90k" style range. */
-export function kRange(a: number, b: number, currency: string) {
-  if (currency === "USD") return `$${Math.round(a / 1000)}k–${Math.round(b / 1000)}k`;
-  return `${kMoney(a, currency)}–${kMoney(b, currency)}`;
-}
 
 /**
  * Equity is free text ("0.05%, 4 года", "$20k RSU over 4 years", "10000").

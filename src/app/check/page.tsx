@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ShieldCheck, Gauge, Search, Sparkles } from "lucide-react";
 import { Card, Label, Script, ButtonLink } from "@/components/ui";
 import { ROLE_FAMILIES } from "@/lib/engine/taxonomy";
-import { currentUserId } from "@/lib/auth";
+import { currentUser } from "@/lib/auth";
 import { SiteHeader } from "../_components/site-header";
 import { LegalLinks } from "../_components/legal-page";
 import { CheckForm } from "./_components/check-form";
@@ -18,7 +18,7 @@ const GETS = [
 ];
 
 export default async function CheckPage() {
-  const signedIn = Boolean(await currentUserId());
+  const signedIn = Boolean(await currentUser());
   const roles = Object.entries(ROLE_FAMILIES).filter(([k]) => k !== "other").map(([, f]) => f.label);
   return (
     <div className="min-h-dvh overflow-x-clip">

@@ -1,6 +1,6 @@
 // The three answers from the first screen ("Кем? Где? Сколько?"), carried through signup into the Goal.
 // Pure module: safe for client and server.
-import { fmtKzt } from "@/lib/engine/taxonomy";
+import { fmtKzt, fmtMoney } from "@/lib/engine/taxonomy";
 
 export type WhereKey = "europe" | "us" | "remote" | "kz" | "relocation";
 export type SalaryCurrency = "USD" | "KZT";
@@ -15,7 +15,7 @@ export const WHERE_OPTIONS: { key: WhereKey; label: string; hint: string }[] = [
   { key: "us", label: "США", hint: "US" },
   { key: "remote", label: "Удалённо", hint: "из любой точки" },
   { key: "kz", label: "Казахстан", hint: "KZ" },
-  { key: "relocation", label: "Переезд", hint: "переезд возможен" },
+  { key: "relocation", label: "Переезд", hint: "в другую страну" },
 ];
 
 export const ROLE_SUGGESTIONS = ["Product Manager", "Data Analyst", "Software Engineer", "Product Designer", "Marketing Manager", "QA Engineer"];
@@ -33,11 +33,11 @@ export const STORAGE_KEY = "simplify:intent";
 /** Set (path /onboarding) once the first-screen answers were written into the Goal. */
 export const INTENT_USED_COOKIE = "simplify_intent_used";
 
-export const fmtUsd = (n: number) => `$${n.toLocaleString("en-US")}`;
+export const fmtUsd = (n: number) => fmtMoney(n);
 /** «400 000 ₸» — one ₸ format for the whole product (src/lib/engine/taxonomy.ts). */
 export { fmtKzt };
 export const fmtSalary = (n: number, currency: SalaryCurrency) => (currency === "KZT" ? fmtKzt(n) : fmtUsd(n));
-/** «от 400 000 ₸ в месяц» / «от $30,000 в год». */
+/** «от 400 000 ₸ в месяц» / «от $30 000 в год». */
 export const salaryPhrase = (n: number, currency: SalaryCurrency) => `от ${fmtSalary(n, currency)} ${currency === "KZT" ? "в месяц" : "в год"}`;
 
 export function cleanIntent(raw: { role?: unknown; where?: unknown; salary?: unknown; currency?: unknown }): Intent | null {

@@ -1,7 +1,8 @@
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { logout } from "@/lib/actions/auth";
-import { currentCampaign, pendingQueueCount, unreadMoments } from "@/lib/ops-data";
+import { currentCampaign, unreadMoments } from "@/lib/ops-data";
+import { needsYouCached } from "../_components/global-needs";
 import { Nav } from "./nav";
 import { PushMoment } from "./_components/push-moment";
 import { Notifier } from "./_components/notifier";
@@ -11,8 +12,9 @@ const DAY = 86400000;
 
 async function shellData(userId: string) {
   const since = new Date(Date.now() - 3 * DAY);
-  const [approvals, responses, interviews, offers, openOffers, campaign, moments] = await Promise.all([
-    pendingQueueCount(userId), // questions + handoffs: everything on the «Подтверждения» screen
+  const [waiting, responses, interviews, offers, openOffers, campaign, moments] = await Promise.all([
+    // needsYou: the same numbers as every «Нужно от тебя» block; the badge = everything on the «Подтверждения» screen.
+    needsYouCached(userId),
     db.inboxMessage.count({ where: { userId, receivedAt: { gte: since }, classification: { in: ["interview", "assessment", "offer"] } } }),
     db.interview.count({ where: { userId, status: "upcoming" } }),
     // Offers join the primary nav only once one exists; declined ones don't count.
@@ -29,6 +31,7 @@ async function shellData(userId: string) {
     const day = ["active", "paused"].includes(campaign.status) ? Math.min(total, Math.max(1, Math.floor((Date.now() - start) / DAY) + 1)) : null;
     clock = { status: campaign.status, day, total };
   }
+  const approvals = waiting.questions + waiting.handoffs;
   return { counts: { approvals, responses, interviews, offers }, clock, moments, todayShowsOffer: openOffers > 0 && Boolean(campaign) };
 }
 

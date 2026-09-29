@@ -74,7 +74,9 @@ console.log("  roles blocked by the salary floor after that save:", floor);
 // Sponsorship toggles
 r = await c.action("profile.updateConstraints", [undefined, form({ citizenship: "KZ", workAuth: ["EU"], needsSponsorship: "on", minSalary: "50000", remotePref: "remote", noticePeriod: "1 month" })], { page: "/app/profile" });
 p = await prof(); g = await goal();
-check(JSON.parse(p.workAuth).includes("DE") && p.needsSponsorship && g.sponsorshipNeeded && g.minSalary === 50000, "J8.constraints", "constraints persisted & synced to goal", { auth: p.workAuth.slice(0, 40), sp: p.needsSponsorship });
+// Round 8: the «Ограничения» field is in USD but the goal keeps its own currency (a ₸ goal stays in ₸, converted back).
+const floorUsd = g.currency === "KZT" ? Math.round(g.minSalary / 500) : g.minSalary;
+check(JSON.parse(p.workAuth).includes("DE") && p.needsSponsorship && g.sponsorshipNeeded && g.currency === "KZT" && floorUsd === 50000, "J8.constraints", "constraints persisted & synced to goal (the KZT goal stays KZT: $50 000 → 25 000 000 ₸)", { auth: p.workAuth.slice(0, 40), sp: p.needsSponsorship, goal: `${g.minSalary} ${g.currency}` });
 
 // Readiness fixes
 pg = await c.get("/app/readiness");

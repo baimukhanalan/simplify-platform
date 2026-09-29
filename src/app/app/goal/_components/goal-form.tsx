@@ -3,10 +3,10 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Compass, Crosshair, Layers } from "lucide-react";
 import { Card, Chip, Field, Label, cx } from "@/components/ui";
-import { ROLE_FAMILIES, REGIONS, SENIORITY, SENIORITY_LABEL, classifyRole } from "@/lib/engine/taxonomy";
+import { ROLE_FAMILIES, REGIONS, SENIORITY, SENIORITY_LABEL, classifyRole, fmtMoney } from "@/lib/engine/taxonomy";
 import { saveGoal } from "@/lib/actions/profile";
 import { ActionForm, FormSubmit } from "../../profile/_components/action-form";
-import { WORK_MODE_RU, count } from "../../../_components/ru";
+import { WORK_MODE_RU, count, industryRu } from "../../../_components/ru";
 import { goalRegion } from "./region";
 
 export type GoalValues = {
@@ -24,11 +24,9 @@ const MODES = [
   { key: "mass", title: "Массовый найм", icon: Layers, text: "Быстрый параллельный поток в ролях массового найма — поддержка, продажи, операции, разметка данных, QA. Короткие формы и быстрые ответы: первый оффер как страховка, пока основная цель в работе." },
 ] as const;
 
-const CURRENCY_SIGN: Record<string, string> = { USD: "$", EUR: "€" };
 function money(n: number, cur: string) {
   if (!n) return "";
-  if (cur === "KZT") return `${n.toLocaleString("ru-RU")} ₸+`;
-  return `${CURRENCY_SIGN[cur] ?? ""}${n >= 1000 ? `${Math.round(n / 1000)}k` : n}+`;
+  return `${fmtMoney(n, cur)}+`;
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -110,7 +108,7 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
           <fieldset>
             <legend className="label mb-2">Индустрии</legend>
             <div className="flex flex-wrap gap-1.5">
-              {industryOptions.map((i) => <Pill key={i} name="industries" value={i} defaultChecked={initial.industries.includes(i)}>{i}</Pill>)}
+              {industryOptions.map((i) => <Pill key={i} name="industries" value={i} defaultChecked={initial.industries.includes(i)}>{industryRu(i)}</Pill>)}
             </div>
           </fieldset>
           <fieldset>
@@ -159,7 +157,7 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
             v.workModes.map((m) => WORK_MODE_RU[m] ?? cap(m)).join(" / ") || "—",
             [...new Set(v.countries.map(goalRegion))].join(" / ") || "—",
             money(v.minSalary, v.currency),
-            v.industries.join(" / "),
+            v.industries.map((x) => industryRu(x)).join(" / "),
           ].filter(Boolean).join(" · ")} />
           <div className="flex flex-wrap gap-1.5">
             <Chip tone="dark">{MODES.find((m) => m.key === v.mode)?.title ?? "Автономный"}</Chip>

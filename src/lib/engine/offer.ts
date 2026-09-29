@@ -6,7 +6,8 @@ export function benchmarkOffer(o: { base: number; roleFamily: string; seniority:
   const range = marketRange(o.roleFamily, o.seniority, o.regions);
   const percentile = percentileIn(o.base, range);
   const recommend = percentile < 50;
-  return { range, percentile, recommend, gap: Math.max(0, range.mid - o.base) };
+  // `basis`: the level and regions this median is read for (Career's Market Value exposes the same as marketBasis).
+  return { range, percentile, recommend, gap: Math.max(0, range.mid - o.base), basis: { level: o.seniority, regions: o.regions.length ? o.regions : ["WORLD"] } };
 }
 
 export function negotiationPlan(o: { company: string; role: string; base: number; currency: string; range: { low: number; mid: number; high: number }; strengths: string[]; name: string; level: Aggressiveness }) {

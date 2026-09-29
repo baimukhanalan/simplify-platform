@@ -4,7 +4,7 @@ import { FileText, Plus, X, TrendingUp } from "lucide-react";
 import { Chip, Field } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { j } from "@/lib/db";
-import { REGIONS } from "@/lib/engine/taxonomy";
+import { REGIONS, fmtMoney } from "@/lib/engine/taxonomy";
 import { toUSD } from "@/lib/engine/fx";
 import { updateBasics, updateConstraints, addSkill, removeSkill, reparseCV } from "@/lib/actions/profile";
 import { ActionForm, FormSubmit } from "./action-form";
@@ -21,7 +21,7 @@ const REMOTE_LABEL = WORK_MODE_RU;
 /** Citizenship choices; anything else goes through «Другое» as an ISO code (the action accepts two letters only). */
 const CITIZENSHIP_OPTIONS: [string, string][] = Object.entries(COUNTRY_LABEL);
 const NOTICE_LABEL: Record<string, string> = { Immediately: "Сразу", "1 week": "Через неделю", "2 weeks": "Через 2 недели", "1 month": "Через месяц", "2 months": "Через 2 месяца" };
-const usd = (n: number) => `$${n.toLocaleString("en-US")}`;
+const usd = (n: number) => fmtMoney(n);
 const yearsText = (y: number) => {
   const n = Math.round(y * 10) / 10;
   if (!Number.isInteger(n)) return `${n.toLocaleString("ru-RU")} года`;
@@ -173,7 +173,7 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
   const auth = j<string[]>(p.workAuth, []);
   const hasEU = REGIONS.EU.countries.every((c) => auth.includes(c));
   const authLabels = [...(hasEU ? ["Евросоюз"] : []), ...auth.filter((c) => !(hasEU && REGIONS.EU.countries.includes(c))).map((c) => COUNTRY_LABEL[c] ?? c)];
-  const minSalary = goal?.minSalary ? (goal.currency === "USD" ? usd(goal.minSalary) : `${goal.minSalary.toLocaleString("ru-RU")} ${goal.currency}`) : p.salaryExpectation ? usd(p.salaryExpectation) : "";
+  const minSalary = goal?.minSalary ? (goal.currency === "USD" ? usd(goal.minSalary) : fmtMoney(goal.minSalary, goal.currency)) : p.salaryExpectation ? usd(p.salaryExpectation) : "";
   const yesNo = (v: boolean) => (v ? "Да" : "Нет");
   // Work format lives in the goal (the agent searches by it) — show it exactly as the Goal page does.
   const goalModes = j<string[]>(goal?.workModes, []);
@@ -209,7 +209,7 @@ export function Constraints({ profile: p, goal }: { profile: Profile; goal: Goal
                 </select>
               </Field>
             )}
-            <Field label="Минимальная зарплата, USD / год" hint={goal?.minSalary && goal.currency !== "USD" ? `≈ ${goal.minSalary.toLocaleString("ru-RU")} ${goal.currency}; пусто — не менять` : "Пусто — не менять"}>
+            <Field label="Минимальная зарплата, USD / год" hint={goal?.minSalary && goal.currency !== "USD" ? `≈ ${fmtMoney(goal.minSalary, goal.currency)}; пусто — не менять` : "Пусто — не менять"}>
               {/* The goal may be stored in KZT/EUR: prefill converted to USD, since the action saves this field as USD. */}
               <input name="minSalary" type="number" min={0} step={1000} inputMode="numeric" defaultValue={goal?.minSalary ? toUSD(goal.minSalary, goal.currency) : p.salaryExpectation || ""} className="field" placeholder="70000" />
             </Field>

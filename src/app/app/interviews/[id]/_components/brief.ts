@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
-import { plural } from "../../../../_components/ru";
+import { industryRu } from "../../../../_components/ru";
+import { fmtYearsRu } from "@/lib/ru";
 import { stripHtml } from "./util";
 
 // «О компании» + «О роли». Pure: the deterministic engine builds it from the JD, company and
@@ -115,7 +116,7 @@ function parseJD(description: string) {
 export function buildBriefHeuristic(i: BriefInput): Brief {
   const { lines, sentences } = parseJD(i.description);
   const profile = INDUSTRY.find(([re]) => re.test(`${i.industry} ${i.description.slice(0, 400)}`))?.[1];
-  const industry = i.industry || "технологии";
+  const industry = i.industry ? industryRu(i.industry, true) : "технологии";
 
   // "About us" style sentences, excluding the generic "X is hiring a Y" opener.
   const about = sentences.filter((s) => /\b(we are|we're|our mission|we build|we help|helps|platform|founded|customers)\b/i.test(s) && !/is hiring/i.test(s)).slice(0, 2);
@@ -151,7 +152,7 @@ export function buildBriefHeuristic(i: BriefInput): Brief {
 
   const requirements = uniq([...i.requirements.map(clean), ...reqSection(/requirement|qualifications|what we look/i)]).slice(0, 8);
   const soft = requirements.filter((r) => !/hands-on experience with|^\d\+? years|experience required/i.test(r));
-  const years = i.minYears > 0 ? `${i.minYears}+ ${plural(i.minYears, ["год", "года", "лет"])} практики` : "опыт не критичен — важны обучаемость и базовые навыки";
+  const years = i.minYears > 0 ? `${fmtYearsRu(i.minYears, "+")} практики` : "опыт не критичен — важны обучаемость и базовые навыки";
   const lookFor = uniq([
     `${SENIORITY_LABEL[i.seniority] ?? "Junior"}-уровень: ${years}`,
     i.technologies.length ? `Уверенно владеет ${i.technologies.slice(0, 4).join(", ")}` : "",

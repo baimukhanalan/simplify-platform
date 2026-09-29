@@ -186,7 +186,7 @@ export function Timeline({ days, now }: { days: TimelineDay[]; now: number }) {
                   <span className={cx("grid size-7 place-items-center rounded-full border", KIND_TONE[it.kind] ?? "border-stroke bg-white text-teal")}><Icon className="size-3.5" strokeWidth={1.7} aria-hidden /></span>
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 pt-0.5">
                     {it.href && !it.cta ? (
-                      <Link href={it.href} className={cx("min-w-0 break-words text-[14px] leading-snug hover:underline focus-visible:outline-2 focus-visible:outline-green", muted ? "text-ink-3" : "text-ink")}>{it.text}</Link>
+                      <Link href={it.href} className={cx("relative min-w-0 break-words text-[14px] leading-snug after:absolute after:inset-x-0 after:-inset-y-[11px] after:content-[''] hover:underline focus-visible:outline-2 focus-visible:outline-green", muted ? "text-ink-3" : "text-ink")}>{it.text}</Link>
                     ) : (
                       <span className={cx("min-w-0 break-words text-[14px] leading-snug", muted ? "text-ink-3" : "text-ink")}>{it.text}</span>
                     )}
@@ -205,7 +205,7 @@ export function Timeline({ days, now }: { days: TimelineDay[]; now: number }) {
           {(d.moreFound > 0 || d.moreSkipped > 0 || d.hidden > 0) && (
             <p className="mt-2 pl-[80px] text-[12.5px] text-ink-3 sm:pl-[90px]">
               {[d.moreFound > 0 && `найдено ещё ${count(d.moreFound, VAC)}`, d.moreSkipped > 0 && `пропущено ещё ${count(d.moreSkipped, VAC)}`, d.hidden > 0 && `ещё ${count(d.hidden, ["событие", "события", "событий"])}`].filter(Boolean).join(" · ")}
-              {" · "}<Link href="/app/opportunities" className="text-teal hover:text-head">все вакансии</Link>
+              {" · "}<Link href="/app/opportunities" className="inline-block py-[11px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green">все вакансии</Link>
             </p>
           )}
         </section>

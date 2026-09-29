@@ -31,7 +31,7 @@ const PLAN_COPY = {
   international: { regions: "Европа, Великобритания, США, Канада, ОАЭ, удалённо по всему миру + СНГ", perDay: PLANS.international.dailyLimit },
 };
 const STATUS_LABEL: Record<string, { label: string; tone: "green" | "amber" | "teal" | "rose" | "neutral" }> = {
-  active: { label: "Активна", tone: "green" }, paused: { label: "На паузе", tone: "amber" }, hired: { label: "HIRED", tone: "green" },
+  active: { label: "Активна", tone: "green" }, paused: { label: "На паузе", tone: "amber" }, hired: { label: "Работа найдена", tone: "green" },
   expired: { label: "Завершена", tone: "neutral" }, draft: { label: "Черновик", tone: "neutral" },
 };
 const DAY = 86400000;
@@ -40,9 +40,10 @@ function campaignClock(startedAt: Date | null, endsAt: Date | null, days: number
   const now = Date.now();
   const start = startedAt?.getTime() ?? now;
   const total = endsAt ? Math.max(1, Math.round((endsAt.getTime() - start) / DAY)) : days;
-  const elapsed = Math.min(total, Math.max(0, Math.floor((now - start) / DAY)));
-  const left = endsAt ? Math.max(0, Math.ceil((endsAt.getTime() - now) / DAY)) : total - elapsed;
-  return { total, elapsed, left };
+  // Same math as Today (campaignDay in today-data.ts): day 1 is the start day; «осталось» = total − day.
+  const day = Math.min(total, Math.max(1, Math.floor((now - start) / DAY) + 1));
+  const left = Math.max(0, total - day);
+  return { total, day, left };
 }
 const date = (d: Date | null | undefined) => (d ? d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", year: "numeric" }) : "—");
 
@@ -207,7 +208,7 @@ function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch, demo }: { c
       ? `автоподача включена: агент сам подаёт на вакансии с Match ≥ ${minMatch}% и на отмеченные Apply / Auto`
       : "автоподача только для отмеченных Apply / Auto — автоотклик по Match выключен";
   const plan = PLANS[c.plan as keyof typeof PLANS] ?? PLANS.local;
-  const { total, elapsed, left } = campaignClock(c.startedAt, c.endsAt, plan.days);
+  const { total, day, left } = campaignClock(c.startedAt, c.endsAt, plan.days);
   const paused = c.status === "paused";
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -231,9 +232,9 @@ function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch, demo }: { c
           </div>
         </div>
         <div className="flex flex-col gap-2">
-          <Progress value={(elapsed / total) * 100} />
+          <Progress value={(day / total) * 100} />
           <div className="flex justify-between font-mono text-[11px] uppercase tracking-[.06em] text-ink-3">
-            <span>{date(c.startedAt)}</span><span>день {Math.min(total, elapsed + 1)} / {total}</span><span>{date(c.endsAt)}</span>
+            <span>{date(c.startedAt)}</span><span>день {day} / {total}</span><span>{date(c.endsAt)}</span>
           </div>
         </div>
         <div className="flex flex-wrap gap-2 border-t border-line pt-5">

@@ -7,6 +7,8 @@ import { APPLIED_OR_LATER, fmtMoney } from "@/lib/engine/taxonomy";
 import { blockerRu } from "@/lib/engine/matching";
 import { APP_TZ as TZ, startOfToday } from "@/lib/time";
 import { regionsRu } from "@/app/_components/ru";
+import { count, fmtNum, roleLabelRu, type Forms } from "@/lib/ru";
+import { STRONG_MATCH } from "@/lib/engine/matching";
 
 const DAY = 86400000;
 
@@ -132,6 +134,35 @@ export function breakdown(opps: Pick<OppRow, "status" | "match" | "eligibility" 
   return b;
 }
 export type Breakdown = ReturnType<typeof breakdown>;
+
+const VACANCY: Forms = ["вакансию", "вакансии", "вакансий"];
+/** Verb agreeing with a count: 1 → «подходит», 2+ → «подходят» (after a number Russian takes the plural here). */
+const verb = (n: number, one: string, many: string) => (n === 1 || (n % 10 === 1 && n % 100 !== 11) ? one : many);
+
+/**
+ * Discovery summary, sentence-ready: zero parts are hidden, and a single role (or a single kind) is never described as
+ * «Остальные: 1 …». `when` = «Сегодня» / «За кампанию».
+ *   0          → «Сегодня агент пока не нашёл новых вакансий.»
+ *   1          → «Сегодня агент нашёл 1 вакансию — она не проходит по требованиям.»
+ *   one kind   → «Сегодня агент нашёл 4 вакансии — все не проходят по требованиям.»
+ *   mixed      → «Сегодня агент нашёл 12 вакансий: 5 подходят (Match 70+), 3 — со слабым совпадением, 4 не проходят по требованиям.»
+ */
+export function discoverySentence(b: Pick<Breakdown, "found" | "qualified" | "weaker" | "blocked" | "setAside">, when = "Сегодня") {
+  if (!b.found) return `${when} агент пока не нашёл новых вакансий.`;
+  const kinds = [
+    { n: b.qualified, one: `подходит (Match ${STRONG_MATCH}+)`, many: `подходят (Match ${STRONG_MATCH}+)`, all: `подходят (Match ${STRONG_MATCH}+)` },
+    { n: b.weaker, one: "— со слабым совпадением", many: "— со слабым совпадением", all: "со слабым совпадением", she: "у неё слабое совпадение" },
+    { n: b.blocked, one: "не проходит по требованиям", many: "не проходят по требованиям", all: "не проходят по требованиям" },
+    { n: b.setAside, one: "отложена (дубль или пропуск)", many: "отложены (дубли или пропуски)", all: "отложены (дубли или пропуски)" },
+  ].filter((k) => k.n > 0);
+  const head = `${when} агент нашёл ${count(b.found, VACANCY)}`;
+  if (kinds.length === 1) {
+    const k = kinds[0];
+    if (b.found === 1) return `${head} — ${k.she ?? `она ${k.one}`}.`;
+    return `${head} — ${b.found === 2 ? "обе" : "все"} ${k.all}.`;
+  }
+  return `${head}: ${kinds.map((k) => `${fmtNum(k.n)} ${verb(k.n, k.one, k.many)}`).join(", ")}.`;
+}
 export type StageKey = (typeof STAGES)[number]["key"];
 
 /**
@@ -188,19 +219,19 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
       where: { userId, createdAt: { gte: since }, type: { not: "inbox" } },
       orderBy: { createdAt: "desc" },
       take: 200,
-      include: { opportunity: { select: { id: true, match: true, job: { select: { company: true, title: true } } } } },
+      include: { opportunity: { select: { id: true, match: true, job: { select: { company: true, title: true, location: true, remote: true } } } } },
     }),
     db.opportunity.findMany({
       where: { campaignId, createdAt: { gte: since }, status: { not: "skipped" }, match: { gte: 60 } },
       orderBy: { match: "desc" },
       take: 60,
-      select: { id: true, match: true, createdAt: true, job: { select: { company: true, title: true } } },
+      select: { id: true, match: true, createdAt: true, job: { select: { company: true, title: true, location: true, remote: true } } },
     }),
     db.opportunity.findMany({
       where: { campaignId, createdAt: { gte: since }, status: "skipped" },
       orderBy: { match: "desc" },
       take: 60,
-      select: { id: true, blockers: true, createdAt: true, job: { select: { company: true, title: true } } },
+      select: { id: true, blockers: true, createdAt: true, job: { select: { company: true, title: true, location: true, remote: true } } },
     }),
     db.inboxMessage.findMany({
       where: { userId, receivedAt: { gte: since } },
@@ -221,12 +252,12 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
   };
 
   // Strongest few finds and a few skips per day — the rest is summarised, not listed.
-  for (const o of found) if (bump(o.createdAt, "found") <= 4) items.push({ id: `f-${o.id}`, at: o.createdAt, kind: "found", text: `Найдена роль: ${o.job.title} — ${o.job.company}`, match: o.match, href: `/app/opportunities/${o.id}` });
+  for (const o of found) if (bump(o.createdAt, "found") <= 4) items.push({ id: `f-${o.id}`, at: o.createdAt, kind: "found", text: `Найдена роль: ${roleLabelRu(o.job)}`, match: o.match, href: `/app/opportunities/${o.id}` });
   for (const o of skipped) {
     const first = j<string[]>(o.blockers, [])[0];
     const reason = first ? blockerRu(first) : "";
     if (!reason) continue;
-    if (bump(o.createdAt, "skipped") <= 3) items.push({ id: `s-${o.id}`, at: o.createdAt, kind: "skipped", text: `Пропущено — ${o.job.company} · ${o.job.title}: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`, href: `/app/opportunities/${o.id}` });
+    if (bump(o.createdAt, "skipped") <= 3) items.push({ id: `s-${o.id}`, at: o.createdAt, kind: "skipped", text: `Пропущено — ${roleLabelRu(o.job)}: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`, href: `/app/opportunities/${o.id}` });
   }
 
   for (const e of events) {
@@ -234,9 +265,9 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
     const href = e.opportunityId ? `/app/opportunities/${e.opportunityId}` : undefined;
     if (e.type === "prepared" && job) {
       const waits = /ждут подтверждения/.test(e.message);
-      items.push({ id: e.id, at: e.createdAt, kind: "prepared", text: `CV адаптирован под ${job.title} — ${job.company}`, detail: waits ? "есть вопрос к тебе" : undefined, href, match: e.opportunity?.match });
+      items.push({ id: e.id, at: e.createdAt, kind: "prepared", text: `CV адаптирован: ${roleLabelRu(job)}`, detail: waits ? "есть вопрос к тебе" : undefined, href, match: e.opportunity?.match });
     } else if (e.type === "submitted" && job) {
-      items.push({ id: e.id, at: e.createdAt, kind: "submitted", text: `Заявка отправлена: ${job.title} — ${job.company}`, href });
+      items.push({ id: e.id, at: e.createdAt, kind: "submitted", text: `Заявка отправлена: ${roleLabelRu(job)}`, href });
     } else if (e.type === "interview_room") {
       items.push({ id: e.id, at: e.createdAt, kind: "interview", text: e.message.replace("Interview Room создан", "Interview Room готов"), href: "/app/interviews" });
     } else if (e.type === "tick") {
@@ -311,6 +342,10 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
     today,
     /** Exact split of today's finds (sums to today.found; .qualified === today.qualified). */
     todayBreakdown: breakdown(dayOpps),
+    /** Today's finds as one sentence (zero parts hidden, never «Остальные: 1 …»): discoverySentence. */
+    todaySentence: discoverySentence(breakdown(dayOpps), "Сегодня"),
+    /** The same for the whole campaign. */
+    campaignSentence: discoverySentence(breakdown(opps), "За кампанию"),
     /** The same split for the whole campaign (sums to totals.found; .qualified === totals.qualified). */
     breakdown: breakdown(opps),
     strongThreshold: autonomy.autoApplyMinMatch,

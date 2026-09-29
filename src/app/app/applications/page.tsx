@@ -2,11 +2,12 @@ import Link from "next/link";
 import { ArrowRight, ChevronDown, LayoutGrid, List } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { currentCampaign, pendingApprovalsCount, pendingHandoffsCount } from "@/lib/ops-data";
+import { currentCampaign } from "@/lib/ops-data";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { ButtonLink, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
-import { handoffsWaiting, plural, questionsWaiting } from "../../_components/ru";
+import { plural } from "../../_components/ru";
+import { needsList, needsYouCached } from "../../_components/global-needs";
 import { ApplicationCard, type AppCardData } from "./_components/card";
 
 export const metadata = { title: "Applications" };
@@ -23,7 +24,9 @@ const GROUPS = [
   { key: "assessment", label: "Тестовые", hint: "Тестовое задание от работодателя", statuses: ["assessment"], dot: "bg-amber" },
   { key: "waiting", label: "Ждём ответа", hint: "Заявка отправлена, ждём работодателя", statuses: ["submitted", "pending"], dot: "bg-cta" },
 ] as const;
-const MULTI = new Set(["interview", "offer", "waiting"]); // groups holding more than one status show a status chip on each card
+// Groups holding statuses worth telling apart show a status chip on each card. «Ждём ответа» doesn't: submitted and
+// pending mean the same to the user there, and the group label already says it.
+const MULTI = new Set(["interview", "offer"]);
 
 const header = (
   <PageHeader
@@ -51,14 +54,13 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     );
   }
 
-  const [apps, approvals, handoffs]: [AppCardData[], number, number] = await Promise.all([
+  const [apps, waiting] = await Promise.all([
     db.opportunity.findMany({
       where: { campaignId: campaign.id, status: { in: APPLIED_OR_LATER } },
       orderBy: [{ updatedAt: "desc" }],
       select: { id: true, status: true, submittedAt: true, job: { select: { company: true, title: true, source: true } }, pkg: { select: { cvVersion: true } } },
     }),
-    pendingApprovalsCount(user.id),
-    pendingHandoffsCount(user.id),
+    needsYouCached(user.id),
   ]);
 
   if (!apps.length) {
@@ -70,18 +72,19 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     );
   }
 
-  const groups = GROUPS.map((g) => ({ ...g, items: apps.filter((a) => (g.statuses as readonly string[]).includes(a.status)) }));
+  const bySubmitted = (a: AppCardData, b: AppCardData) => (b.submittedAt?.getTime() ?? 0) - (a.submittedAt?.getTime() ?? 0);
+  const groups = GROUPS.map((g) => {
+    const items = apps.filter((a) => (g.statuses as readonly string[]).includes(a.status));
+    // «Ждём ответа»: newest submission first — the order the user sent them in, not the last background update.
+    return { ...g, items: g.key === "waiting" ? items.sort(bySubmitted) : items };
+  });
   const rejected = apps.filter((a) => a.status === "rejected");
   const n = (k: string) => groups.find((g) => g.key === k)?.items.length ?? 0;
   const responded = apps.length - n("waiting");
   const hasDemo = apps.some((a) => a.job.source === "demo");
 
-  const needs: Need[] = [];
-  if (n("offer")) needs.push({ text: `${n("offer")} ${plural(n("offer"), ["оффер ждёт", "оффера ждут", "офферов ждут"])} твоего решения`, href: "/app/offers" });
-  if (n("interview")) needs.push({ text: `Подготовься к интервью: ${n("interview")} ${plural(n("interview"), ["заявка", "заявки", "заявок"])} на этапе интервью`, href: "/app/interviews" });
-  if (n("assessment")) needs.push({ text: `${n("assessment")} ${plural(n("assessment"), ["тестовое задание ждёт", "тестовых задания ждут", "тестовых заданий ждут"])} выполнения`, href: "/app/interviews" });
-  if (approvals) needs.push({ text: questionsWaiting(approvals), href: "/app/approvals" });
-  if (handoffs) needs.push({ text: handoffsWaiting(handoffs), href: "/app/approvals#kind-handoff" });
+  // Same numbers as Today, Opportunities and Inbox (needsYou, src/lib/ops-data.ts).
+  const needs: Need[] = needsList(waiting);
 
   return (
     <div className="flex flex-col gap-5">

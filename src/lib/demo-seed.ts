@@ -2,7 +2,7 @@
 import { db, s } from "./db";
 import { hashPassword } from "./auth-hash";
 import { parseCVHeuristic, yearsFromFacts } from "./engine/profile";
-import { runTick, simulateResponses, createInterview, ingestEmail, logEvent, notify, rescheduleInterview, NOTIFY_TITLE, SENSITIVE_DECLINE } from "./engine/agent";
+import { runTick, simulateResponses, createInterview, ingestEmail, logEvent, notify, rescheduleInterview, inboxEventText, NOTIFY_TITLE, SENSITIVE_DECLINE } from "./engine/agent";
 import { patchPackageAnswer } from "./engine/approvals";
 import { renormalizeDemoJobs } from "./engine/ingest";
 import { PLANS, seniorityFromYears } from "./engine/taxonomy";
@@ -164,6 +164,9 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
   const startedAt = new Date(cycleAt(0) - 20 * 60000);
   const campaign = await db.campaign.create({ data: { userId: user.id, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: "autonomous", readiness: await assessReadinessFor(user.id), dailyLimit: plan.dailyLimit, autoSubmit: true, startedAt, endsAt: new Date(startedAt.getTime() + plan.days * DAY), createdAt: startedAt } });
   await db.payment.create({ data: { userId: user.id, campaignId: campaign.id, amount: plan.priceKzt, provider: "kaspi_mock", status: "paid", plan: plan.key, externalId: `KSP-DEMO-${campaign.id.slice(-8)}`, paidAt: startedAt, partnerCode: "AMASKILLS", partnerCut: 0 /* test-gateway payment: attribution only, no share owed */, createdAt: startedAt } });
+  // The account exists before the campaign it paid for (Settings shows «Аккаунт создан» before the campaign start).
+  const signedUpAt = new Date(startedAt.getTime() - 2 * DAY - 3 * HOUR);
+  await db.user.update({ where: { id: user.id }, data: { createdAt: signedUpAt } });
   const started = new Date();
   await logEvent(user.id, "campaign_started", `Career Campaign «${plan.label}» запущена на ${plan.days} дней`);
   await shiftSince(user.id, campaign.id, started, startedAt.getTime());
@@ -234,8 +237,14 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
     await db.offer.create({ data: { userId: user.id, opportunityId: offerOpp.id, company: offerOpp.job.company, role: offerOpp.job.title, base: 52000, currency: "USD", bonus: 3000, equity: "", benefits: s(["Health insurance", "Learning budget $1,000", "Home office stipend"]), vacationDays: 24, probationMonths: 3, remote: "remote", noticePeriod: "2 weeks" } });
     await db.inboxMessage.create({ data: { userId: user.id, opportunityId: offerOpp.id, fromAddr: `talent@${offerOpp.job.company.toLowerCase().replace(/[^a-z]/g, "")}.example`, subject: `Offer — ${offerOpp.job.title}`, body: `We are pleased to extend you an offer for the ${offerOpp.job.title} position with a base salary of $52,000.`, classification: "offer", confidence: 0.96, simulated: true } });
     await notify(user.id, "offer", NOTIFY_TITLE.offer, `${offerOpp.job.company} · ${offerOpp.job.title}`, "/app/offers");
-    await logEvent(user.id, "inbox", `${offerOpp.job.company}: письмо распознано как «offer» → offer`, offerOpp.id);
+    await logEvent(user.id, "inbox", inboxEventText(offerOpp.job.company, "offer", "offer"), offerOpp.id);
     await shiftSince(user.id, campaign.id, mark2, realNow - 90 * 60000);
+  }
+
+  // Every round time the replay shifted lands on a real slot: interviews on a weekday 10:00–18:00 Almaty, assessments at 23:59
+  // (the shift above keeps the engine's placeholder time of day, e.g. 04:30). The email deadlines move with them.
+  for (const iv of await db.interview.findMany({ where: { userId: user.id, scheduledAt: { not: null } }, select: { id: true, scheduledAt: true } })) {
+    await rescheduleInterview(iv.id, iv.scheduledAt!);
   }
 
   // Simulated rounds whose date has passed are waiting for the employer's answer, not "upcoming".

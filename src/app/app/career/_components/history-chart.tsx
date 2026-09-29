@@ -3,6 +3,8 @@
  * points and labels are HTML overlays so text stays crisp at any width. A visually hidden table
  * carries the same data for screen readers. The live point (today's computation, see careerHistory) is marked «сейчас».
  */
+import { fmtMoney } from "@/lib/engine/taxonomy";
+
 export function HistoryChart({ points }: { points: { at: Date; score: number; marketValue: number; live?: boolean }[] }) {
   const scores = points.map((p) => p.score);
   const min = Math.max(0, Math.floor((Math.min(...scores) - 6) / 5) * 5);
@@ -46,7 +48,7 @@ export function HistoryChart({ points }: { points: { at: Date; score: number; ma
           {points.map((p, i) => (
             <span
               key={i}
-              title={`${label(p)}: ${p.score} · $${Math.round(p.marketValue).toLocaleString("ru-RU")}`}
+              title={`${label(p)}: ${p.score} · ${fmtMoney(p.marketValue)}`}
               className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow ${p.live ? "size-3 bg-cta" : "size-2.5 bg-green"}`}
               style={{ left: `${x(i)}%`, top: `${y(p.score)}%` }}
             />
@@ -65,7 +67,7 @@ export function HistoryChart({ points }: { points: { at: Date; score: number; ma
       <table className="sr-only">
         <thead><tr><th>Дата</th><th>Career Score</th><th>Market Value, USD</th></tr></thead>
         <tbody>
-          {points.map((p, i) => <tr key={i}><td>{p.live ? "сейчас" : p.at.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}</td><td>{p.score}</td><td>{Math.round(p.marketValue).toLocaleString("ru-RU")}</td></tr>)}
+          {points.map((p, i) => <tr key={i}><td>{p.live ? "сейчас" : p.at.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty" })}</td><td>{p.score}</td><td>{fmtMoney(p.marketValue)}</td></tr>)}
         </tbody>
       </table>
     </figure>

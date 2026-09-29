@@ -1,7 +1,9 @@
 // Pure presentation logic for Opportunities: turns engine output (match reasons, eligibility, job vs goal)
 // into human sentences — "Why this fits" and «Риски». Safe for server and client.
 import { ROLE_FAMILIES, SENIORITY_LABEL, seniorityIndex } from "@/lib/engine/taxonomy";
-import { plural } from "../../../_components/ru";
+import { isOverridable } from "@/lib/engine/matching";
+import { industryRu, plural } from "../../../_components/ru";
+import { fmtNum } from "@/lib/ru";
 
 export type Reason = { label: string; ok: boolean };
 
@@ -30,8 +32,12 @@ export type FitCandidate = {
 export type FitOpp = { match: number; eligibility: string; pInterview: number; reasons: Reason[]; blockers: string[]; softGaps: string[] };
 
 const DAY = 86400000;
-const years = (n: number) => (n % 1 === 0 ? String(n) : n.toFixed(1));
-/** "от 1 года", "от 2 лет", "от 2.5 года" — genitive after «от». */
+const years = (n: number) => fmtNum(n);
+
+/** Engine reasons are skills, the role, years ("3+ years") or salary («Зарплата от $60 000») — classify by label shape. */
+const isYearsReason = (label: string) => /\byears?\b|≥/i.test(label);
+const isSalaryReason = (label: string) => /^зарплата|salary/i.test(label.trim());
+/** "от 1 года", "от 2 лет", "от 2,5 года" — genitive after «от». */
 const fromYears = (n: number) => (n % 1 === 0 ? plural(n, ["года", "лет", "лет"]) : "года");
 
 /**
@@ -66,17 +72,18 @@ function hasDomain(industry: string, background: string) {
 /** Short positive bullets, most convincing first. */
 export function whyFits(o: FitOpp, job: FitJob, c: FitCandidate, limit = 4): string[] {
   const out: string[] = [];
-  const skills = o.reasons.filter((r) => r.ok && !/years|salary|≥/i.test(r.label) && r.label !== (ROLE_FAMILIES[job.roleFamily]?.label ?? ""));
-  const role = o.reasons.find((r) => r.label === ROLE_FAMILIES[job.roleFamily]?.label);
+  const roleLabel = ROLE_FAMILIES[job.roleFamily]?.label ?? "";
+  const skills = o.reasons.filter((r) => r.ok && !isYearsReason(r.label) && !isSalaryReason(r.label) && r.label !== roleLabel);
+  const role = o.reasons.find((r) => r.label === roleLabel);
   if (skills.length) out.push(`Совпадают навыки: ${skills.slice(0, 3).map((r) => r.label).join(", ")}`);
-  if (job.industry && hasDomain(job.industry, c.background)) out.push(`Есть опыт в ${job.industry}`);
+  if (job.industry && hasDomain(job.industry, c.background)) out.push(`Есть опыт в отрасли: ${industryRu(job.industry, true)}`);
   if (role?.ok) out.push(`Роль совпадает с целью: ${role.label}`);
   if (job.remote === "remote" && o.eligibility !== "blocked") out.push("Удалённо — доступно тебе");
   else if (c.workModes.includes(job.remote) && o.eligibility !== "blocked") out.push(`${job.remote === "hybrid" ? "Гибрид" : "Офис"} — твой формат`);
   const senGap = seniorityIndex(job.seniority) - seniorityIndex(c.seniority);
   if (senGap === 0 || (senGap === 1 && c.yearsExperience >= job.minYears)) out.push(`Уровень совпадает: ${SENIORITY_LABEL[job.seniority] ?? job.seniority}`);
   if (job.minYears && c.yearsExperience >= job.minYears) out.push(`Опыт ${years(c.yearsExperience)} ${c.yearsExperience % 1 === 0 ? plural(c.yearsExperience, ["год", "года", "лет"]) : "года"} — требуется от ${years(job.minYears)}`);
-  const salary = o.reasons.find((r) => /salary/i.test(r.label));
+  const salary = o.reasons.find((r) => isSalaryReason(r.label));
   if (salary?.ok) out.push("Зарплата выше твоего минимума");
   return out.slice(0, limit);
 }
@@ -89,7 +96,7 @@ export function risks(o: FitOpp, job: FitJob, c: FitCandidate): string[] {
     if (/^Требуется \d/.test(g)) continue; // restated above with the user's exact years
     out.push(job.sponsorship === "yes" && /спонсорство не указано/i.test(g) ? "Нужна виза — компания спонсирует" : g);
   }
-  const missing = o.reasons.filter((r) => !r.ok && !/years|salary|≥/i.test(r.label) && r.label !== (ROLE_FAMILIES[job.roleFamily]?.label ?? ""));
+  const missing = o.reasons.filter((r) => !r.ok && !isYearsReason(r.label) && !isSalaryReason(r.label) && r.label !== (ROLE_FAMILIES[job.roleFamily]?.label ?? ""));
   const mentioned = out.join(" ");
   const unlisted = missing.filter((r) => !mentioned.includes(r.label));
   if (unlisted.length) out.push(`Нет в профиле: ${unlisted.map((r) => r.label).join(", ")}`);
@@ -127,3 +134,18 @@ export { plural } from "../../../_components/ru";
 
 /** Requirement lines from sources often carry their own bullet ("- SQL"); the UI draws its own. */
 export const cleanRequirement = (r: string) => r.replace(/^\s*(?:[-•*–]|\d+[.)])\s*/, "").trim();
+
+/** Is `company` one of the user's dream companies (Goal.dreamCompanies, same substring rule as the engine)? */
+export const isDreamCompany = (company: string, dreamCompanies: string[]) =>
+  dreamCompanies.some((d) => d && company.toLowerCase().includes(d.toLowerCase()));
+
+/**
+ * For a blocked role the user may still send (isOverridable — src/lib/engine/matching.ts), the line shown above
+ * Apply / Auto; null when the block is final (visa, language, the user's own filters…).
+ */
+export function overrideNote(eligibility: string, blockers: string[] | string, dream: boolean): string | null {
+  if (eligibility !== "blocked" || !isOverridable(blockers, { dream })) return null;
+  return dream
+    ? "Компания мечты — уровень не совпадает с целью. Агент сам не подаёт, но ты можешь: Apply или Auto."
+    : "Уровень ниже цели — агент сам не подаёт, но ты можешь: Apply или Auto.";
+}

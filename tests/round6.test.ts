@@ -5,6 +5,7 @@
 // DB tests run against a throwaway SQLite database (never the dev DB).
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
+import { snapRoundTime } from "../src/lib/time";
 import { execSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -309,8 +310,9 @@ describe("9 · one date per round; stale interview pushes close themselves", () 
     const iv = await db.interview.findFirstOrThrow({ where: { opportunityId: opp.id, round: "assessment" } });
     const msg = await db.inboxMessage.findFirstOrThrow({ where: { opportunityId: opp.id, classification: "assessment" } });
     assert.equal(msg.deadline?.getTime(), iv.scheduledAt?.getTime());
-    const at = new Date(Date.now() + 4 * 86400000);
-    await agent.rescheduleInterview(iv.id, at);
+    // Rescheduling snaps an assessment deadline to 23:59 Almaty of its day (round 10 · 1).
+    const at = snapRoundTime("assessment", new Date(Date.now() + 4 * 86400000));
+    assert.equal((await agent.rescheduleInterview(iv.id, new Date(Date.now() + 4 * 86400000))).getTime(), at.getTime());
     assert.equal((await db.inboxMessage.findUniqueOrThrow({ where: { id: msg.id } })).deadline?.getTime(), at.getTime());
     assert.equal((await db.interview.findUniqueOrThrow({ where: { id: iv.id } })).scheduledAt?.getTime(), at.getTime());
 

@@ -1,11 +1,13 @@
 // Agent C — shared read-side queries for the campaign operating screens.
 import "server-only";
 import { db } from "./db";
-import { agentMaySubmit, type Autonomy } from "./engine/autonomy";
-import { dailyUsage } from "./engine/agent";
+import { agentMaySubmit, readAutonomy, type Autonomy } from "./engine/autonomy";
+import { agentQueueWhere, dailyUsage, hasOpenAnswers } from "./engine/agent";
+import { DREAM_DECISION } from "./engine/matching";
 import { reachedInterview } from "./engine/insights";
 import { APPLIED_OR_LATER, roleKey } from "./engine/taxonomy";
 import { startOfToday } from "./time";
+import { count } from "./ru";
 import { isPushHiddenOn, PUSH_EXCLUDED_ROUTES } from "./push";
 
 /** Active/paused but past endsAt: over, even if no agent cycle has written status="expired" yet (e.g. while paused). */
@@ -135,7 +137,7 @@ export async function windowNumbers(campaignId: string, since: Date | null, thre
  */
 export type NotQueuedReason =
   | "inactive" | "no-consent" | "off-goal" | "stale" | "user-skip" | "duplicate" | "needs-answers"
-  | "auto-apply-off" | "below-threshold" | "no-personalize" | "handoff" | "daily-limit";
+  | "auto-apply-off" | "below-threshold" | "no-personalize" | "handoff" | "daily-limit" | "dream-decision";
 
 export const NOT_QUEUED_LABEL: Record<NotQueuedReason, string> = {
   inactive: "Кампания не активна — агент сейчас не подаёт",
@@ -150,7 +152,11 @@ export const NOT_QUEUED_LABEL: Record<NotQueuedReason, string> = {
   "no-personalize": "Персонализация CV выключена — пакет не готовится",
   handoff: "Живая вакансия: агент готовит пакет, отправляешь ты через официальную форму",
   "daily-limit": "Дневной лимит занят ролями с более высоким приоритетом — агент вернётся к ней в следующем цикле",
+  "dream-decision": "Компания мечты, но уровень не совпадает с целью — реши сам: Apply или Skip",
 };
+
+/** Reasons that mean «the next move is the user's Apply» (needsYou.applyDecisions counts prepared/qualified roles with these). */
+export const APPLY_DECISION_REASONS: ReadonlySet<NotQueuedReason> = new Set(["auto-apply-off", "below-threshold", "no-consent", "dream-decision"]);
 
 export type NextCycle = {
   /** Opportunity ids the next agent cycle would submit on its own (demo roles; live roles become handoffs instead). */
@@ -179,9 +185,10 @@ export async function nextCycleQueue(
   autonomy: Pick<Autonomy, "submitApplications" | "autoApplyMinMatch" | "personalizeCv">,
 ): Promise<NextCycle> {
   // Every fitting role not sent yet — the cards the user sees as "waiting".
+  // Dream-company decisions (DREAM_DECISION) are the user's call whatever their Match, so they are listed too.
   const fitting = await db.opportunity.findMany({
-    where: { campaignId: campaign.id, status: { in: ["found", "qualified", "prepared"] }, eligibility: { not: "blocked" }, match: { gte: STRONG_MATCH } },
-    select: { id: true, status: true, decision: true, match: true, job: { select: { source: true, postedAt: true } }, approvals: { where: { status: "pending" }, select: { kind: true } } },
+    where: { campaignId: campaign.id, status: { in: ["found", "qualified", "prepared"] }, eligibility: { not: "blocked" }, OR: [{ match: { gte: STRONG_MATCH } }, { status: "qualified", softGaps: { contains: DREAM_DECISION } }] },
+    select: { id: true, status: true, decision: true, match: true, softGaps: true, job: { select: { source: true, postedAt: true } }, pkg: { select: { answers: true } }, approvals: { where: { status: "pending" }, select: { kind: true } } },
   });
   const notQueued: Record<string, NotQueuedReason> = {};
   const explainAll = (r: NotQueuedReason) => { for (const o of fitting) notQueued[o.id] = r; };
@@ -204,9 +211,11 @@ export async function nextCycleQueue(
   const ready = await db.opportunity.findMany({
     where: { campaignId: campaign.id, status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } },
     orderBy: [{ decision: "desc" }, { priority: "desc" }],
-    select: { id: true, decision: true, match: true, updatedAt: true, job: { select: { source: true } } },
+    select: { id: true, decision: true, match: true, updatedAt: true, job: { select: { source: true } }, pkg: { select: { answers: true } } },
   });
   for (const o of ready) {
+    // Waits for a standing answer asked on another role (one card for the same question): not sendable yet.
+    if (hasOpenAnswers(o.pkg?.answers)) { why(o.id, "needs-answers"); continue; }
     const denied = permission(o);
     if (denied) { why(o.id, denied); continue; }
     const counted = when === "now" && o.updatedAt >= since;
@@ -216,7 +225,7 @@ export async function nextCycleQueue(
   }
   if (autonomy.personalizeCv && budget > 0) {
     const queue = await db.opportunity.findMany({
-      where: { campaignId: campaign.id, status: "qualified", decision: { not: "skip" } },
+      where: agentQueueWhere(campaign.id),
       orderBy: [{ decision: "desc" }, { priority: "desc" }],
       take: budget * 2,
       select: { id: true, decision: true, match: true, job: { select: { company: true, title: true, source: true } } },
@@ -242,7 +251,8 @@ export async function nextCycleQueue(
     if (queued.has(o.id) || notQueued[o.id]) continue;
     if (o.decision === "skip") why(o.id, "user-skip");
     else if (o.status === "found") why(o.id, (now - o.job.postedAt.getTime()) / 86400000 > STALE_DAYS ? "stale" : "off-goal");
-    else if (o.status === "prepared" && o.approvals.some((a) => a.kind !== "handoff")) why(o.id, "needs-answers");
+    else if (o.status === "prepared" && (o.approvals.some((a) => a.kind !== "handoff") || hasOpenAnswers(o.pkg?.answers))) why(o.id, "needs-answers");
+    else if (o.status === "qualified" && o.softGaps.includes(DREAM_DECISION) && o.decision !== "apply" && o.decision !== "auto") why(o.id, "dream-decision");
     else if (o.status === "prepared" && o.approvals.length) why(o.id, "handoff");
     else if (o.status === "qualified" && !autonomy.personalizeCv) why(o.id, "no-personalize");
     else why(o.id, permission(o) ?? "daily-limit");
@@ -250,6 +260,67 @@ export async function nextCycleQueue(
   for (const id of Object.keys(notQueued)) if (queued.has(id)) delete notQueued[id];
   const reason = !autonomy.personalizeCv && !ids.length ? "no-personalize" : "ok";
   return { ids, when, reason, left, dailyLimit: campaign.dailyLimit, notQueued, reasons: labels() };
+}
+
+// ——— «Нужно тебе»: one source for every screen and the agent-cycle line ———
+
+export type NeedsYou = {
+  /** Open employer questions (the approvals screen, no handoffs). */
+  questions: number;
+  /** Live roles whose package is ready and waits for the user to send it through the official form. */
+  handoffs: number;
+  /** Strong prepared / qualified roles waiting for the user's Apply (nextCycleQueue reasons in APPLY_DECISION_REASONS). */
+  applyDecisions: number;
+  /** Offers received or in negotiation. */
+  offer: number;
+  /** Interview rounds (not assessments) in the next 48 hours. */
+  interviews48h: number;
+  /** Assessments still open (deadline not passed). */
+  assessments: number;
+  /** Sum of everything above. */
+  total: number;
+};
+
+/** needsYou for a known campaign (runTick passes its own; `campaign` null = no running campaign → only offers and rounds). */
+export async function needsYouFor(
+  campaign: { id: string; status: string; autoSubmit: boolean; dailyLimit: number } | null,
+  userId: string,
+  autonomy: Pick<Autonomy, "submitApplications" | "autoApplyMinMatch" | "personalizeCv">,
+  now = new Date(),
+): Promise<NeedsYou> {
+  const [questions, handoffs, offer, interviews48h, assessments, queue] = await Promise.all([
+    db.approval.count({ where: pendingApprovalsWhere(userId, now) }),
+    db.approval.count({ where: pendingHandoffsWhere(userId, now) }),
+    db.offer.count({ where: { userId, status: { in: ["received", "negotiating"] } } }),
+    db.interview.count({ where: { userId, status: "upcoming", round: { not: "assessment" }, scheduledAt: { gte: now, lte: new Date(now.getTime() + 48 * 3600000) } } }),
+    db.interview.count({ where: { userId, status: "upcoming", round: "assessment", OR: [{ scheduledAt: null }, { scheduledAt: { gte: now } }] } }),
+    campaign && campaign.status === "active" ? nextCycleQueue(campaign, autonomy) : null,
+  ]);
+  let applyDecisions = 0;
+  if (queue) {
+    const ids = Object.entries(queue.notQueued).filter(([, r]) => APPLY_DECISION_REASONS.has(r)).map(([id]) => id);
+    applyDecisions = ids.length ? await db.opportunity.count({ where: { id: { in: ids }, status: { in: ["prepared", "qualified"] } } }) : 0;
+  }
+  return { questions, handoffs, applyDecisions, offer, interviews48h, assessments, total: questions + handoffs + applyDecisions + offer + interviews48h + assessments };
+}
+
+/** What waits on the user right now: the running campaign's queue plus offers and near rounds. */
+export async function needsYou(userId: string, now = new Date()): Promise<NeedsYou> {
+  const [user, campaign] = await Promise.all([db.user.findUnique({ where: { id: userId }, select: { autonomy: true } }), runningCampaign(userId)]);
+  return needsYouFor(campaign, userId, readAutonomy(user?.autonomy), now);
+}
+
+/**
+ * The agent-cycle wording of what waits on the user: «15 вакансий ждут твоего решения в Opportunities · 2 вопроса ждут
+ * твоего ответа в Подтверждениях». Empty when nothing waits (then nothing is claimed). Only the queue parts
+ * (questions, handoffs, Apply decisions) — offers and rounds have their own pushes.
+ */
+export function needsYouLine(n: Pick<NeedsYou, "questions" | "handoffs" | "applyDecisions">) {
+  return [
+    n.applyDecisions ? `${count(n.applyDecisions, ["вакансия ждёт", "вакансии ждут", "вакансий ждут"])} твоего решения в Opportunities` : "",
+    n.questions ? `${count(n.questions, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа в Подтверждениях` : "",
+    n.handoffs ? `${count(n.handoffs, ["заявка ждёт", "заявки ждут", "заявок ждут"])} отправки через официальную форму` : "",
+  ].filter(Boolean).join(" · ");
 }
 
 // ——— Push moments (Notification rows created by the engine's `notify`) ———

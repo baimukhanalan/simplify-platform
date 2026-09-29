@@ -1,6 +1,6 @@
 // Pure: turns the engine's readiness checks into the six parameters, blockers and the agent's plan.
 import type { Readiness, ReadinessCheck } from "@/lib/engine/readiness";
-import { REGIONS, SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
+import { REGIONS, ROLE_FAMILIES, SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
 import { marketDemandScore } from "@/lib/engine/market";
 import { REGION_RU, plural } from "../../../_components/ru";
 
@@ -15,6 +15,8 @@ export type ReadinessData = {
   hasLinkedin: boolean;
   needsSponsorship: boolean;
   withMetrics: number;
+  /** The user's own skills (Career Profile) — evidence for «навыки уже подходят» on adjacent roles. */
+  skills: string[];
   stories: number;
   mocks: number;
   jobsForRole: number;
@@ -86,7 +88,12 @@ export function readinessView(d: ReadinessData) {
   if (interview < 75) actions.push("Подготовит истории для интервью из твоего реального опыта.");
   if (cv < 90) actions.push("Усилит CV под каждую вакансию: краткое описание, порядок навыков, ключевые слова.");
   const adjacent = r.suggestedRoles.filter((x) => x !== d.goal.primaryRole && !d.goal.extraRoles.includes(x)).slice(0, 2);
-  if ((skills < 75 || fewJobs) && adjacent.length) actions.push(`Добавит смежные роли, где твои навыки уже подходят: ${adjacent.join(", ")}.`);
+  if ((skills < 75 || fewJobs) && adjacent.length) {
+    const proven = adjacent.filter((role) => adjacentSkills(role, d.skills).length >= MIN_ADJACENT_SKILLS);
+    actions.push(proven.length === adjacent.length
+      ? `Добавит смежные роли, где твои навыки уже подходят: ${adjacent.join(", ")}.`
+      : `Предложит смежные роли: ${adjacent.join(", ")}.`);
+  }
   actions.push("Каждый день будет искать вакансии и подавать заявки только туда, где ты проходишь по требованиям.");
 
   return { score: r.score, params, blockers: blockers.slice(0, 5), actions: actions.slice(0, 5) };
@@ -97,3 +104,14 @@ export function fmtYears(y: number) {
   return `${n.toLocaleString("ru-RU")} ${Number.isInteger(n) ? plural(n, ["год", "года", "лет"]) : "года"}`;
 }
 
+
+/** Adjacent roles claim «навыки уже подходят» only with at least this many of the role's core skills in the profile. */
+export const MIN_ADJACENT_SKILLS = 2;
+
+/** The role family's core skills the user already has (by the family label, e.g. "Product Analyst"). */
+export function adjacentSkills(roleLabel: string, skills: string[]): string[] {
+  const family = Object.values(ROLE_FAMILIES).find((f) => f.label === roleLabel);
+  if (!family) return [];
+  const have = new Set(skills.map((x) => x.toLowerCase()));
+  return family.skills.filter((x) => have.has(x.toLowerCase()));
+}

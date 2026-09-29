@@ -2,10 +2,11 @@
 // Opportunities feed + detail: the user's three decisions (Apply / Auto / Skip) and the global auto-apply switch.
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
-import { db, s } from "../db";
+import { db, j, s } from "../db";
 import { APPLIED_OR_LATER } from "../engine/taxonomy";
 import { readAutonomy } from "../engine/autonomy";
-import { QUEUE_MATCH, duplicateOf, logEvent, prepare, submit } from "../engine/agent";
+import { QUEUE_MATCH, currentEligibility, duplicateOf, logEvent, prepare, settleSharedAnswers, submit } from "../engine/agent";
+import { blockerKind, isOverridable } from "../engine/matching";
 import { count } from "../ru";
 
 export type DecisionState = {
@@ -42,7 +43,7 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
   if (!DECISIONS.has(decision)) return { error: "Неизвестное действие." };
   const opp = await db.opportunity.findFirst({
     where: { id, campaign: { userId: user.id } },
-    include: { job: { select: { company: true, title: true, location: true, source: true, url: true } }, campaign: { select: { status: true, autoSubmit: true } } },
+    include: { job: true, campaign: { select: { status: true, autoSubmit: true, userId: true, allocation: true, plan: true } } },
   });
   if (!opp) return { error: "Вакансия не найдена." };
   const applied = APPLIED_OR_LATER.includes(opp.status);
@@ -54,6 +55,7 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
     await db.approval.updateMany({ where: { opportunityId: id, status: "pending" }, data: { status: "rejected", resolvedAt: new Date() } });
     // Same shape as a manual status move, so rerank() treats it as the user's skip and never undoes it.
     await logEvent(user.id, "status_change", `Пропущено: ${who}`, id, { from: opp.status, to: "skipped", by: "user", decision: "skip" });
+    await settleSharedAnswers(user.id); // a package that waited for this role's standing question now asks it itself
     refresh(id);
     return { ok: true, message: "Пропущено. Агент больше не вернётся к этой вакансии." };
   }
@@ -67,7 +69,15 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
   }
 
   if (applied) return { ok: true, message: "Заявка уже отправлена.", href: `/app/applications/${id}`, hrefLabel: "Открыть заявку" };
-  if (opp.eligibility === "blocked") return { error: "У вакансии hard blocker — агент не подаёт на неё, чтобы не тратить заявку." };
+  if (opp.eligibility === "blocked") {
+    // Only level lines are the user's to override («Уровень ниже цели»; any level line at a dream company).
+    const goal = await db.goal.findUnique({ where: { userId: user.id }, select: { dreamCompanies: true } });
+    const dream = j<string[]>(goal?.dreamCompanies ?? "[]", []).some((d) => d && opp.job.company.toLowerCase().includes(d.toLowerCase()));
+    if (!isOverridable(opp.blockers, { dream })) {
+      const filterOnly = j<string[]>(opp.blockers, []).every((b) => blockerKind(b) === "filter");
+      return { error: filterOnly ? "Вакансия вне твоих настроек поиска — агент не может подать. Измени настройки, если хочешь её рассмотреть." : "Эта вакансия не проходит по требованиям — агент не может подать." };
+    }
+  }
   // One application per role in a campaign: the same company + title from another location is already prepared or sent.
   const dup = await duplicateOf(opp);
   if (dup) return { error: `На эту роль в ${opp.job.company} уже есть заявка${dup.job.location ? ` (${dup.job.location})` : ""} — второй раз агент не подаёт.`, href: `/app/opportunities/${dup.id}`, hrefLabel: "Открыть" };
@@ -76,6 +86,8 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
 
   if (decision === "auto") {
     await db.opportunity.update({ where: { id }, data: { decision: "auto", status: revived } });
+    // The user's pick turns overridable level lines into notes: store the re-scored eligibility.
+    await currentEligibility({ ...opp, decision: "auto" });
     await logEvent(user.id, "decision", `Auto: агент подаст сам — ${who}`, id, { decision: "auto" });
     // Campaign.autoSubmit is the auto-submit consent: without it the agent never sends anything on its own.
     if (!opp.campaign.autoSubmit) {
@@ -101,6 +113,7 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
 
   // decision === "apply": the user explicitly confirmed this role.
   await db.opportunity.update({ where: { id }, data: { decision: "apply", status: revived } });
+  await currentEligibility({ ...opp, decision: "apply" });
   await logEvent(user.id, "decision", `Apply: заявка подтверждена тобой — ${who}`, id, { decision: "apply" });
   try {
     const hasPkg = await db.applicationPackage.findUnique({ where: { opportunityId: id }, select: { id: true } });
@@ -151,7 +164,7 @@ export async function setAutoApply(enabled: boolean): Promise<{ ok: boolean; ena
   // Server actions are callable with any payload: only a real boolean changes anything.
   if (typeof enabled !== "boolean") return { ok: false, enabled: current.submitApplications, min };
   await db.user.update({ where: { id: user.id }, data: { autonomy: s({ ...raw, submitApplications: enabled, autoApplyMinMatch: min }) } });
-  await logEvent(user.id, "autonomy", enabled ? `Auto-apply включён: Match ≥ ${min}%` : "Auto-apply выключен: агент подаёт только на вакансии, отмеченные тобой");
+  await logEvent(user.id, "autonomy", enabled ? `Автоподача включена: Match ≥ ${min}%` : "Автоподача выключена: агент подаёт только на вакансии, отмеченные тобой");
   revalidatePath("/app", "layout");
   return { ok: true, enabled, min };
 }

@@ -26,6 +26,7 @@ export async function loadReadiness(userId: string): Promise<ReadinessData | nul
     englishLevel: p.englishLevel, hasLinkedin: Boolean(p.linkedin), needsSponsorship: p.needsSponsorship,
     withMetrics: input.facts.filter((f) => (f.kind === "employment" || f.kind === "project") && f.metrics).length,
     stories: readiness.interview.stories, mocks: readiness.interview.mocks, jobsForRole,
+    skills: p.skills,
     missingSkills: (ROLE_FAMILIES[family]?.skills ?? []).filter((x) => !have.has(x.toLowerCase())).slice(0, 3),
   };
 }

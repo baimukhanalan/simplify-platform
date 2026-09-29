@@ -7,6 +7,7 @@ import { REGIONS } from "@/lib/engine/taxonomy";
 import { LANE, pctLabel } from "@/lib/ops";
 import { ButtonLink, Card, Chip, Empty, Label, PageHeader, Script, Stat, cx } from "@/components/ui";
 import { WORK_MODE_RU, count, plural } from "../../_components/ru";
+import { fmtNum } from "@/lib/ru";
 
 export const metadata = { title: "Стратегия" };
 
@@ -15,8 +16,17 @@ const VERDICT: Record<SegmentStat["verdict"], { label: string; tone: "green" | "
   keep: { label: "Оставить", tone: "teal" },
   reduce: { label: "Сократить", tone: "amber" },
   stop: { label: "Стоп", tone: "rose" },
-  learning: { label: "Собираем данные", tone: "neutral" },
+  learning: { label: "Мало данных", tone: "neutral" },
 };
+/**
+ * A verdict chip only when the segment has enough evidence to act on: at least MIN_EVIDENCE applications and a
+ * reply from an employer. «Стоп» (15+ applications, no interview) is evidence by itself. Otherwise «Мало данных».
+ */
+const MIN_EVIDENCE = 10;
+const shownVerdict = (r: SegmentStat): SegmentStat["verdict"] =>
+  r.verdict === "stop" || (r.applied >= MIN_EVIDENCE && r.responses > 0) ? r.verdict : "learning";
+/** «×1,14» — Russian decimal comma. */
+const weightLabel = (w: number) => `×${fmtNum(w, 2)}`;
 
 const LANE_LABEL: Record<string, string> = Object.fromEntries(Object.entries(LANE).map(([k, v]) => [k, v.label]));
 
@@ -111,7 +121,7 @@ export default async function InsightsPage() {
       <Card className="flex min-w-0 flex-col gap-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div><Label>По ролям</Label><h2 className="h-serif mt-2 text-[22px]">Какие роли дают интервью</h2></div>
-          <p className="max-w-md text-[12.5px] text-ink-3">Конверсия — доля заявок, дошедших до интервью. Вес — байесовски сглаженный множитель для новых заявок (1.0 = средний).</p>
+          <p className="max-w-md text-[12.5px] text-ink-3">Конверсия — доля заявок, дошедших до интервью. Вес — байесовски сглаженный множитель для новых заявок (1,0 = средний).</p>
         </div>
         <StatsTable rows={bySegment} weight={(k) => allocation[k]} verdict />
       </Card>
@@ -122,7 +132,7 @@ export default async function InsightsPage() {
           <span className="text-[12.5px] text-ink-3">Умножают вероятность интервью для каждой новой вакансии сегмента</span>
         </div>
         {alloc.length === 0 ? (
-          <p className="text-[13.5px] text-ink-3">Веса ещё не выучены — все сегменты с весом 1.0.</p>
+          <p className="text-[13.5px] text-ink-3">Веса ещё не выучены — все сегменты с весом 1,0.</p>
         ) : (
           <ul className="flex flex-col gap-2.5">
             {alloc.map(([k, w]) => (
@@ -130,19 +140,19 @@ export default async function InsightsPage() {
                 <span className="truncate text-[13.5px] text-head">{segmentLabel(k)}</span>
                 <div className="relative h-3 rounded-full bg-head/[.06]" aria-hidden>
                   <div className={cx("h-full rounded-full", w >= 1.3 ? "bg-green" : w <= 0.7 ? "bg-amber" : "bg-teal")} style={{ width: `${(w / maxW) * 100}%` }} />
-                  <span className="absolute inset-y-[-3px] w-px bg-head/40" style={{ left: `${(1 / maxW) * 100}%` }} title="1.0 — средний вес" />
+                  <span className="absolute inset-y-[-3px] w-px bg-head/40" style={{ left: `${(1 / maxW) * 100}%` }} title="1,0 — средний вес" />
                 </div>
-                <span className="num text-right text-[14px] text-head">×{w.toFixed(2)}</span>
+                <span className="num text-right text-[14px] text-head">{weightLabel(w)}</span>
               </li>
             ))}
           </ul>
         )}
-        <p className="text-[12px] text-ink-3">Вертикальная черта — вес 1.0 (средний сегмент).</p>
+        <p className="text-[12px] text-ink-3">Вертикальная черта — вес 1,0 (средний сегмент).</p>
       </Card>
 
       <div className="grid gap-5 lg:grid-cols-[repeat(2,minmax(0,1fr))]">
         <Breakdown title="География" sub="Удалённая работа против конкретных стран" rows={byGeo} />
-        <Breakdown title="Направление" sub="Для массового найма тестовое задание — отдельный исход, не интервью" rows={byLane} />
+        <Breakdown title="Тип заявки" sub="Обычные, компании мечты и массовый найм. Для массового найма тестовое задание — отдельный исход, не интервью" rows={byLane} />
         <Breakdown title="Версия CV" sub="Какой вариант позиционирования конвертирует" rows={byCv} />
         <Breakdown title="Свежесть подачи" sub="Сколько прошло от публикации до заявки" rows={byFresh} />
         <Breakdown title="Диапазон Match" sub="Проверка: действительно ли высокий Match даёт интервью" rows={byBand} />
@@ -184,8 +194,8 @@ function StatsTable({ rows, weight, verdict }: { rows: SegmentStat[]; weight?: (
                 <td className="num py-2.5 text-right text-green">{r.interviews}</td>
                 <td className="num py-2.5 text-right">{r.offers}</td>
                 <td className="py-2.5 text-right"><span className="inline-flex justify-end"><RateBar rate={r.rate} /></span></td>
-                <td className="num py-2.5 text-right">×{w.toFixed(2)}</td>
-                {verdict && <td className="py-2.5 text-right"><Chip tone={VERDICT[r.verdict].tone}>{VERDICT[r.verdict].label}</Chip></td>}
+                <td className="num py-2.5 text-right">{weightLabel(w)}</td>
+                {verdict && <td className="py-2.5 text-right"><Chip tone={VERDICT[shownVerdict(r)].tone}>{VERDICT[shownVerdict(r)].label}</Chip></td>}
               </tr>
             );
           })}
@@ -206,7 +216,7 @@ function Breakdown({ title, sub, rows }: { title: string; sub: string; rows: Seg
           <table className="w-full min-w-[380px] border-collapse text-[13px]">
             <thead>
               <tr>
-                {["Группа", "Подано", "Тесты", "Интервью", "Конверсия"].map((h, i) => (
+                {[title, "Подано", "Тесты", "Интервью", "Конверсия"].map((h, i) => (
                   <th key={h} scope="col" className={cx("label border-b border-line pb-2 !text-[11px] font-normal", i === 0 ? "text-left" : "text-right")}>{h}</th>
                 ))}
               </tr>

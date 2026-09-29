@@ -9,3 +9,13 @@ export const toUSD = (amount: number, currency: string | null | undefined) => (a
 
 /** Whole units of `currency` for a USD amount (the inverse of toUSD; unknown currencies pass through unchanged). */
 export const fromUSD = (usd: number, currency: string | null | undefined) => (usd ? Math.round(usd / fxToUsd(currency)) : 0);
+
+/**
+ * A USD model amount (e.g. the market median) as a goal amount in the goal's own currency, rounded to a clean figure
+ * (₸ to 10 000, others to 1 000). Goal.minSalary is stored in Goal.currency — never write a USD number next to "KZT".
+ */
+export function usdToGoalAmount(usd: number, currency: string | null | undefined) {
+  const v = fromUSD(usd, currency);
+  const step = (currency ?? "USD").toUpperCase() === "KZT" ? 10000 : 1000;
+  return v ? Math.max(step, Math.round(v / step) * step) : 0;
+}

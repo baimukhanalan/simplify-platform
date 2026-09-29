@@ -11,7 +11,7 @@ export type Need = { text: string; href?: string };
  * Empty `needs` → the calm default in the owner's words; `idle` (campaign paused or not running) drops
  * "Simplify is working." so the line never claims work that isn't happening. `working` adds screen context.
  * When this screen needs nothing but another one does (offer, questions, handoffs, an interview within 48 h), the line
- * says so instead: «Здесь ничего не нужно · ждут тебя: оффер, 1 вопрос →». `skip` drops kinds this screen already covers.
+ * says so instead: «Здесь ничего не нужно · ждут тебя: оффер, 1 вопрос.». `skip` drops kinds this screen already covers.
  * `here` is optional work waiting on this very screen that the user may act on but doesn't have to (e.g. «3 вакансии
  * ждут твоего решения — ниже»): with it the line never claims «Здесь ничего не нужно» or "Nothing needed".
  * `hereNeeds`: this screen itself asks for a decision (a job with Apply / Auto / Skip, consent switches). The line then
@@ -87,14 +87,15 @@ export async function AgentStatus({ needs, working, idle = false, skip = [], her
   );
 }
 
-/** «оффер, 1 вопрос →» — links to what waits on other screens. */
+/** «оффер, 1 вопрос.» — links to what waits on other screens; the list ends the sentence with a full stop. */
 function ElsewhereLinks({ items }: { items: { kind: string; text: string; href: string }[] }) {
   return items.map((n, i) => (
     <span key={n.kind}>
       {i > 0 && <span className="text-ink-3">, </span>}
-      <Link href={n.href} className="group inline-flex min-h-10 items-center gap-1 rounded text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">
-        {n.text}{i === items.length - 1 && <ArrowRight className="size-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" aria-hidden />}
+      <Link href={n.href} className="inline-flex min-h-10 items-center rounded text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">
+        {n.text}
       </Link>
+      {i === items.length - 1 && <span className="text-ink-3">.</span>}
     </span>
   ));
 }

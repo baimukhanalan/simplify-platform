@@ -19,6 +19,13 @@ type Props = {
   /** Pending sensitive questions for this role. */
   pending?: number;
   size?: "sm" | "md";
+  /**
+   * A blocked role the user may still send (isOverridable: level below the goal, or a level line at a dream company):
+   * the reason shown above the buttons. Apply / Auto stay enabled; the server re-checks the same rule.
+   */
+  override?: string | null;
+  /** A decision only the user makes (dream company, level off-goal): Apply / Skip, no Auto. */
+  userDecision?: boolean;
 };
 
 const pill =
@@ -32,7 +39,9 @@ const ru = (s: string) => s.replace(/У вакансии hard blocker/i, "Ты �
  * Auto and Skip are one click because both are reversible. The result goes to the page toast (<Announcer/>, a polite
  * live region) — the card itself may leave the list after the refresh, the toast stays.
  */
-export function DecisionBar({ id, company, decision, status, blocked, blockedBy = "requirement", pending = 0, size = "sm" }: Props) {
+export function DecisionBar({ id, company, decision, status, blocked, blockedBy = "requirement", pending = 0, size = "sm", override = null, userDecision = false }: Props) {
+  // Blocked but overridable: the engine set it aside, the user may still pick it.
+  const canAct = !blocked || Boolean(override);
   const [confirming, setConfirming] = useState(false);
   const [intent, setIntent] = useState<string>("");
   const applyRef = useRef<HTMLButtonElement>(null);
@@ -69,7 +78,7 @@ export function DecisionBar({ id, company, decision, status, blocked, blockedBy 
     setIntent(((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value ?? "");
   };
 
-  if (status === "skipped" || decision === "skip") {
+  if (decision === "skip" || (status === "skipped" && !(blocked && override))) {
     return (
       <form action={action} onSubmit={onSubmit} className="flex flex-col gap-2">
         <input type="hidden" name="id" value={id} />
@@ -88,30 +97,31 @@ export function DecisionBar({ id, company, decision, status, blocked, blockedBy 
   return (
     <form action={action} className="flex flex-col gap-2" onSubmit={onSubmit}>
       <input type="hidden" name="id" value={id} />
+      {blocked && override && <p className="text-[12.5px] leading-snug text-amber">{override}</p>}
       <div className="flex flex-wrap items-center gap-2">
         <button
           ref={applyRef}
           type="button"
           onClick={() => (confirming ? cancel() : setConfirming(true))}
-          disabled={busy || blocked}
+          disabled={busy || !canAct}
           aria-expanded={confirming}
           aria-controls={panelId}
-          title={blocked ? blockedNote(blockedBy) : undefined}
+          title={!canAct ? blockedNote(blockedBy) : undefined}
           className={cx(pill, h, decision === "apply" ? "bg-cta text-white ring-2 ring-green/40" : "bg-cta text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c]")}
         >
           <Send className="size-3.5" aria-hidden />Apply
         </button>
-        <button
+        {!userDecision && <button
           name="decision"
           value={decision === "auto" ? "reset" : "auto"}
-          disabled={busy || blocked}
+          disabled={busy || !canAct}
           aria-pressed={decision === "auto"}
           className={cx(pill, h, decision === "auto" ? "bg-green-soft text-green ring-1 ring-green/25 hover:bg-green/15" : "glass !rounded-full text-head hover:bg-white")}
           title={decision === "auto" ? "Агент подаст сам. Нажми, чтобы снять." : "Агент сам решит, когда и как подать"}
         >
           {busy && (intent === "auto" || intent === "reset") ? <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : <Bot className="size-3.5" aria-hidden />}
           {decision === "auto" ? "Auto включён" : "Auto"}
-        </button>
+        </button>}
         <button name="decision" value="skip" disabled={busy} aria-busy={(busy && intent === "skip") || undefined} className={cx(pill, h, "text-ink-3 hover:bg-white/60 hover:text-rose")}>
           {busy && intent === "skip" ? "Пропускаем…" : "Skip"}
         </button>

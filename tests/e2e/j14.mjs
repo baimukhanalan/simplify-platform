@@ -117,7 +117,8 @@ async function qualifiedNumbers(c) {
   const today = visible((await c.get("/app")).text);
   const o = opp.match(/(Сегодня|За неделю|За кампанию) агент нашёл (\d+) \S+\. (\d+) подошл/);
   const key = today.match(/Подошли (\d+)/);
-  const strip = today.match(/Сегодня (\+?\d+) найдено (\+?\d+) подошли/);
+  // The strip agrees each word with its number («+61 найдена», «+1 подошла», «+26 подошли»; src/app/app/_components/today.tsx).
+  const strip = today.match(/Сегодня (\+?\d+) найден[аоы] (\+?\d+) подошл[аи]/);
   return { oppWindow: o?.[1], oppFound: o ? +o[2] : null, oppQualified: o ? +o[3] : null, todayTotal: key ? +key[1] : null, todayStrip: strip ? +strip[2].replace("+", "") : null };
 }
 const qualifiedWhere = (campaignId, since) => ({ campaignId, ...(since ? { createdAt: { gte: since } } : {}), status: { not: "skipped" }, eligibility: { not: "blocked" }, match: { gte: 70 } });

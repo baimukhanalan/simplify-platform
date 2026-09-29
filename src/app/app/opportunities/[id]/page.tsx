@@ -6,18 +6,19 @@ import { currentUserId, requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { prepareOpportunity } from "@/lib/actions/campaign";
 import { confirmUserSubmitted } from "@/lib/actions/ops";
-import { APPLIED_OR_LATER, ROLE_FAMILIES, SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { APPLIED_OR_LATER, SENIORITY_LABEL } from "@/lib/engine/taxonomy";
 import { SOURCE_LABEL, salaryLabel } from "@/lib/ops";
-import { blockerRu, fitVerdict } from "@/lib/engine/matching";
+import { DREAM_DECISION, blockerRu, fitVerdict } from "@/lib/engine/matching";
 import { Card, Chip, Label, PageHeader, Ring, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../../_components/agent-status";
-import { plural, shortDate } from "../../../_components/ru";
+import { industryRu, plural, shortDate } from "../../../_components/ru";
+import { fmtNum } from "@/lib/ru";
 import { SubmitButton } from "@/components/client";
 import { LaneChip, StatusChip } from "../_components/bits";
 import { DecisionBar } from "../_components/decision";
 import { Announcer } from "../_components/announcer";
 import { fitCandidate } from "../_lib/candidate";
-import { blockedNote, cleanRequirement, cvVersionLabel, eligibilityVerdict, interviewChance, risks, whyFits, type Reason } from "../_lib/fit";
+import { blockedNote, cleanRequirement, cvVersionLabel, eligibilityVerdict, interviewChance, isDreamCompany, overrideNote, risks, whyFits, type Reason } from "../_lib/fit";
 import { experiencePair } from "./_lib/compare";
 import { agoRu, placeRu } from "../_lib/when";
 
@@ -61,6 +62,9 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
   const blocked = fit.blocked;
   const verdict = eligibilityVerdict(opp.eligibility, fit.kind);
   const isDemo = job.source === "demo";
+  // Blocked only by level lines (isOverridable): the user may still send it. Dream-company level mismatch: the user's call.
+  const override = overrideNote(opp.eligibility, opp.blockers, isDreamCompany(job.company, j<string[]>(user.goal?.dreamCompanies ?? "[]", [])));
+  const userDecision = j<string[]>(opp.softGaps, []).includes(DREAM_DECISION) && opp.decision !== "apply" && opp.decision !== "auto";
   const pending = opp.approvals.filter((a) => a.kind !== "handoff").length;
   const handoff = !isDemo && !applied && Boolean(pkg) && pending === 0 && opp.status === "prepared";
 
@@ -78,7 +82,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
         <ArrowLeft className="size-3.5" aria-hidden />Opportunities
       </Link>
       <PageHeader
-        eyebrow={`${job.company} · ${ROLE_FAMILIES[job.roleFamily]?.label ?? job.roleFamily}`}
+        eyebrow={job.company}
         title={job.title}
         sub={
           <span className="flex flex-wrap items-center gap-2">
@@ -100,7 +104,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
         </p>
       )}
 
-      <AgentStatus needs={needs} hereNeeds={!applied} working={applied ? "Заявка отправлена — агент следит за ответом работодателя." : undefined} className="-mt-3" />
+      <AgentStatus needs={needs} hereNeeds={!applied} skip={["offer", "decisions"]} working={applied ? "Заявка отправлена — агент следит за ответом работодателя." : undefined} className="-mt-3" />
 
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* Decision first in the DOM so it is near the top on mobile; on desktop it is the sticky right column. */}
@@ -130,15 +134,22 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
                     <SubmitButton size="sm" variant="glass" pendingText="Отмечаем…" className="!h-10">Отправлено</SubmitButton>
                   </form>
                 </div>
-                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} blockedBy={fit.kind ?? undefined} />
+                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} blockedBy={fit.kind ?? undefined} override={override} userDecision={userDecision} />
               </div>
             ) : (
               <>
-                <p className="text-[13.5px] leading-snug text-ink-3">
-                  <b className="font-medium text-head">Apply</b> — подать сейчас. <b className="font-medium text-head">Auto</b> — агент подаст сам.{" "}
-                  <b className="font-medium text-head">Skip</b> — больше не показывать.
-                </p>
-                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} blockedBy={fit.kind ?? undefined} pending={pending} size="md" />
+                {userDecision ? (
+                  <p className="text-[13.5px] leading-snug text-ink-3">
+                    Компания мечты, но уровень не совпадает с целью — агент сам не подаёт. <b className="font-medium text-head">Apply</b> — подать сейчас.{" "}
+                    <b className="font-medium text-head">Skip</b> — больше не показывать.
+                  </p>
+                ) : (
+                  <p className="text-[13.5px] leading-snug text-ink-3">
+                    <b className="font-medium text-head">Apply</b> — подать сейчас. <b className="font-medium text-head">Auto</b> — агент подаст сам.{" "}
+                    <b className="font-medium text-head">Skip</b> — больше не показывать.
+                  </p>
+                )}
+                <DecisionBar id={opp.id} company={job.company} decision={opp.decision} status={opp.status} blocked={blocked} blockedBy={fit.kind ?? undefined} pending={pending} size="md" override={override} userDecision={userDecision} />
               </>
             )}
           </Card>
@@ -275,9 +286,9 @@ function JobFacts({ job, isDemo }: { job: { seniority: string; minYears: number;
     <div className="flex flex-col gap-4">
       <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13px]">
         <Fact k="Уровень" v={SENIORITY_LABEL[job.seniority] ?? job.seniority} />
-        <Fact k="Опыт" v={job.minYears ? `от ${job.minYears} ${job.minYears % 1 === 0 ? plural(job.minYears, ["года", "лет", "лет"]) : "года"}` : "не указан"} />
+        <Fact k="Опыт" v={job.minYears ? `от ${fmtNum(job.minYears)} ${job.minYears % 1 === 0 ? plural(job.minYears, ["года", "лет", "лет"]) : "года"}` : "не указан"} />
         <Fact k="Спонсорство" v={job.sponsorship === "yes" ? "есть" : job.sponsorship === "no" ? "нет" : "не указано"} />
-        <Fact k="Отрасль" v={job.industry || "—"} />
+        <Fact k="Отрасль" v={job.industry ? industryRu(job.industry) : "—"} />
         <Fact k="Источник" v={job.source === "demo" ? "Демо" : SOURCE_LABEL[job.source] ?? job.source} />
         <Fact k="Опубликована" v={shortDate(job.postedAt)} />
       </dl>

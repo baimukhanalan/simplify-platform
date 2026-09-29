@@ -128,7 +128,9 @@ async function apiChecks(demoCookie) {
   }
 
   // CV parse. Each block uses its own X-Forwarded-For so the per-IP limiter doesn't interfere.
+  let uploads = 0; // every call reaches the per-IP limiter
   const up = async (ip, blob, name, type) => {
+    uploads++;
     const fd = new FormData();
     if (blob) fd.append("file", new File([blob], name, { type }));
     const t0 = performance.now();
@@ -159,10 +161,13 @@ async function apiChecks(demoCookie) {
   const rawBody = await fetch(BASE + "/api/cv/parse", { method: "POST", body: "not multipart", headers: { "content-type": "text/plain", "x-forwarded-for": ipA } });
   check("cv/parse non-multipart → 400", rawBody.status === 400, `${rawBody.status}`);
 
-  // Rate limit: 20/hour per IP → 21st is 429.
+  // Rate limit: 20/hour per IP → 21st is 429. Since round 8 X-Forwarded-For is honoured only on Vercel / TRUST_PROXY=1, so
+  // against a plain local server every block above shares one "local" bucket: then the limit hits after 20 − (earlier uploads).
+  const prior = uploads + 1; // + the non-multipart request
   const codes = [];
   for (let i = 0; i < 21; i++) codes.push((await up(ipB, cvTxt, "cv.txt", "text/plain")).status);
-  check("cv/parse requests 1–20 not rate-limited", codes.slice(0, 20).every((c) => c !== 429), codes.slice(0, 20).join(","));
+  const firstLimited = codes.indexOf(429);
+  check("cv/parse: 20 uploads per IP per hour, then 429", firstLimited === 20 || firstLimited === 20 - prior, `first 429 at #${firstLimited + 1} of this block (${prior} earlier uploads) — ${codes.join(",")}`);
   check("cv/parse 21st request → 429", codes[20] === 429, `${codes[20]}`);
   const spoof = await up(ipC, cvTxt, "cv.txt", "text/plain");
   check("cv/parse limiter cannot be bypassed by rotating X-Forwarded-For", spoof.status === 429, `new XFF after limit → ${spoof.status}`);

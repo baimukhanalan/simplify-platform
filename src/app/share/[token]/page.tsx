@@ -37,7 +37,7 @@ export default async function SharePage({ params }: Props) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col px-4 py-6 sm:px-8 sm:py-10">
       <header className="flex items-center justify-between gap-4">
-        <Link href="/" className="inline-flex min-h-10 items-center rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
+        <Link href="/" className="inline-flex min-h-10 shrink-0 items-center rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
         <span className="label">История поиска</span>
       </header>
 

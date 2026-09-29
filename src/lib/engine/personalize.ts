@@ -58,8 +58,12 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
   const current = work.find((f) => isCurrent(f));
   const topMetric = current?.metrics || undefined;
   const topClause = topMetric ? achievementClause(topMetric) : null;
-  const recent = topMetric ? (topClause ? ` Recently ${topClause}.` : ` Recent result: ${lcFirstWord(tidyAchievement(topMetric))}.`) : "";
-  const summary = `${roleLabel}-focused professional with ${yrs} of experience ${framing}. Core tools: ${(matched.length ? matched : skillsOrder).slice(0, 5).join(", ")}.${recent}`;
+  const tools = (matched.length ? matched : skillsOrder).slice(0, 5).join(", ");
+  // One language per summary: a Russian CV gets a Russian summary; an English summary never splices in a Russian bullet.
+  const russianCv = isRussianCv(work);
+  const summary = russianCv
+    ? `${roleLabel}: ${yearsRu(p.yearsExperience)}${tools ? `. Ключевые инструменты: ${tools}` : ""}.${topMetric && CYRILLIC.test(topMetric) ? ` Недавний результат: ${lcFirstWord(tidyAchievement(topMetric))}.` : ""}`
+    : `${roleLabel}-focused professional with ${yrs} of experience ${framing}. Core tools: ${tools}.${topMetric && !CYRILLIC.test(topMetric) ? (topClause ? ` Recently ${topClause}.` : ` Recent result: ${lcFirstWord(tidyAchievement(topMetric))}.`) : ""}`;
 
   /** Whole achievements (one per CV line), original order; if a role lists more than MAX_BULLETS, keep the most job-relevant ones. */
   const bullets = (f: FactLite) => {
@@ -105,7 +109,7 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
     ``,
     `I'm applying for the ${job.title} role. My background is in ${framing}, and the overlap with what you need is concrete: ${(matched.length ? matched : skillsOrder).slice(0, 4).join(", ")}.`,
     best ? relevantSentence(best) : "",
-    `${job.remote === "remote" ? "I work remotely and overlap comfortably with European business hours." : p.relocation ? "I'm open to relocation." : ""} I'd welcome the chance to discuss how I can contribute to ${job.industry ? `${possessive(job.company)} work in ${job.industry}` : job.company}.`.trim(),
+    `${job.remote === "remote" ? (overlapsEurope(p) ? "I work remotely and overlap comfortably with European business hours." : "") : p.relocation ? "I'm open to relocation." : ""} I'd welcome the chance to discuss how I can contribute to ${industryClause(job) ? `${possessive(job.company)} work in ${job.industry}` : job.company}.`.trim(),
     ``,
     `Best regards,`,
     p.name,
@@ -115,6 +119,39 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
 }
 
 const MAX_BULLETS = 6;
+
+const CYRILLIC = /[\u0400-\u04FF]/;
+
+/** Most achievement lines of the work history are in Russian. */
+function isRussianCv(work: FactLite[]) {
+  const lines = work.flatMap((f) => achievementLines(f.details));
+  if (!lines.length) return work.some((f) => CYRILLIC.test(f.title));
+  return lines.filter((l) => CYRILLIC.test(l)).length * 2 > lines.length;
+}
+
+const yearsRu = (y: number) => {
+  if (!(y >= 1)) return "опыт на проектах";
+  const n = Math.floor(y);
+  const m = n % 100, d = n % 10;
+  const w = m > 10 && m < 20 ? "лет" : d === 1 ? "год" : d > 1 && d < 5 ? "года" : "лет";
+  return `${n}+ ${w} опыта`;
+};
+
+/**
+ * The candidate's working hours overlap the European day: Europe, the CIS, Kazakhstan / Central Asia, the Caucasus, the
+ * Middle East and Africa. Read from location and citizenship; unknown = no claim.
+ */
+export function overlapsEurope(p: Pick<ProfileLite, "location" | "citizenship">) {
+  const where = `${p.location} ${p.citizenship}`;
+  return /\b(KZ|UZ|KG|TJ|TM|AZ|AM|GE|RU|BY|UA|MD|TR|AE|IL|PL|DE|FR|GB|UK|NL|ES|IT|PT|SE|NO|FI|DK|EE|LV|LT|CZ|SK|HU|RO|BG|RS|HR|AT|CH|BE|IE|GR|CY|EG|ZA|NG|KE|MA)\b/.test(where)
+    || /kazakh|almaty|astana|shymkent|karagand|uzbek|tashkent|kyrgyz|bishkek|tbilisi|georgia|armenia|yerevan|baku|azerbaijan|russia|moscow|belarus|minsk|ukrain|kyiv|europe|germany|berlin|poland|warsaw|london|united kingdom|netherlands|amsterdam|france|paris|spain|italy|portugal|lisbon|turkey|istanbul|dubai|uae|israel|cyprus|serbia|belgrade|prague|czech|казах|алмат|астан|узбек|ташкент|кыргыз|бишкек|тбилиси|грузи|армени|ереван|баку|росси|москв|беларус|минск|украин|европ|германи|польш|дубай/i.test(where);
+}
+
+/** "…work in Fintech" only when it says something: never "Vantage Media's work in Media". */
+const industryClause = (job: Pick<JobLite, "company" | "industry">) => {
+  const ind = job.industry.trim().toLowerCase();
+  return Boolean(ind) && !job.company.toLowerCase().split(/[^\p{L}\p{N}]+/u).includes(ind) && !job.company.toLowerCase().includes(ind);
+};
 
 const norm = (x: string) => x.toLowerCase().replace(/[^\p{L}\p{N}%]+/gu, " ").trim();
 const sameLine = (a: string, b: string) => norm(a) === norm(b);
@@ -292,7 +329,7 @@ export function screeningAnswers(p: ProfileLite, facts: FactLite[], job: JobLite
   out.push({ q: "What are your salary expectations?", a: p.salaryExpectation ? `$${Math.round(p.salaryExpectation / 1000)}k–$${Math.round((p.salaryExpectation * 1.15) / 1000)}k base, open to discussing the full package` : "Open to a market-rate offer; happy to discuss the full package", category: "rule", status: "filled", kind: "salary" });
   if (job.remote !== "remote") out.push({ q: "Are you willing to relocate?", a: p.relocation ? "Yes" : "No", category: "rule", status: "filled" });
   out.push({ q: "When can you start / what is your notice period?", a: p.noticePeriod || "2 weeks", category: "rule", status: "filled" });
-  out.push({ q: `Why do you want to work at ${job.company}?`, a: `The ${job.title} role maps directly onto my experience (${p.skills.slice(0, 3).join(", ")}), and ${job.company}'s ${job.industry || "product"} focus is where I want to grow.`, category: "auto", status: "filled" });
+  out.push({ q: `Why do you want to work at ${job.company}?`, a: `The ${job.title} role maps directly onto my experience (${p.skills.slice(0, 3).join(", ")}), and ${industryClause(job) ? `${possessive(job.company)} ${job.industry} focus` : `${possessive(job.company)} product`} is where I want to grow.`, category: "auto", status: "filled" });
   // Sensitive / legal — never answered by the agent alone.
   out.push({ q: "Voluntary self-identification (gender, veteran status, disability)", a: "", category: "approval", status: "pending", kind: "sensitive" });
   if (/\b(US|CA|GB)\b/.test(jobCountries.join(" "))) out.push({ q: "Do you consent to a background check if you receive an offer?", a: "", category: "approval", status: "pending", kind: "legal" });

@@ -7,6 +7,7 @@ import { adminRunTick } from "@/lib/actions/admin";
 import { APPLIED_OR_LATER, fmtKzt } from "@/lib/engine/taxonomy";
 import { reachedInterview } from "@/lib/engine/insights";
 import { countsAsRevenue } from "@/lib/payments/kaspi";
+import { fmtNum } from "@/lib/ru";
 import { IngestPanel } from "./_components/ingest-panel";
 
 export const metadata = { title: "Operations" };
@@ -146,7 +147,7 @@ export default async function AdminPage() {
           </div>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
             <Card><Stat label="Users с ≥1 интервью" value={usersWithIv} hint={`из ${usersInCampaigns} в кампаниях`} /></Card>
-            <Card><Stat label="Time to first interview" value={medianTtfi == null ? "—" : `${medianTtfi.toFixed(1)} д`} hint="медиана" /></Card>
+            <Card><Stat label="Time to first interview" value={medianTtfi == null ? "—" : `${fmtNum(medianTtfi)} д`} hint="медиана" /></Card>
             <Card><Stat label="Выручка" value={<span className="text-[24px]">{fmtKzt(revenue)}</span>} hint="оплачено" /></Card>
             <Card><Stat label="Gross campaigns" value={campaigns.length} hint={`${active.length} активных`} /></Card>
             <Card className="col-span-2 lg:col-span-1"><Stat label="Partner payouts" value={<span className="text-[24px]">{fmtKzt(payouts)}</span>} hint={`${pct(payouts, revenue)}% выручки`} /></Card>

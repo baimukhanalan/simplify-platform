@@ -5,6 +5,7 @@ import { j } from "@/lib/db";
 import { Card, Chip, Empty, Label } from "@/components/ui";
 import { CopyButton } from "../../_components/copy-button";
 import { cvVersionLabel } from "../../../opportunities/_lib/fit";
+import { SentAnswer } from "../../../../_components/sent-answer";
 
 type Answer = { q: string; a: string; category?: string; status?: string; kind?: string };
 
@@ -59,7 +60,7 @@ export function SentTab({ pkg, company, submittedAt, opportunityId, debug }: { p
                   <div key={i} className="flex flex-col gap-1 py-3 first:pt-0 last:pb-0">
                     <dt className="text-[13px] text-ink-3">{a.q}</dt>
                     <dd className="text-[14px] text-head">
-                      {a.a ? a.a : <span className="text-amber">{a.status === "pending" ? "Ожидало твоего подтверждения — не отправлено" : "Оставлено пустым"}</span>}
+                      {a.a ? <SentAnswer answer={a.a} /> : <span className="text-amber">{a.status === "pending" ? "Ожидало твоего подтверждения — не отправлено" : "Оставлено пустым"}</span>}
                     </dd>
                   </div>
                 ))}

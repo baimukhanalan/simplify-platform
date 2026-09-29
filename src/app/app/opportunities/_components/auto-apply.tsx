@@ -41,7 +41,9 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-start gap-3">
+        {/* 48×44 hit area around the 44×24 track; the text label below also toggles it (label → button). */}
         <button
+          id="auto-apply-switch"
           type="button"
           role="switch"
           aria-checked={on}
@@ -49,17 +51,16 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
           aria-describedby="auto-apply-hint"
           onClick={toggle}
           disabled={pending}
-          className={cx(
-            "relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green disabled:opacity-70",
-            on ? "border-transparent bg-green" : "border-line bg-head/10",
-          )}
+          className="group -my-2.5 -ml-0.5 inline-flex h-11 w-12 shrink-0 cursor-pointer items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-green disabled:cursor-wait disabled:opacity-70"
         >
-          <span className={cx("inline-block size-[18px] rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/.25)] transition-transform duration-200", on ? "translate-x-[22px]" : "translate-x-[3px]")} />
+          <span aria-hidden className={cx("relative inline-flex h-6 w-11 items-center rounded-full border transition-colors duration-200", on ? "border-transparent bg-green" : "border-line bg-head/10")}>
+            <span className={cx("inline-block size-[18px] rounded-full bg-white shadow-[0_1px_3px_rgb(0_0_0/.25)] transition-transform duration-200", on ? "translate-x-[22px]" : "translate-x-[3px]")} />
+          </span>
         </button>
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span id="auto-apply-label" className="text-[14px] font-medium leading-snug text-head">
+          <label id="auto-apply-label" htmlFor="auto-apply-switch" className="-my-2.5 cursor-pointer py-2.5 text-[14px] font-medium leading-snug text-head">
             Автоподача на все вакансии с Match от <span className="num">{min}%</span>
-          </span>
+          </label>
           <span className="text-[12.5px] text-ink-3" aria-live="polite">
             {!consent
               ? "Автоподача выключена в настройках — агент готовит пакеты, но сам ничего не отправляет. Подать можно кнопкой Apply."

@@ -110,7 +110,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
             value={threshold}
             onChange={(e) => setThreshold(Number(e.target.value))}
             aria-valuetext={`${threshold}%`}
-            className="w-full accent-[#1a6e48]"
+            className="h-10 w-full cursor-pointer accent-[#1a6e48]"
           />
           <div className="flex justify-between font-mono text-[11px] uppercase tracking-[.06em] text-ink-3"><span>50% · больше заявок</span><span>100% · только идеальные</span></div>
         </div>
@@ -136,7 +136,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
             <label
               key={o.value}
               className={cx(
-                "flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3.5 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green",
+                "flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3.5 transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green",
                 sensitive === o.value ? "border-green/30 bg-green-soft/60" : "border-line bg-white/60 hover:bg-white",
               )}
             >

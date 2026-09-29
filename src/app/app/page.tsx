@@ -1,16 +1,16 @@
 import Link from "next/link";
-import { ArrowRight, BadgeDollarSign, CalendarClock, ClipboardCheck, ShieldCheck, X } from "lucide-react";
+import { ArrowRight, BadgeDollarSign, CalendarClock, ClipboardCheck, ListChecks, ShieldCheck, X } from "lucide-react";
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { demoToolsEnabled } from "@/lib/demo";
-import { currentCampaign } from "@/lib/ops-data";
+import { currentCampaign, type NeedsYou } from "@/lib/ops-data";
+import { decisionsWaiting, needsYouCached } from "../_components/global-needs";
 import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Chip, Label, Script, cx } from "@/components/ui";
 import { RunAgentButton, SimulateButton } from "./_components/demo-tools";
 import { dayKey, greeting, hhmm, loadToday, type Today } from "./_components/today-data";
 import { KeyNumbers, NextActionCard, StageBar, StatusDot, Timeline, TodayStrip, type NextAction } from "./_components/today";
-import { STRONG_MATCH } from "@/lib/engine/matching";
 import { count, handoffsWaiting, plural, questionsWaiting } from "../_components/ru";
 
 export const metadata: Metadata = { title: "Today" };
@@ -25,48 +25,24 @@ function relDay(d: Date, now: number) {
 }
 
 /**
- * Today's finds in one consistent split (todayBreakdown, src/app/app/_components/today-data.ts):
- * found = qualified + weaker + blocked + setAside, qualified = queued + prepared + applied + waiting.
- * Submissions today are a separate number (they include roles found earlier) and are said separately.
+ * Today's finds as one sentence from the engine (todaySentence = discoverySentence, zero parts hidden), plus the
+ * submissions of the day — they include roles found earlier, so they are said separately.
  */
-function todayStory(d: Today, awaitsApply: boolean) {
-  const b = d.todayBreakdown;
+function todayStory(d: Today) {
   const t = d.today;
-  const parts: string[] = [];
-  if (b.found) {
-    parts.push(`Сегодня агент нашёл ${count(b.found, ["вакансию", "вакансии", "вакансий"])}.`);
-    if (b.qualified) {
-      const split = [
-        b.applied && `${b.applied} уже ${plural(b.applied, ["подана", "поданы", "подано"])}`,
-        b.prepared && (awaitsApply
-          ? `${b.prepared} ${plural(b.prepared, ["ждёт", "ждут", "ждут"])} твоего Apply`
-          : `${b.prepared} ${plural(b.prepared, ["готова", "готовы", "готовы"])} к отправке`),
-        b.queued && `${b.queued} в очереди на подготовку`,
-        b.waiting && `${b.waiting} ${plural(b.waiting, ["ждёт", "ждут", "ждут"])} твоего решения`,
-      ].filter(Boolean).join(", ");
-      parts.push(`${b.qualified} ${plural(b.qualified, ["подходит", "подходят", "подходят"])} (Match ≥ ${STRONG_MATCH}%)${split ? `: ${split}` : ""}.`);
-    }
-    const rest = [
-      b.weaker && `${b.weaker} слабее по Match`,
-      b.blocked && `${b.blocked} не ${plural(b.blocked, ["проходит", "проходят", "проходят"])} по требованиям`,
-      b.setAside && `${b.setAside} ${plural(b.setAside, ["отложена", "отложены", "отложено"])}`,
-    ].filter(Boolean).join(", ");
-    if (rest) parts.push(`Остальные: ${rest}.`);
-  } else if (t.submitted) {
-    parts.push("Новых вакансий сегодня пока нет.");
-  }
-  if (t.submitted) parts.push(`Всего за сегодня ${plural(t.submitted, ["отправлена", "отправлено", "отправлено"])} ${count(t.submitted, ["заявка", "заявки", "заявок"])}.`);
-  return parts.join(" ");
+  const sent = t.submitted ? ` Всего за сегодня ${plural(t.submitted, ["отправлена", "отправлено", "отправлено"])} ${count(t.submitted, ["заявка", "заявки", "заявок"])}.` : "";
+  return `${d.todaySentence}${sent}`;
 }
 
 /** One thing the user should do next — or nothing at all. */
-function pickNext(d: Today): { action: NextAction; also: { label: string; href: string }[] } {
+function pickNext(d: Today, n: NeedsYou): { action: NextAction; also: { label: string; href: string }[] } {
   const cands: NonNullable<NextAction>[] = [];
   const offer = d.offers[0];
   if (offer) cands.push({ eyebrow: "Оффер", title: `Оффер от ${offer.company}`, sub: `${offer.role}. Агент разобрал цифры и подготовил переговоры.`, href: "/app/offers", cta: "Посмотреть оффер", icon: BadgeDollarSign });
 
   const interviews = d.upcoming.filter((i) => i.round !== "assessment");
-  const assessments = d.upcoming.filter((i) => i.round === "assessment");
+  // Open assessments only (deadline not passed) — the same rule as needsYou.assessments.
+  const assessments = d.upcoming.filter((i) => i.round === "assessment" && (!i.scheduledAt || i.scheduledAt.getTime() >= d.now));
   const soonIv = interviews.find((i) => i.scheduledAt && i.scheduledAt.getTime() - d.now <= 48 * HOUR);
   const iv = (i: (typeof interviews)[number], eyebrow: string): NonNullable<NextAction> => ({
     eyebrow,
@@ -82,17 +58,24 @@ function pickNext(d: Today): { action: NextAction; also: { label: string; href: 
     sub: a.scheduledAt ? `Дедлайн: ${a.scheduledAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" })}. Ты на следующем этапе.` : "Ты на следующем этапе.",
     href: `/app/interviews/${a.id}`, cta: "Подготовиться", icon: ClipboardCheck,
   });
-  if (d.approvals) cands.push({
+  // Queue numbers come from needsYou (src/lib/ops-data.ts) — the same as Opportunities, Applications and Inbox.
+  if (n.questions) cands.push({
     eyebrow: "Нужен твой ответ",
-    title: questionsWaiting(d.approvals),
+    title: questionsWaiting(n.questions),
     sub: "Без этого агент не может отправить часть заявок. Остальное он делает сам.",
     href: "/app/approvals", cta: "Ответить", icon: ShieldCheck,
   });
-  if (d.handoffs) cands.push({
+  if (n.handoffs) cands.push({
     eyebrow: "Отправь сам",
-    title: handoffsWaiting(d.handoffs),
+    title: handoffsWaiting(n.handoffs),
     sub: "Пакеты готовы — их нужно отправить через сайт работодателя. Отметь отправку, и агент поведёт заявку дальше.",
     href: "/app/approvals#kind-handoff", cta: "Открыть", icon: ShieldCheck,
+  });
+  if (n.applyDecisions) cands.push({
+    eyebrow: "Твоё решение",
+    title: decisionsWaiting(n.applyDecisions),
+    sub: "Агент подготовил их, но подать может только после твоего Apply или Auto.",
+    href: "/app/opportunities", cta: "Решить", icon: ListChecks,
   });
   const later = interviews.find((i) => i !== soonIv);
   if (later) cands.push(iv(later, "Скоро интервью"));
@@ -108,16 +91,15 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const campaign = await currentCampaign(user.id);
   if (!campaign) return <NoCampaign userId={user.id} firstName={firstName} hasGoal={Boolean(user.goal?.primaryRole)} hasCv={Boolean(user.profile?.cvText || user.profile?.summary)} />;
 
-  const d = await loadToday(user, campaign);
-  const { action, also } = pickNext(d);
+  const [d, waiting] = await Promise.all([loadToday(user, campaign), needsYouCached(user.id)]);
+  const { action, also } = pickNext(d, waiting);
   const status = campaign.status;
   const isActive = status === "active";
   const t = d.today;
   const tagline = { active: "Your agent is working.", paused: "Агент на паузе.", hired: "Работа найдена.", expired: "Кампания завершена." }[status] ?? "Your agent is working.";
   const demo = demoToolsEnabled(user);
 
-  // Prepared packages wait for the user's Apply when the agent doesn't send on its own (autoSubmit off).
-  const story = todayStory(d, !campaign.autoSubmit) || (isActive ? "Сегодня агент ещё не нашёл новых вакансий — он проверяет рынок по расписанию." : "");
+  const story = todayStory(d);
 
   return (
     <div className="flex flex-col gap-5">

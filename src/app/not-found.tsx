@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/ui";
-import { currentUserId } from "@/lib/auth";
+import { currentUser } from "@/lib/auth";
 
 export const metadata = { title: "Страница не найдена" };
 
@@ -9,10 +9,10 @@ const secondary = "glass inline-flex h-11 items-center !rounded-full px-5 text-[
 
 /** Signed-in visitors are sent back to their cabinet; everyone else gets the landing page and sign-in — no agent talk. */
 export default async function NotFound() {
-  const signedIn = Boolean(await currentUserId());
+  const signedIn = Boolean(await currentUser());
   return (
     <main className="mx-auto flex min-h-dvh max-w-xl flex-col items-center justify-center gap-6 px-5 text-center">
-      <Link href="/" aria-label="Simplify — на главную" className="inline-flex min-h-10 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
+      <Link href="/" aria-label="Simplify — на главную" className="inline-flex min-h-10 shrink-0 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
       <div className="flex flex-col gap-3 animate-rise">
         <span className="label">404</span>
         <h1 className="h-serif text-[clamp(34px,6vw,54px)]">Здесь <span className="script">ничего</span> нет</h1>

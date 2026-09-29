@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { ArrowLeft, ArrowRight, Check, MapPin, Search } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j, insensitive } from "@/lib/db";
-import { currentCampaign, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, qualifiedWhere, windowNumbers, type NextCycle } from "@/lib/ops-data";
+import { currentCampaign, nextCycleQueue, qualifiedWhere, windowNumbers, type NextCycle, type NotQueuedReason } from "@/lib/ops-data";
 import { startOfToday } from "@/lib/time";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
@@ -11,13 +11,15 @@ import { salaryLabel } from "@/lib/ops";
 import { blockerRu, fitVerdict } from "@/lib/engine/matching";
 import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
-import { count, handoffsWaiting, questionsWaiting } from "../../_components/ru";
+import { breakdown, discoverySentence } from "../_components/today-data";
+import { decisionsWaiting, needsYouCached } from "../../_components/global-needs";
+import { handoffsWaiting, questionsWaiting } from "../../_components/ru";
 import { LaneChip, StatusChip, matchTone } from "./_components/bits";
 import { DecisionBar } from "./_components/decision";
 import { AutoApplyToggle } from "./_components/auto-apply";
 import { Announcer } from "./_components/announcer";
 import { fitCandidate } from "./_lib/candidate";
-import { interviewChance, plural, risks, whyFits, type FitCandidate, type Reason } from "./_lib/fit";
+import { interviewChance, isDreamCompany, overrideNote, plural, risks, whyFits, type FitCandidate, type Reason } from "./_lib/fit";
 import { agoRu, placeRu } from "./_lib/when";
 
 export const metadata = { title: "Opportunities" };
@@ -66,6 +68,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const q = one(sp.q).trim().slice(0, 80);
   const page = Math.max(1, Number.parseInt(one(sp.page), 10) || 1);
   const autonomy = readAutonomy(user.autonomy);
+  const dreamCompanies = j<string[]>(user.goal?.dreamCompanies ?? "[]", []);
   const threshold = autonomy.autoApplyMinMatch;
 
   const base: Prisma.OpportunityWhereInput = { campaignId: campaign.id };
@@ -87,10 +90,10 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   ]);
   const since = foundToday ? today : foundWeek ? week : null;
 
-  const [{ found, qualified, strong, submitted }, waiting, handoffs, counts, total, rows, candidate, queue] = await Promise.all([
+  const [{ submitted }, windowOpps, waiting, counts, total, rows, candidate, queue] = await Promise.all([
     windowNumbers(campaign.id, since, threshold),
-    pendingApprovalsCount(user.id),
-    pendingHandoffsCount(user.id),
+    db.opportunity.findMany({ where: { ...base, ...(since ? { createdAt: { gte: since } } : {}) }, select: { status: true, match: true, eligibility: true, submittedAt: true } }),
+    needsYouCached(user.id),
     Promise.all(TABS.map((t) => db.opportunity.count({ where: { ...base, ...tabWhere[t.key], ...search } }))),
     db.opportunity.count({ where }),
     db.opportunity.findMany({
@@ -111,14 +114,17 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const when = foundToday ? "Сегодня" : foundWeek ? "За неделю" : "За кампанию";
   const hasDemo = rows.some((o) => o.job.source === "demo");
   const queued = new Set(queue.ids);
-  const queueNote = QUEUE_NOTE[queue.reason];
+  // Reasons that hold every card for the same account-level cause are said once above the feed, not on each card.
+  const pageHold = rows.map((o) => (queued.has(o.id) ? null : holdKind(o, queue))).find((r): r is PageHold => r != null && PAGE_HOLD.includes(r as PageHold));
+  const queueNote = QUEUE_NOTE[queue.reason] ?? (pageHold ? PAGE_HOLD_NOTE[pageHold](threshold) : undefined);
   // Cards waiting for Apply / Auto / Skip are optional work on this very screen: the status line names them instead of
   // claiming «Здесь ничего не нужно» right above them.
-  const waitingHere = counts[0];
-  const here = waitingHere ? `${count(waitingHere, ["вакансия ждёт", "вакансии ждут", "вакансий ждут"])} твоего решения — ${tab === "strong" ? "ниже" : "во вкладке «Ждут решения»"}.` : undefined;
+  // The count is needsYou.applyDecisions — the same number Today, Applications and Inbox show.
+  const waitingHere = waiting.applyDecisions;
+  const here = waitingHere ? `${decisionsWaiting(waitingHere)} — ${tab === "strong" ? "ниже" : "во вкладке «Ждут решения»"}.` : undefined;
   const needs: Need[] = [
-    ...(waiting ? [{ text: `${questionsWaiting(waiting)} — без этого часть заявок не уйдёт`, href: "/app/approvals" }] : []),
-    ...(handoffs ? [{ text: handoffsWaiting(handoffs), href: "/app/approvals#kind-handoff" }] : []),
+    ...(waiting.questions ? [{ text: `${questionsWaiting(waiting.questions)} — без этого часть заявок не уйдёт`, href: "/app/approvals" }] : []),
+    ...(waiting.handoffs ? [{ text: handoffsWaiting(waiting.handoffs), href: "/app/approvals#kind-handoff" }] : []),
   ];
 
   return (
@@ -130,17 +136,17 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         idle={campaign.status !== "active"}
         here={here}
         hereNeeds={Boolean(waitingHere)}
+        skip={["decisions"]}
         working={campaign.status === "active" ? "Агент ищет вакансии и подаёт на сильные сам." : campaign.status === "paused" ? "Кампания на паузе — агент не ищет и не подаёт." : "Кампания завершена — новые вакансии не ищутся."}
         className="-mt-3"
       />
 
       <section aria-label="Итоги поиска" className="glass-strong -mt-2 grid gap-6 p-5 sm:p-7 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-10">
         <div className="flex flex-col gap-4">
+          {/* The same sentence as Today (discoverySentence: zero parts hidden); submissions said separately. */}
           <p className="h-serif text-[clamp(21px,2.4vw,28px)] !leading-[1.25]">
-            {when} агент нашёл <N v={found} /> {plural(found, ["вакансию", "вакансии", "вакансий"])}.{" "}
-            <N v={qualified} /> {plural(qualified, ["подошла", "подошли", "подошли"])}.{" "}
-            <N v={strong} /> {plural(strong, ["была достаточно сильной", "были достаточно сильными", "были достаточно сильными"])}.{" "}
-            <N v={submitted} /> {plural(submitted, ["заявка уже отправлена", "заявки уже отправлены", "заявок уже отправлены"])}.
+            {discoverySentence(breakdown(windowOpps), when)}
+            {submitted > 0 && <>{" "}<N v={submitted} /> {plural(submitted, ["заявка уже отправлена", "заявки уже отправлены", "заявок уже отправлены"])}.</>}
           </p>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
             <Link href="/app/applications" className="inline-flex min-h-10 items-center gap-1.5 text-teal underline-offset-4 hover:text-head hover:underline">
@@ -191,7 +197,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       ) : (
         <ul className="grid gap-3 lg:grid-cols-2" aria-label="Вакансии">
           {rows.map((o) => (
-            <OpportunityCard key={o.id} o={o} candidate={candidate} queued={queued.has(o.id) ? queue.when : null} hold={queued.has(o.id) ? null : holdReason(o, queue)} />
+            <OpportunityCard key={o.id} o={o} candidate={candidate} queued={queued.has(o.id) ? queue.when : null} hold={queued.has(o.id) ? null : holdReason(o, queue)} dream={isDreamCompany(o.job.company, dreamCompanies)} userDecision={queue.notQueued[o.id] === "dream-decision"} />
           ))}
         </ul>
       )}
@@ -235,12 +241,25 @@ type Row = {
  * Why a fitting, still-open card is not in the agent's next-cycle queue — one short line on the card, straight from
  * the engine (`nextCycleQueue().reasons`, the same simulation of runTick that Today uses). No UI-side guessing.
  */
-function holdReason(o: Row, queue: NextCycle): string | null {
+function holdKind(o: Row, queue: NextCycle): NotQueuedReason | null {
   if (o.eligibility === "blocked" || !OPEN.includes(o.status) || o.decision === "skip") return null;
+  return queue.notQueued[o.id] ?? null;
+}
+function holdReason(o: Row, queue: NextCycle): string | null {
+  const kind = holdKind(o, queue);
+  if (!kind || (PAGE_HOLD as readonly string[]).includes(kind) || kind === "no-consent" || kind === "inactive") return null;
   return queue.reasons[o.id] ?? null;
 }
 
-function OpportunityCard({ o, candidate, queued, hold }: { o: Row; candidate: FitCandidate; queued: NextCycle["when"]; hold: string | null }) {
+/** Card-level holds that are really one page-level fact (said once, in the note above the feed). */
+const PAGE_HOLD = ["below-threshold", "auto-apply-off"] as const;
+type PageHold = (typeof PAGE_HOLD)[number];
+const PAGE_HOLD_NOTE: Record<PageHold, (min: number) => string> = {
+  "below-threshold": (min) => `У части вакансий Match ниже порога автоподачи (${min}%) — агент подаёт на них только после Apply или Auto.`,
+  "auto-apply-off": () => "Автоподача по Match выключена — агент подаёт только на вакансии с отметкой Apply или Auto.",
+};
+
+function OpportunityCard({ o, candidate, queued, hold, dream, userDecision }: { o: Row; candidate: FitCandidate; queued: NextCycle["when"]; hold: string | null; dream: boolean; userDecision: boolean }) {
   const fitOpp = { match: o.match, eligibility: o.eligibility, pInterview: o.pInterview, reasons: j<Reason[]>(o.matchReasons, []), blockers: j<string[]>(o.blockers, []).map(blockerRu), softGaps: j<string[]>(o.softGaps, []).map(blockerRu) };
   const why = whyFits(fitOpp, o.job, candidate);
   const risk = risks(fitOpp, o.job, candidate)[0];
@@ -329,7 +348,7 @@ function OpportunityCard({ o, candidate, queued, hold }: { o: Row; candidate: Fi
                 {queued === "tomorrow" ? "В очереди — агент подаст завтра" : "В очереди — агент подаст в следующем цикле"}
               </span>
             )}
-            <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} blockedBy={verdict.kind ?? undefined} pending={o.approvals.length} />
+            <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} blockedBy={verdict.kind ?? undefined} pending={o.approvals.length} override={overrideNote(o.eligibility, o.blockers, dream)} userDecision={userDecision} />
           </div>
         )}
         <Link href={`/app/opportunities/${o.id}`} className="inline-flex min-h-10 items-center gap-1 text-[12.5px] text-ink-3 hover:text-head" aria-label={`Подробнее: ${o.job.title}, ${o.job.company}`}>

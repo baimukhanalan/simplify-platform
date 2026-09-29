@@ -8,7 +8,7 @@ export const SUPPORT_EMAIL = "support@simplify.kz";
 export function LegalPage({ eyebrow, title, notice, sections }: { eyebrow: string; title: string; notice?: string; sections: { h: string; p: string[] }[] }) {
   return (
     <main className="mx-auto max-w-3xl px-5 py-10 sm:py-16">
-      <Link href="/" className="inline-flex min-h-10 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green" aria-label="Simplify — на главную"><Logo /></Link>
+      <Link href="/" className="inline-flex min-h-10 shrink-0 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green" aria-label="Simplify — на главную"><Logo /></Link>
       <div className="mt-12 animate-rise">
         <div className="label">{eyebrow}</div>
         <h1 className="h-serif mt-3 text-[clamp(34px,5vw,54px)]">{title}</h1>

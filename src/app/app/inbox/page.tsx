@@ -13,6 +13,7 @@ import { ButtonLink, Chip, Empty, PageHeader, cx } from "@/components/ui";
 import { SimulateButton } from "../_components/demo-tools";
 import { PasteEmail } from "./_components/paste-email";
 import { AgentStatus, type Need } from "../../_components/agent-status";
+import { needsList, needsYouCached } from "../../_components/global-needs";
 import { plural, statusRu } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Ответы работодателей" };
@@ -56,7 +57,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
   const cls = typeof sp.c === "string" && INBOX_CLASS[sp.c] ? sp.c : "";
   const user = await requireUser();
 
-  const [messages, counts, sampleOpp, upcoming] = await Promise.all([
+  const [messages, counts, sampleOpp, waiting] = await Promise.all([
     load(user.id, cls),
     db.inboxMessage.groupBy({ by: ["classification"], where: { userId: user.id }, _count: true }),
     db.opportunity.findFirst({
@@ -64,28 +65,14 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
       orderBy: { status: "desc" },
       select: { job: { select: { company: true, title: true } } },
     }),
-    db.interview.findMany({
-      where: { userId: user.id, status: "upcoming" },
-      orderBy: { scheduledAt: "asc" },
-      select: { id: true, round: true, scheduledAt: true, opportunity: { select: { job: { select: { company: true } } } } },
-    }),
+    needsYouCached(user.id),
   ]);
   const count = (k: string) => (k ? counts.find((c) => c.classification === k)?._count ?? 0 : counts.reduce((a, c) => a + c._count, 0));
   const total = count("");
   const demo = demoToolsEnabled(user);
 
-  // What in the mail still needs the user: offers awaiting a decision, then every interview/assessment still ahead.
-  const needs: Need[] = [];
-  for (const m of messages) {
-    const o = m.opportunity;
-    if (o && m.classification === "offer" && o.status === "offer") needs.push({ text: `Оффер от ${o.job.company} ждёт твоего решения`, href: "/app/offers" });
-  }
-  for (const iv of upcoming) {
-    const company = iv.opportunity.job.company;
-    const when = iv.scheduledAt ? (iv.round === "assessment" ? ` · до ${fmtDate(iv.scheduledAt)}` : ` · ${fmtDateTime(iv.scheduledAt)}`) : "";
-    needs.push({ text: `${iv.round === "assessment" ? "Тестовое задание" : "Интервью"} — ${company}${when}: подготовься`, href: `/app/interviews/${iv.id}` });
-  }
-  const uniqueNeeds = needs.filter((n, i) => needs.findIndex((x) => x.text === n.text) === i);
+  // What still needs the user — the same numbers as Today, Opportunities and Applications (needsYou).
+  const needs: Need[] = needsList(waiting);
 
   // Confirmations are reassurance, not news: fold them into one line unless explicitly filtered.
   // Declines read the same every time: two or more collapse into one group (one row per application).
@@ -103,7 +90,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
         sub="Агент читает каждый ответ, понимает, что это, и сам двигает заявку дальше. Здесь — что пришло и что с этим сделать."
       />
 
-      <AgentStatus needs={uniqueNeeds} working="Ответы работодателей агент разбирает сам." className="-mt-3" />
+      <AgentStatus needs={needs} working="Ответы работодателей агент разбирает сам." className="-mt-3" />
 
       {total > 0 && (
         <nav aria-label="Фильтр по типу ответа" className="flex flex-wrap gap-1.5">

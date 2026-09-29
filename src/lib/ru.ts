@@ -62,3 +62,25 @@ export function noticeRu(v: string | null | undefined) {
   return `${fmtNum(n)} ${plural(n, forms[m[2].toLowerCase()])}`;
 }
 export { fmtFactPeriod, fmtFactDate } from "./engine/dates";
+
+const FORMAT_RU: Record<string, string> = { remote: "удалённо", hybrid: "гибрид", onsite: "офис" };
+
+/**
+ * Where a posting is, for journal lines: the city (first part of the location, localized) and the work format —
+ * «Алматы, офис», «Удалённо — Европа», «Берлин, гибрид». Empty when nothing is known.
+ */
+export function jobPlaceRu(job: { location?: string | null; remote?: string | null }) {
+  const loc = (job.location ?? "").trim();
+  const fmt = FORMAT_RU[job.remote ?? ""] ?? "";
+  // "Remote — Europe" is one place; "Almaty, Kazakhstan" → the city only.
+  const place = placeRu(/\s[—–-]\s/.test(loc) ? loc : loc.split(",")[0].trim());
+  if (!place) return fmt ? fmt.charAt(0).toUpperCase() + fmt.slice(1) : "";
+  if (!fmt || place.toLowerCase().includes(fmt)) return place;
+  return `${place}, ${fmt}`;
+}
+
+/** «Vantage Media · BI Analyst (Алматы, офис)» — a role named so that two locations of the same posting never look alike. */
+export function roleLabelRu(job: { company: string; title: string; location?: string | null; remote?: string | null }) {
+  const where = jobPlaceRu(job);
+  return `${job.company} · ${job.title}${where ? ` (${where})` : ""}`;
+}

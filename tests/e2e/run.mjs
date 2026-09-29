@@ -5,14 +5,16 @@
 //
 // The copy must have its own .env (absolute DATABASE_URL to its own SQLite DB, SESSION_SECRET,
 // KASPI_MODE="mock", APP_URL, KASPI_WEBHOOK_SECRET, KASPI_MOCK_SECRET), be seeded (`npm run seed`) and built
-// (`next build`), and be served by `next start -p 3300` from that copy. The journeys read the copy's
+// (`next build`), and be served by `TRUST_PROXY=1 next start -p 3300` from that copy. TRUST_PROXY=1 is required since round 8:
+// the per-IP limiters (signup, login, CV parse) ignore X-Forwarded-For otherwise, and every journey's signup would share one
+// "local" bucket (→ «Слишком много регистраций»). Run tests/stress.mjs against a server WITHOUT it (it checks XFF can't bypass). The journeys read the copy's
 // .next/server/server-reference-manifest.json to find action IDs and use its Prisma client for assertions,
 // so they WRITE to that DB — never point E2E_APP_DIR at the real repo (guarded: refuses a dir with .git).
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
-const ALL = ["j1", "j2", "j3", "j4", "j5", "j6", "j7", "j7b", "j8", "j9", "j10", "j11", "j12", "j13", "j14", "j15"]; // jlive: run explicitly against a server started without KASPI_MODE (see jlive.mjs)
+const ALL = ["j1", "j2", "j3", "j4", "j5", "j6", "j7", "j7b", "j8", "j9", "j10", "j11", "j12", "j13", "j14", "j15", "j16"]; // jlive: run explicitly against a server started without KASPI_MODE (see jlive.mjs)
 const pick = process.argv.slice(2).length ? process.argv.slice(2) : ALL;
 const fails = [];
 for (const j of pick) {

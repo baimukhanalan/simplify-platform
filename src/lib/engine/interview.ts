@@ -229,7 +229,9 @@ export const MOCK_QUESTIONS: Record<string, string[]> = {
 };
 
 // Lookarounds instead of `\b`, which does not work next to Cyrillic ("ну", "типа" never matched).
-const FILLERS = /(?<![\p{L}\p{N}_])(um+|uh+|like|you know|basically|actually|sort of|kind of|ну|типа|как бы|короче|в общем)(?![\p{L}\p{N}_])/giu;
+// "like" is a filler only as one: set off by a comma («it was, like, big», «like, um») or quotative «I was like» / «I'm like».
+// "I like SQL", "would like to", "tools like dbt" are words, not fillers.
+const FILLERS = /(?<![\p{L}\p{N}_])(um+|uh+|you know|basically|actually|sort of|kind of|ну|типа|как бы|короче|в общем|like(?=\s*,)|(?<=,\s*)like(?![\p{L}\p{N}_])|(?<=\b(?:i|he|she|they|we|you) (?:was|were|am|is|are) )like|(?<=\b(?:i'm|he's|she's|they're|we're|you're) )like)(?![\p{L}\p{N}_])/giu;
 
 const HEDGES = /(?<![\p{L}\p{N}_])(i think maybe|i guess|not sure|probably|maybe|kind of|sort of|i hope|наверное|не уверен\p{L}*|может быть|вроде|как бы)(?![\p{L}\p{N}_])/giu;
 /** A typed answer shows wording, not delivery: confidence comes from hedging words only and never reads as 100. */
@@ -246,6 +248,25 @@ export function answerConfidence(answer: string, spoken = false) {
   return Math.max(20, 100 - hedges * 20 - fillers * 5);
 }
 
+/** Answers shorter than this many words are capped at SHORT_ANSWER_CAP overall. */
+export const SHORT_ANSWER_WORDS = 20;
+export const SHORT_ANSWER_CAP = 30;
+
+/**
+ * Structure of a non-STAR answer from what is actually there (no free default): ordering words, more than one sentence,
+ * a concrete example, a conclusion. 0 cues = 20, each cue adds up to 100.
+ */
+export function structureScore(answer: string) {
+  const sentences = answer.split(/[.!?]+(?:\s|$)/).filter((x) => x.trim().split(/\s+/).length >= 3).length;
+  const cues = [
+    /(?<![\p{L}])(first(?:ly)?|second(?:ly)?|then|next|after that|finally|во-первых|во-вторых|затем|потом|после этого|наконец)(?![\p{L}])/iu.test(answer),
+    sentences >= 2,
+    /(?<![\p{L}])(for example|for instance|e\.g\.|such as|например|к примеру)(?![\p{L}])/iu.test(answer),
+    /(?<![\p{L}])(so|as a result|in short|overall|in the end|that's why|итак|в итоге|в результате|поэтому)(?![\p{L}])/iu.test(answer),
+  ].filter(Boolean).length;
+  return [20, 45, 65, 85, 100][cues];
+}
+
 export function scoreAnswer(question: string, answer: string, ctx: { skills: string[]; jdTerms: string[]; /** true when the answer came through the microphone */ spoken?: boolean }) {
   const words = answer.trim().split(/\s+/).filter(Boolean);
   const n = words.length;
@@ -255,18 +276,21 @@ export function scoreAnswer(question: string, answer: string, ctx: { skills: str
   const star = { s: /(situation|context|when i|at my|we had|в компании|была ситуация)/i.test(answer), t: /(task|goal|needed to|responsible|задач|цель)/i.test(answer), a: /\b(i (built|led|analy[sz]ed|created|proposed|wrote|designed|decided|implemented))|я (сделал|построил|предложил|проанализировал)/i.test(answer), r: /(result|outcome|increased|reduced|improved|grew|saved|в итоге|результат)/i.test(answer) };
   const starScore = Object.values(star).filter(Boolean).length / 4;
   const relevance = ctx.jdTerms.filter((t) => answer.toLowerCase().includes(t.toLowerCase())).length;
-  const lengthScore = n < 40 ? 40 : n <= 220 ? 100 : n <= 320 ? 70 : 45;
+  const lengthScore = n < SHORT_ANSWER_WORDS ? 15 : n < 40 ? 40 : n <= 220 ? 100 : n <= 320 ? 70 : 45;
   const clarity = Math.max(0, 100 - fillers * 12 - (answer.match(/[^.!?]{220,}/g)?.length ?? 0) * 15);
-  const structure = intent === "behavioral" || intent === "leadership" ? Math.round(starScore * 100) : /first|second|then|finally|во-первых|затем/i.test(answer) ? 85 : 60;
+  const structure = intent === "behavioral" || intent === "leadership" ? Math.round(starScore * 100) : structureScore(answer);
   const confidence = answerConfidence(answer, ctx.spoken);
   const content = Math.min(100, 45 + (hasNumber ? 25 : 0) + relevance * 10 + (/\bi\b|я /i.test(answer) ? 10 : 0));
-  const overall = Math.round((content * 0.3 + structure * 0.2 + clarity * 0.15 + lengthScore * 0.15 + confidence * 0.1 + Math.min(100, relevance * 25) * 0.1));
+  const weighted = Math.round((content * 0.3 + structure * 0.2 + clarity * 0.15 + lengthScore * 0.15 + confidence * 0.1 + Math.min(100, relevance * 25) * 0.1));
+  // A one-liner is not an answer, however well-worded: under SHORT_ANSWER_WORDS words the overall stays at SHORT_ANSWER_CAP.
+  const overall = n < SHORT_ANSWER_WORDS ? Math.min(SHORT_ANSWER_CAP, weighted) : weighted;
   const tips: string[] = [];
   if (!hasNumber) tips.push("Добавь одну цифру результата (было → стало).");
   const STAR_RU: Record<string, string> = { s: "ситуации", t: "задачи", a: "действия", r: "результата" };
   if ((intent === "behavioral" || intent === "leadership") && starScore < 0.75) tips.push(`STAR неполный — не хватает: ${Object.entries(star).filter(([, v]) => !v).map(([k]) => STAR_RU[k]).join(", ")}.`);
   if (n > 220) tips.push("Слишком длинно — уложись в 60–120 секунд.");
-  if (n < 40) tips.push("Слишком коротко — раскрой своё конкретное действие.");
+  if (n < SHORT_ANSWER_WORDS) tips.push("Это одна фраза, а не ответ — расскажи о своём конкретном действии и его результате.");
+  else if (n < 40) tips.push("Слишком коротко — раскрой своё конкретное действие.");
   if (fillers > 2) tips.push(`Слова-паразиты: ${fillers}. Делай паузу вместо «um/like».`);
   if (!relevance) tips.push("Свяжи ответ с требованиями вакансии.");
   return { overall, content, structure, clarity, length: lengthScore, confidence, fillers, words: n, star, tips, intent };

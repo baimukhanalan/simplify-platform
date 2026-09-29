@@ -24,7 +24,7 @@ export function experiencePair(facts: FactText[], cvText: string): { heading: st
   if (!best) return null;
   const simplify: string[] = [];
   for (let i = best.at + 1; i < lines.length && BULLET.test(lines[i]); i++) simplify.push(lines[i].replace(BULLET, "").trim());
-  const original = best.fact.details.split(/\n|;\s/).map((l) => l.replace(BULLET, "").trim()).filter(Boolean);
+  const original = best.fact.details.split(/\r?\n/).map((l) => l.replace(BULLET, "").trim()).filter(Boolean);
   if (!simplify.length || !original.length) return null;
   return { heading: `${best.fact.title}${best.fact.org ? ` — ${best.fact.org}` : ""}`, original, simplify };
 }

@@ -9,7 +9,7 @@ import { SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
 import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { loadReadiness } from "./_components/data";
-import { goalMarket, goalTitle, readinessView, fmtYears } from "./_components/model";
+import { MIN_ADJACENT_SKILLS, adjacentSkills, goalMarket, goalTitle, readinessView, fmtYears } from "./_components/model";
 import { BlockersAndPlan, ParamTable, ReadinessHero } from "./_components/readiness-view";
 
 export const metadata: Metadata = { title: "Readiness" };
@@ -70,7 +70,7 @@ export default async function ReadinessPage() {
               {fixSeniority && <FixForm fix="seniority" title={`Уровень: ${SENIORITY_LABEL[goal.seniority]} → ${SENIORITY_LABEL[r.suggestedSeniority]}`} note={`Под твои ${fmtYears(data.yearsExperience)} опыта`} cta="Применить" />}
               {fixSalary && <FixForm fix="salary" title={`Минимум: ${fmtMoney(goal.minSalary, goal.currency)} → ${fmtMoney(range.mid)}`} note="Медиана рынка для цели" cta="Применить" />}
               {roles.map((role) => (
-                <FixForm key={role} fix="role" role={role} title={`Добавить роль: ${role}`} note="Твои навыки уже подходят" cta={<><Plus className="size-3.5" strokeWidth={1.8} aria-hidden />Добавить</>} />
+                <FixForm key={role} fix="role" role={role} title={`Добавить роль: ${role}`} note={adjacentNote(role, data.skills)} cta={<><Plus className="size-3.5" strokeWidth={1.8} aria-hidden />Добавить</>} />
               ))}
             </div>
           </section>
@@ -84,6 +84,14 @@ export default async function ReadinessPage() {
       </div>
     </>
   );
+}
+
+/** «Твои навыки уже подходят: SQL, Python» only with evidence from the profile; otherwise a softer suggestion. */
+function adjacentNote(role: string, skills: string[]) {
+  const matched = adjacentSkills(role, skills);
+  if (matched.length >= MIN_ADJACENT_SKILLS) return `Твои навыки уже подходят: ${matched.slice(0, 3).join(", ")}`;
+  if (matched.length === 1) return `Можно рассмотреть: совпадает ${matched[0]}`;
+  return "Можно рассмотреть: смежная роль";
 }
 
 function FixForm({ fix, role, title, note, cta }: { fix: string; role?: string; title: string; note: string; cta: ReactNode }) {

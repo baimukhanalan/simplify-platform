@@ -5,8 +5,8 @@ import { Card, Chip, Field, Label, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { benchmarkOffer, negotiationPlan, type Aggressiveness } from "@/lib/engine/offer";
 import { fxToUsd } from "@/lib/engine/fx";
-import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
-import { WORK_MODE_RU, count, regionsRu } from "../../../_components/ru";
+import { fmtMoney, fmtMoneyRange } from "@/lib/engine/taxonomy";
+import { WORK_MODE_RU, count, marketBasisRu } from "../../../_components/ru";
 import { noticeRu } from "@/lib/ru";
 import { markHired } from "@/lib/actions/campaign";
 import { declineOffer, recordFinal, saveNegotiation } from "@/lib/actions/offer";
@@ -15,7 +15,7 @@ import { EditTermsForm } from "./offer-forms";
 import { RangeBar } from "./range-bar";
 import { NegotiationTabs } from "./negotiation-tabs";
 import { ConfirmAction } from "./confirm-action";
-import { compBreakdown, kMoney, kRange } from "./comp";
+import { compBreakdown, kMoney } from "./comp";
 import { callScript, fallbackLevers, negotiationEmail, talkingPoints } from "./negotiation-copy";
 
 export const STYLES: { level: Aggressiveness; label: string; hint: string }[] = [
@@ -40,18 +40,18 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
       return [s.level, {
         ...plan,
         args: talkingPoints({ role: o.role, low: m(range.low), high: m(range.high), strengths, position: o.base < range.mid ? "below" : o.base < range.high ? "upper" : "top" }),
-        callScript: callScript({ ask: m(plan.ask), walkaway: m(plan.walkaway) }),
-        fallback: fallbackLevers(m(Math.max(3000, (plan.target - o.base) * 0.6))),
+        callScript: callScript({ ask: m(plan.ask), walkaway: fmtMoney(plan.walkaway, o.currency) }),
+        fallback: fallbackLevers(fmtMoney(Math.max(3000, (plan.target - o.base) * 0.6), o.currency)),
         email: negotiationEmail({ role: o.role, company: o.company, name, level: s.level, ask: m(plan.ask), low: m(range.low), high: m(range.high), strengths }),
       }];
     }),
   ) as Record<Aggressiveness, ReturnType<typeof negotiationPlan>>;
   const saved = j<{ level?: string; ask?: number; notes?: string; savedAt?: string }>(o.negotiation, {});
   const c = compBreakdown(o);
-  const k = (n: number) => kMoney(n, o.currency);
+  const k = (n: number) => fmtMoney(n, o.currency);
   const upLow = plans.soft.target - o.base;
   const upHigh = plans.assertive.target - o.base;
-  const upside = upHigh > 0 ? `+${upLow === upHigh || upLow <= 0 ? k(upHigh) : kRange(Math.max(0, upLow), upHigh, o.currency)}` : "—";
+  const upside = upHigh > 0 ? `+${upLow === upHigh || upLow <= 0 ? k(upHigh) : fmtMoneyRange(Math.max(0, upLow), upHigh, o.currency)}` : "—";
   const negotiate = bm.recommend;
   const ids = { neg: `neg-${o.id}`, decide: `decide-${o.id}`, h: `offer-h-${o.id}` };
 
@@ -150,7 +150,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
           <p className="flex flex-col gap-0.5 rounded-2xl border border-line bg-white/60 px-4 py-3.5 text-[14.5px] leading-relaxed text-ink-2 sm:block">
             <Verdict k="Твой оффер" v={k(o.base)} />
             <Sep />
-            <Verdict k="Рынок" v={kRange(range.low, range.high, o.currency)} />
+            <Verdict k="Рынок" v={fmtMoneyRange(range.low, range.high, o.currency)} />
             <Sep />
             <Verdict k="Рекомендация" v={negotiate ? "торговаться" : "можно принимать"} tone={negotiate ? "amber" : "green"} />
             <Sep />
@@ -164,7 +164,7 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
             {bm.gap > 0 ? <> · до медианы <span className="num text-head">{k(Math.round(bm.gap / fx))}</span></> : null}.
           </p>
           <p className="mt-auto pt-4 text-[12px] text-ink-3">
-            Рынок для уровня {SENIORITY_LABEL[seniority] ?? seniority} · {regionsRu(regions) || "весь мир"}{o.currency !== "USD" ? ` · пересчёт по примерному курсу ${o.currency} → USD` : ""}. Ориентир, а не гарантия.
+            Рынок для уровня {marketBasisRu(bm.basis)}{o.currency !== "USD" ? ` · пересчёт по примерному курсу ${o.currency} → USD` : ""}. Ориентир, а не гарантия.
           </p>
         </Card>
       </div>
@@ -248,7 +248,7 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths }: {
   saved: { level?: string; ask?: number; notes?: string; savedAt?: string };
   strengths: number;
 }) {
-  const money = (n: number) => kMoney(n, o.currency);
+  const money = (n: number) => fmtMoney(n, o.currency);
   const delta = (n: number) => (n > o.base ? `+${money(n - o.base)} к офферу` : "на уровне оффера");
   return (
     <div className="flex flex-col gap-6">

@@ -2,7 +2,7 @@ import { ArrowUpRight, Building2, Check, Target } from "lucide-react";
 import { Card, Chip, Label, cx } from "@/components/ui";
 import { realUrl } from "@/lib/links";
 import { aiEnabled } from "@/lib/ai";
-import { WORK_MODE_RU } from "../../../../_components/ru";
+import { placeWithFormat } from "../../../../_components/ru";
 import { placeRu } from "@/lib/ru";
 import { isEnglish, type StoredBrief } from "./brief";
 import { DebugLine, RegenerateForm } from "./regenerate-form";
@@ -100,7 +100,7 @@ export function BriefTab({ id, debug, brief, company, role, skills, technologies
         <div className="flex flex-col gap-1.5">
           <span className="flex items-center gap-2"><Target className="size-4 text-teal" strokeWidth={1.7} aria-hidden /><Label>О роли</Label></span>
           <h2 className="h-serif text-[clamp(22px,2.4vw,28px)]">{role}</h2>
-          <p className="text-[13px] text-ink-3">{[placeRu(location), WORK_MODE_RU[remote.toLowerCase()] ?? remote].filter(Boolean).join(" · ")}</p>
+          <p className="text-[13px] text-ink-3">{placeWithFormat(placeRu(location), remote.toLowerCase())}</p>
         </div>
         <div className="grid gap-6 md:grid-cols-2">
           <Block label="Кого ищут">

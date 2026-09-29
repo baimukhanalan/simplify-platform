@@ -2,7 +2,7 @@ import "server-only";
 // Exception-queue mechanics shared by the approvals screen (resolveApproval) and the Agent screen (saveAutonomy).
 import { db, j, s } from "../db";
 import { agentMaySubmit, readAutonomy, type Autonomy } from "./autonomy";
-import { dailyUsage, logEvent, submit, STANDING_KINDS } from "./agent";
+import { dailyUsage, logEvent, settleSharedAnswers, submit, STANDING_KINDS } from "./agent";
 import { startOfToday } from "../time";
 import { count } from "../ru";
 import type { Answer } from "./personalize";
@@ -42,7 +42,8 @@ export async function continueIfReady(opportunityId: string, autonomy: Pick<Auto
  * Answer every OTHER pending copy of a standing question (sensitive / legal / sponsorship) for this user with the same
  * answer — each approval row, each package answer — and let each affected opportunity continue (continueIfReady).
  * `question` omitted = every pending question of that kind (used when Sensitive switches to «Предпочитаю не указывать»).
- * Returns how many approvals were answered.
+ * Packages waiting on the same question without a card of their own (settleSharedAnswers) take the answer as well.
+ * Returns how many copies were answered (approval rows + such packages).
  */
 export async function answerMatchingApprovals(
   userId: string,
@@ -66,6 +67,9 @@ export async function answerMatchingApprovals(
       touched.add(r.opportunityId);
     }
   }
+  // Packages that asked the same question without a card of their own (one card per question) take the answer too;
+  // each counts as one more answered copy.
+  for (const id of await settleSharedAnswers(userId)) { touched.add(id); n++; }
   if (!n) return 0;
   const user = await db.user.findUnique({ where: { id: userId }, select: { autonomy: true } });
   const autonomy = readAutonomy(user?.autonomy);

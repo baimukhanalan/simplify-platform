@@ -8,7 +8,7 @@ import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
 import { fitVerdict } from "@/lib/engine/matching";
 import { placeRu } from "@/lib/ru";
 import { SiteHeader } from "../../_components/site-header";
-import { WORK_MODE_RU, count, yearsRu } from "../../_components/ru";
+import { WORK_MODE_RU, count, placeWithFormat, yearsRu } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Результат проверки CV", robots: { index: false } };
 
@@ -32,16 +32,18 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
   const r = row ? j<CheckResult | null>(row.result, null) : null;
   if (!r || r.v !== 1) notFound();
   const v = VERDICT[r.readiness.verdict];
+  // The user's own target title (as typed) when the check stored it; older checks fall back to the role family.
+  const title = r.targetTitle?.trim() || r.roleLabel;
   const jobFit = r.job ? fitVerdict({ eligibility: r.job.eligibility, match: r.job.match, blockers: r.job.blockers, pInterview: r.job.pInterview }) : null;
 
   return (
     <div className="min-h-dvh overflow-x-clip">
-      <SiteHeader right={<><ButtonLink href="/check" variant="ghost" size="sm" className="hidden sm:inline-flex">Проверить другое CV</ButtonLink><ButtonLink href="/login?mode=signup" size="sm" className="!h-10">Начать кампанию</ButtonLink></>} />
+      <SiteHeader right={<><ButtonLink href="/check" variant="ghost" size="sm" className="max-sm:!hidden">Проверить другое CV</ButtonLink><ButtonLink href="/login?mode=signup" size="sm">Начать кампанию</ButtonLink></>} />
       <main className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 pb-24 pt-4 sm:px-8 lg:pt-8">
         {/* Summary */}
         <section className="grid items-center gap-6 animate-rise md:grid-cols-[1fr_auto]">
           <div className="flex min-w-0 flex-col gap-3">
-            <Label>Проверка CV · {r.roleLabel}</Label>
+            <Label>Проверка CV · {title}</Label>
             <h1 className="h-serif text-[clamp(32px,4.6vw,54px)]">{v.head[0]} <Script>{v.head[1]}</Script> {v.head[2]}</h1>
             <div className="flex flex-wrap gap-2">
               <Chip tone={v.tone} dot>{v.label}</Chip>
@@ -55,7 +57,11 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
           </div>
           <Card strong className="flex items-center gap-5 md:flex-col md:px-8">
             <Ring value={r.readiness.score} size={120} stroke={8} label="Readiness" />
-            <div className="text-[13px] text-ink-3 md:text-center">из 100 · цель: {SENIORITY_LABEL[r.readiness.suggestedSeniority] ?? r.readiness.suggestedSeniority} {r.roleLabel}</div>
+            <div className="flex flex-col gap-1.5 text-[13px] text-ink-3 md:items-center md:text-center">
+              <span>из 100 · цель: <span className="text-head">{title}</span></span>
+              {/* The level is its own chip, never merged into the user's title («Middle Senior Data Analyst»). */}
+              <Chip className="w-fit">Уровень: {SENIORITY_LABEL[r.readiness.suggestedSeniority] ?? r.readiness.suggestedSeniority}</Chip>
+            </div>
           </Card>
         </section>
 
@@ -98,7 +104,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                     <span className="num text-ink-3">{c.score}</span>
                   </div>
                   <Progress value={c.score} tone={c.status === "ok" ? "green" : c.status === "warn" ? "amber" : "rose"} />
-                  <span className="text-[12px] text-ink-3">{c.note}</span>
+                  <span className="text-[12px] text-ink-3">{c.key === "salary" && r.market?.line ? r.market.line : c.note}</span>
                 </li>
               ))}
             </ul>
@@ -137,8 +143,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                   <div className="text-[19px] font-medium text-head">{r.job.title}</div>
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px] text-ink-3">
                     <span className="text-ink-2">{r.job.company}</span>
-                    {r.job.location && <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" aria-hidden />{placeRu(r.job.location)}</span>}
-                    <span>{WORK_MODE_RU[r.job.remote] ?? r.job.remote}</span>
+                    {r.job.location ? <span className="inline-flex items-center gap-1"><MapPin className="size-3.5" aria-hidden />{placeWithFormat(placeRu(r.job.location), r.job.remote)}</span> : <span>{WORK_MODE_RU[r.job.remote] ?? r.job.remote}</span>}
                     {r.job.salary && <span className="num">{r.job.salary}</span>}
                   </div>
                 </div>

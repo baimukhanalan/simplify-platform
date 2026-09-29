@@ -8,7 +8,7 @@ type BtnVariant = "primary" | "glass" | "ghost" | "green" | "danger";
 const btn = (variant: BtnVariant = "primary", size: "sm" | "md" | "lg" = "md") =>
   cx(
     "inline-flex items-center justify-center gap-2 rounded-full font-medium transition-all duration-200 select-none whitespace-nowrap disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green active:scale-[.98]",
-    size === "sm" && "h-9 px-4 text-[13px]",
+    size === "sm" && "h-10 px-4 text-[13px]", // 40px — minimum tap target
     size === "md" && "h-11 px-5 text-[14.5px]",
     size === "lg" && "h-13 px-7 text-[15.5px]",
     variant === "primary" && "bg-cta text-[#fcfcfc] shadow-(--shadow-cta) hover:bg-[#2f2c2c]",

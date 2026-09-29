@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { db, noNul } from "../db";
 import { PIPELINE, APPLIED_OR_LATER } from "../engine/taxonomy";
-import { ingestEmail, logEvent, submit, STANDING_KINDS } from "../engine/agent";
+import { ingestEmail, logEvent, settleSharedAnswers, submit, STANDING_KINDS } from "../engine/agent";
 import { readAutonomy } from "../engine/autonomy";
 import { answerMatchingApprovals, continueIfReady, patchPackageAnswer } from "../engine/approvals";
 
@@ -58,6 +58,8 @@ export async function resolveApproval(form: FormData) {
       if (!APPLIED_OR_LATER.includes(opp.status)) await db.opportunity.update({ where: { id: opp.id }, data: { status: "skipped" } });
       await logEvent(user.id, "approval", `Отклонено: «${approval.question}» — ${opp.job.company} пропущена`, opp.id, { kind: approval.kind, decision });
     }
+    // A package that was waiting for this card's answer (the same standing question) now asks it itself.
+    if (STANDING_KINDS.has(approval.kind)) await settleSharedAnswers(user.id);
     refresh(opp?.id);
     return;
   }

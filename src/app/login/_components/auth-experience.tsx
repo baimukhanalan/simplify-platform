@@ -141,7 +141,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
       <RememberPlan plan={plan} />
 
       <header className="mx-auto flex w-full max-w-[1240px] items-center justify-between gap-3 px-4 py-5 sm:px-8">
-        <Link href="/" aria-label="Simplify — на главную" className="inline-flex min-h-10 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
+        <Link href="/" aria-label="Simplify — на главную" className="inline-flex min-h-10 shrink-0 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
         <Link href="/check" className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
           Бесплатная проверка CV
         </Link>

@@ -3,7 +3,7 @@
 import "server-only";
 import { db, j } from "./db";
 import { careerScore } from "./engine/career";
-import { REGIONS, classifyRole } from "./engine/taxonomy";
+import { REGIONS, classifyRole, roleKey } from "./engine/taxonomy";
 import { toUSD } from "./engine/fx";
 import { userFloorUsd } from "./engine/salary";
 import { startOfToday } from "./time";
@@ -51,7 +51,10 @@ export async function loadCareer(userId: string) {
     seniority: g?.seniority || undefined,
   });
   // "Underpaid" compares a real salary with the market; an expectation below market is not underpayment.
-  return { user, role, family, regions, demandJobs, mockAvg, mockCount: mockScores.length, currentSalary, salarySource, compensationKind, compensationLabel, accepted, ...result, underpaid: compensationKind === "actual" && result.underpaid };
+  // What Market Value is read for — the Offer Desk benchmark states its own (benchmarkOffer().basis) so the UI can explain
+  // a difference between the two numbers (another level or other regions).
+  const marketBasis = { level: result.seniority, regions: regions.length ? regions : ["WORLD"] };
+  return { user, role, family, regions, marketBasis, demandJobs, mockAvg, mockCount: mockScores.length, currentSalary, salarySource, compensationKind, compensationLabel, accepted, ...result, underpaid: compensationKind === "actual" && result.underpaid };
 }
 
 /** A job is in the goal's regions: one of its countries is targeted, it is open worldwide, or it is remote and the goal includes WORLD. */
@@ -81,7 +84,9 @@ export async function betterPayingRoles(c: Pick<CareerData, "family" | "currentS
     .filter((x) => jobInRegions(x, regions))
     .map((x) => ({ ...x, mid: mid(x) }))
     .filter((x) => x.mid >= threshold)
-    .sort((a, b) => b.mid - a.mid);
+    .sort((a, b) => b.mid - a.mid)
+    // One row per role: the same company + title posted in several cities is listed once (its best-paying posting).
+    .filter((x, i, all) => all.findIndex((y) => roleKey(y.company, y.title) === roleKey(x.company, x.title)) === i);
   return { threshold, count: qualifying.length, list: qualifying.slice(0, take) };
 }
 export type CareerData = Awaited<ReturnType<typeof loadCareer>>;

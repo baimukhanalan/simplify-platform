@@ -3,21 +3,25 @@ import { Prisma } from "@prisma/client";
 import { db, j, s, noNul } from "../db";
 import { isAhead, ROUND_LABEL } from "../rounds";
 import { agentMaySubmit, readAutonomy, SENSITIVE_DECLINE } from "./autonomy";
-import { blockerKind, scoreJob, STRONG_MATCH, type CandidateCtx, type JobCtx, type MatchResult } from "./matching";
-import { buildPackage, type FactLite, type ProfileLite } from "./personalize";
+import { blockerKind, blockerRu, scoreJob, DREAM_DECISION, STRONG_MATCH, type CandidateCtx, type JobCtx, type MatchResult } from "./matching";
+import { buildPackage, type Answer, type FactLite, type ProfileLite } from "./personalize";
 import { ensureSeedJobs } from "./ingest";
 import { allocationFrom, reachedInterview } from "./insights";
 import { classifyEmail, CLASS_TO_STATUS, matchCompany } from "./inbox";
 import { buildPackHeuristic } from "./interview";
 import { classifyRole, defaultLanguagesFor, roleKey, APPLIED_OR_LATER, PLANS } from "./taxonomy";
-import { count, plural } from "../ru";
+import { count, plural, roleLabelRu } from "../ru";
 import { toUSD } from "./fx";
 import { salaryAnswer } from "./salary";
-import { startOfToday } from "../time";
+import { snapRoundTime, startOfToday } from "../time";
 
 // Journal wording for employer emails (Settings → audit log shows these lines).
 const INBOX_EVENT_RU: Record<string, string> = { confirmation: "подтверждение получения заявки", rejection: "отказ", assessment: "приглашение на тест", interview: "приглашение на интервью", offer: "оффер", info: "информационное письмо" };
 const STATUS_RU_EVENT: Record<string, string> = { pending: "ждём ответа", rejected: "отказ", assessment: "тест", recruiter: "рекрутер", hiring_manager: "нанимающий менеджер", technical: "техническое интервью", final: "финал", offer: "оффер" };
+
+/** The journal line for an employer email that moved a role: «Kaspi: оффер → статус «оффер»». One wording for the engine and the seed. */
+export const inboxEventText = (company: string, cls: string, status: string) =>
+  `${company}: ${INBOX_EVENT_RU[cls] ?? "новое письмо"} → статус «${STATUS_RU_EVENT[status] ?? status}»`;
 
 export async function notify(userId: string, type: string, title: string, body = "", href = "") {
   await db.notification.create({ data: { userId, type, title, body, href } });
@@ -82,16 +86,34 @@ const scoreCtx = (job: ScoreJobRow): JobCtx => ({
   workAuth: j<string[]>(job.workAuth, []), languages: j<string[]>(job.languages, []),
 });
 
-/** Match from which an on-goal, eligible, fresh role enters the agent's preparation queue (status "qualified"). */
-export const QUEUE_MATCH = 55;
+/**
+ * Match from which an on-goal, eligible, fresh role enters the agent's preparation queue (status "qualified"): the same
+ * bar as «подошла» (STRONG_MATCH). Below it the agent prepares nothing unless the user pressed Apply / Auto.
+ */
+export const QUEUE_MATCH = STRONG_MATCH;
 
 /**
  * Discovery status. Blocked → skipped. Only roles the goal asks for (primary/extra roles; mass-hiring roles in Mass
  * mode) are queued; an off-goal role (Data Scientist for a Data Analyst goal, a dream company's QA opening) stays
  * "found" — visible, but the agent never prepares or submits it unless the user presses Apply/Auto.
  */
-export const statusFor = (r: Pick<MatchResult, "eligibility" | "match" | "freshnessDays" | "onGoal">) =>
-  r.eligibility === "blocked" ? "skipped" : r.onGoal && r.match >= QUEUE_MATCH && r.freshnessDays <= 30 ? "qualified" : "found";
+export const statusFor = (r: Pick<MatchResult, "eligibility" | "match" | "freshnessDays" | "onGoal"> & { userDecision?: boolean }) =>
+  r.eligibility === "blocked" ? "skipped" : r.onGoal && r.freshnessDays <= 30 && (r.match >= QUEUE_MATCH || r.userDecision) ? "qualified" : "found";
+
+/**
+ * The agent's own preparation queue (runTick, and nextCycleQueue in src/lib/ops-data.ts mirrors it): qualified roles the
+ * user did not skip that either the user picked (Apply / Auto) or clear Match ≥ QUEUE_MATCH and are not a dream-company
+ * decision left to the user (DREAM_DECISION).
+ */
+export const agentQueueWhere = (campaignId: string) => ({
+  campaignId,
+  status: "qualified",
+  decision: { not: "skip" },
+  OR: [{ decision: { in: ["apply", "auto"] } }, { match: { gte: QUEUE_MATCH }, NOT: { softGaps: { contains: DREAM_DECISION } } }],
+});
+
+/** A package answer still waiting for the user (its own approval card, or a standing question asked on another role). */
+export const hasOpenAnswers = (answers: string | null | undefined) => j<Answer[]>(answers ?? "[]", []).some((a) => a.status === "pending");
 
 /** Statuses that mean "this role is taken" for the one-application-per-role rule. */
 const TAKEN = ["prepared", ...APPLIED_OR_LATER];
@@ -175,7 +197,7 @@ export async function discover(campaignId: string) {
       blocked - filtered ? `${blocked - filtered} не ${plural(blocked - filtered, ["проходит", "проходят", "проходят"])} по требованиям` : "",
       filtered ? `${filtered} вне твоих настроек поиска` : "",
     ].filter(Boolean);
-    await logEvent(campaign.userId, "discovery", `Найдено ${count(found, ["новая вакансия", "новые вакансии", "новых вакансий"])}: ${parts.join(", ")}`, null, { found, fits, weaker, blocked, filtered, queued: qualified });
+    await logEvent(campaign.userId, "discovery", `${plural(found, ["Найдена", "Найдено", "Найдено"])} ${count(found, ["новая вакансия", "новые вакансии", "новых вакансий"])}: ${parts.join(", ")}`, null, { found, fits, weaker, blocked, filtered, queued: qualified });
   }
   return { found, qualified, blocked };
 }
@@ -186,7 +208,7 @@ export async function discover(campaignId: string) {
  */
 export async function rerank(campaignId: string) {
   const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
-  const opps = await db.opportunity.findMany({ where: { campaignId }, include: { job: { select: SCORE_JOB_SELECT }, pkg: { select: { cvVersion: true } }, interviews: { select: { round: true } } } });
+  const opps = await db.opportunity.findMany({ where: { campaignId }, include: { job: { select: { ...SCORE_JOB_SELECT, location: true } }, pkg: { select: { cvVersion: true } }, interviews: { select: { round: true } } } });
   // An assessment is not an interview: only real rounds count as interview success for allocation.
   const allocation = allocationFrom(opps.map((o) => ({
     ...o,
@@ -209,13 +231,28 @@ export async function rerank(campaignId: string) {
   const autoSkipped = (o: (typeof opps)[number]) => o.status === "skipped" && !manualSkips.has(o.id) && j<string[]>(o.blockers, []).length > 0;
 
   let nowBlocked = 0, unblocked = 0;
-  for (const o of opps.filter((o) => o.status === "qualified" || o.status === "found" || autoSkipped(o))) {
+  // Prepared (not yet sent) packages are re-checked too: a setting turned off since (countries, salary floor, format…) must
+  // stop them before submission. The package is kept; the role is set aside with its blocker and comes back if it clears.
+  for (const o of opps.filter((o) => o.status === "qualified" || o.status === "found" || o.status === "prepared" || autoSkipped(o))) {
     const userPicked = o.decision === "apply" || o.decision === "auto";
     const r = scoreJob(c, scoreCtx(o.job), new Date(), { userPicked });
-    // An off-goal role (e.g. the goal's extra roles changed) leaves the agent's queue unless the user picked it.
-    const kept = o.status === "qualified" && !r.onGoal && !userPicked ? "found" : o.status;
-    const status = o.status === "skipped" ? (r.eligibility === "blocked" ? "skipped" : statusFor(r)) : r.eligibility === "blocked" ? "skipped" : kept;
-    if (status === "skipped" && o.status !== "skipped") nowBlocked++;
+    const fresh = statusFor(r);
+    let status: string;
+    if (r.eligibility === "blocked") status = "skipped";
+    else if (o.status === "prepared") status = "prepared";
+    else if (o.status === "skipped") status = userPicked ? "qualified" : fresh;
+    // An off-goal role (the goal's roles changed), one now below the queue bar, or a dream-company decision leaves the
+    // agent's queue unless the user picked it; a found role that became a dream-company decision shows as one.
+    else if (o.status === "qualified" && fresh !== "qualified" && !userPicked) status = "found";
+    else if (o.status === "found" && r.userDecision && fresh === "qualified") status = "qualified";
+    else status = o.status;
+    if (status === "skipped" && o.status !== "skipped") {
+      nowBlocked++;
+      if (o.status === "prepared") {
+        await db.approval.updateMany({ where: { opportunityId: o.id, status: "pending" }, data: { status: "rejected", answer: NO_LONGER_ELIGIBLE, resolvedAt: new Date() } });
+        await logEvent(campaign.userId, "rerank", `Не отправлено: ${roleLabelRu(o.job)} — ${blockerRu(r.blockers[0] ?? "")}`.replace(/ — $/, ""), o.id, { from: "prepared", to: "skipped", blockers: r.blockers });
+      }
+    }
     if (status !== "skipped" && o.status === "skipped") unblocked++;
     const data = { pInterview: r.pInterview, priority: r.priority, match: r.match, matchReasons: s(r.reasons), eligibility: r.eligibility, blockers: s(r.blockers), softGaps: s(r.softGaps), status };
     // Most rows score the same tick after tick: write only what changed (also keeps updatedAt meaningful).
@@ -225,6 +262,9 @@ export async function rerank(campaignId: string) {
   if (nowBlocked || unblocked) await logEvent(campaign.userId, "rerank", `Переоценка очереди: выбыли из очереди — ${nowBlocked}, вернулись в очередь — ${unblocked}`);
   return allocation;
 }
+
+/** Note on questions closed because their role no longer passes the user's settings (rerank / submit re-check). */
+export const NO_LONGER_ELIGIBLE = "Вакансия больше не проходит по твоим настройкам — вопрос закрыт";
 
 // Questions a human must answer once; afterwards the latest approved answer is reused as a standing answer,
 // and answering one pending copy answers every other pending copy of the same question (see ./approvals.ts).
@@ -248,6 +288,53 @@ export async function closeCampaignApprovals(campaignId: string) {
   return r.count;
 }
 
+/** A pending standing approval (same kind + question) of this user in a campaign that is still running. */
+function openStandingApproval(userId: string, kind: string, question: string) {
+  return db.approval.findFirst({ where: { userId, kind, question, status: "pending", opportunity: { campaign: { userId, status: { in: ["active", "paused"] } } } }, select: { id: true } });
+}
+
+/**
+ * Standing answers shared between packages. A prepared package whose standing question (sponsorship / legal / sensitive)
+ * has no card of its own takes the latest approved answer; while a card for it is still open elsewhere it keeps waiting;
+ * when that card is gone without an answer (its role was skipped or rejected), this package asks the question itself.
+ * Returns the opportunities whose package changed (callers let them continue).
+ */
+export async function settleSharedAnswers(userId: string) {
+  const opps = await db.opportunity.findMany({
+    where: { status: "prepared", campaign: { userId, status: { in: ["active", "paused"] } }, pkg: { isNot: null } },
+    select: { id: true, pkg: { select: { answers: true } }, approvals: { where: { status: "pending" }, select: { question: true } } },
+  });
+  const touched: string[] = [];
+  for (const o of opps) {
+    const answers = j<Answer[]>(o.pkg?.answers ?? "[]", []);
+    let changed = false;
+    for (const a of answers) {
+      if (a.status !== "pending" || !STANDING_KINDS.has(a.kind ?? "") || o.approvals.some((x) => x.question === a.q)) continue;
+      const prior = await db.approval.findFirst({ where: { userId, question: a.q, kind: a.kind, status: { in: ["approved", "edited"] }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
+      if (prior) { a.a = prior.answer; a.status = "approved"; changed = true; continue; }
+      if (await openStandingApproval(userId, a.kind!, a.q)) continue;
+      await db.approval.create({ data: { userId, opportunityId: o.id, kind: a.kind!, question: a.q, proposed: a.a } });
+      o.approvals.push({ question: a.q });
+    }
+    if (changed) {
+      await db.applicationPackage.update({ where: { opportunityId: o.id }, data: { answers: s(answers) } });
+      touched.push(o.id);
+    }
+  }
+  return touched;
+}
+
+/**
+ * The role's eligibility right now, under the current goal, settings and plan (the same scoring as discovery). Written back
+ * to the opportunity when it changed. The user's Apply / Auto turns only overridable level lines into soft gaps.
+ */
+export async function currentEligibility(opp: { id: string; decision: string; campaign: { userId: string; allocation: string; plan: string }; job: ScoreJobRow }) {
+  const { ctx } = await loadCandidate(opp.campaign.userId);
+  const r = scoreJob(ctx(j<Record<string, number>>(opp.campaign.allocation, {}), opp.campaign.plan), scoreCtx(opp.job), new Date(), { userPicked: opp.decision === "apply" || opp.decision === "auto" });
+  await db.opportunity.update({ where: { id: opp.id }, data: { eligibility: r.eligibility, blockers: s(r.blockers), softGaps: s(r.softGaps), match: r.match, matchReasons: s(r.reasons) } });
+  return r;
+}
+
 export type PrepareOptions = {
   /**
    * Preview ("Показать версию сейчас"): build and store the package only. The opportunity keeps its status
@@ -267,12 +354,15 @@ export async function prepare(opportunityId: string, opts: PrepareOptions = {}) 
     if (dup) {
       // Same company + role already prepared or sent from another location: this one is set aside, not applied twice.
       await db.opportunity.update({ where: { id: opportunityId }, data: { status: "skipped" } });
-      await logEvent(userId, "duplicate", `Пропущено: ${opp.job.title} — ${opp.job.company} (${opp.job.location || "другая локация"}) — на эту роль в компании уже есть заявка`, opportunityId, { duplicateOf: dup.id });
+      const other = await db.opportunity.findUnique({ where: { id: dup.id }, select: { job: { select: { company: true, title: true, location: true, remote: true } } } });
+      await logEvent(userId, "duplicate", `Пропущено: ${roleLabelRu(opp.job)} — на эту роль в компании уже есть заявка${other ? `: ${roleLabelRu(other.job)}` : ""}`, opportunityId, { duplicateOf: dup.id });
       return { pending: 0, duplicate: true };
     }
   }
   const { profile, facts, autonomy } = await loadCandidate(userId);
   const pkg = await buildPackage(profile, facts, jobLite(opp.job));
+  // One question, one answer: a question repeated inside the package is asked (and answered) once.
+  pkg.answers = pkg.answers.filter((a, i, all) => all.findIndex((b) => b.q.trim().toLowerCase() === a.q.trim().toLowerCase()) === i);
   // Agent screen: standard answers may require the user; sensitive questions may be auto-declined;
   // the salary answer follows "Change salary expectation" (floor range exactly when OFF).
   for (const a of pkg.answers) {
@@ -296,13 +386,17 @@ export async function prepare(opportunityId: string, opts: PrepareOptions = {}) 
   if (opts.preview) return { pending: pending.length, preview: true };
   for (const a of pending) {
     const open = await db.approval.findFirst({ where: { opportunityId, question: a.q, status: "pending" }, select: { id: true } });
-    if (!open) await db.approval.create({ data: { userId, opportunityId, kind: a.kind ?? "unknown_question", question: a.q, proposed: a.a } });
+    if (open) continue;
+    // A standing question already waiting on another role (e.g. the same sponsorship question from two roles at one
+    // company) is one card, not two: this package waits for that answer and takes it (settleSharedAnswers).
+    if (STANDING_KINDS.has(a.kind ?? "") && (await openStandingApproval(userId, a.kind!, a.q))) continue;
+    await db.approval.create({ data: { userId, opportunityId, kind: a.kind ?? "unknown_question", question: a.q, proposed: a.a } });
   }
   await db.opportunity.update({ where: { id: opportunityId }, data: { status: "prepared" } });
   const waits = pending.length ? `, ${count(pending.length, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} подтверждения` : "";
   const reusedNote = reused ? `, ${count(reused, ["ответ взят", "ответа взяты", "ответов взяты"])} из ранее подтверждённых` : "";
   // No internal version ids ("v3-data_analyst") in user-facing text: the CV is named by its company.
-  await logEvent(userId, "prepared", `Пакет готов: ${opp.job.title} — ${opp.job.company} (CV для ${opp.job.company}${waits}${reusedNote})`, opportunityId, { reused, pending: pending.length, cvVersion: version });
+  await logEvent(userId, "prepared", `Пакет готов: ${roleLabelRu(opp.job)} (CV для ${opp.job.company}${waits}${reusedNote})`, opportunityId, { reused, pending: pending.length, cvVersion: version });
   return { pending: pending.length };
 }
 
@@ -311,10 +405,22 @@ export async function prepare(opportunityId: string, opts: PrepareOptions = {}) 
  * user-authorized handoffs: the package is ready and the user submits through the official form.
  */
 export async function submit(opportunityId: string, via: "agent" | "user" = "agent") {
-  const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true, pkg: { select: { id: true } }, approvals: { where: { status: "pending" } } } });
+  const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true, pkg: { select: { id: true, answers: true } }, approvals: { where: { status: "pending" } } } });
   if (APPLIED_OR_LATER.includes(opp.status)) return { ok: false, reason: "already-submitted" };
   if (!opp.pkg) return { ok: false, reason: "no-package" }; // nothing may be written for an unprepared opportunity
-  if (opp.approvals.length && via === "agent") return { ok: false, reason: "approvals" };
+  if (opp.status === "skipped" && via === "agent") return { ok: false, reason: "blocked" };
+  // Re-check right before sending: settings may have changed since the package was prepared. A blocked role is never sent
+  // by the agent; the user's Apply / Auto overrides only level lines (scoreJob with userPicked).
+  if (via === "agent") {
+    const r = await currentEligibility(opp);
+    if (r.eligibility === "blocked") {
+      await db.opportunity.update({ where: { id: opportunityId }, data: { status: "skipped" } });
+      await db.approval.updateMany({ where: { opportunityId, status: "pending" }, data: { status: "rejected", answer: NO_LONGER_ELIGIBLE, resolvedAt: new Date() } });
+      await logEvent(opp.campaign.userId, "rerank", `Не отправлено: ${roleLabelRu(opp.job)} — ${blockerRu(r.blockers[0] ?? "")}`.replace(/ — $/, ""), opportunityId, { from: opp.status, to: "skipped", blockers: r.blockers });
+      return { ok: false, reason: "blocked" };
+    }
+  }
+  if ((opp.approvals.length || hasOpenAnswers(opp.pkg.answers)) && via === "agent") return { ok: false, reason: "approvals" };
   // Never twice to one role in a campaign. A user handoff is recorded regardless: the user already sent it themselves.
   if (via === "agent" && (await duplicateOf(opp))) return { ok: false, reason: "duplicate" };
   if (opp.job.source !== "demo" && via === "agent") {
@@ -326,7 +432,7 @@ export async function submit(opportunityId: string, via: "agent" | "user" = "age
   const moved = await db.opportunity.updateMany({ where: { id: opportunityId, status: { notIn: APPLIED_OR_LATER } }, data: { status: "submitted", submittedAt: new Date() } });
   if (!moved.count) return { ok: false, reason: "already-submitted" };
   await db.applicationPackage.update({ where: { opportunityId }, data: { submitMethod: via === "user" ? "user-handoff" : `ats:${opp.job.source}` } });
-  await logEvent(opp.campaign.userId, "submitted", `Заявка отправлена: ${opp.job.title} — ${opp.job.company}`, opportunityId, { method: via });
+  await logEvent(opp.campaign.userId, "submitted", `Заявка отправлена: ${roleLabelRu(opp.job)}`, opportunityId, { method: via });
   return { ok: true };
 }
 
@@ -361,6 +467,7 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
   const { autonomy } = await loadCandidate(campaign.userId);
   const d = autonomy.findJobs ? await discover(campaignId) : { found: 0, qualified: 0, blocked: 0 };
   await rerank(campaignId);
+  await settleSharedAnswers(campaign.userId);
   const since = startOfToday();
   const today = await dailyUsage(campaignId, since);
   let budget = Math.max(0, campaign.dailyLimit - today);
@@ -395,7 +502,8 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
   // User-confirmed ("apply") and user-delegated ("auto") roles go first; skipped roles never.
   const take = Math.min(budget, opts.maxPrepare ?? budget);
   // Over-fetch a little: a duplicate (same role, another location) is set aside by prepare() and takes no slot.
-  const queue = take > 0 ? await db.opportunity.findMany({ where: { campaignId, status: "qualified", decision: { not: "skip" } }, orderBy: [{ decision: "desc" }, { priority: "desc" }], take: take * 2 }) : [];
+  // Only roles the user picked or that clear Match ≥ QUEUE_MATCH (and aren't a dream-company decision): agentQueueWhere.
+  const queue = take > 0 ? await db.opportunity.findMany({ where: agentQueueWhere(campaignId), orderBy: [{ decision: "desc" }, { priority: "desc" }], take: take * 2 }) : [];
   for (const o of queue) {
     if (prepared >= take) break;
     const r = await prepare(o.id);
@@ -407,10 +515,13 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
     } else waiting++;
   }
   await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: new Date() } });
-  const decisions = await pendingDecisions(campaignId, campaign.autoSubmit, autonomy);
-  // No "ждут тебя: N" here: a stored count goes stale as soon as the user answers, and Today counts pending questions
-  // (pendingApprovalsCount) — a different thing from roles this cycle left unsent. The live number lives on Today.
-  await logEvent(campaign.userId, "tick", `Цикл агента: найдено +${d.found}, подготовлено ${prepared}, отправлено ${submitted}${decisions ? " · часть заявок ждёт твоего решения" : ""}`, null, { found: d.found, prepared, submitted, waiting, decisions });
+  // What waits on the user after this cycle, named exactly (the same counts as needsYou in src/lib/ops-data.ts, which
+  // every screen uses); nothing is claimed when nothing waits.
+  const { needsYouFor, needsYouLine } = await import("../ops-data");
+  const needs = await needsYouFor({ ...campaign, status: "active" }, campaign.userId, autonomy);
+  const decisions = needs.questions + needs.handoffs + needs.applyDecisions;
+  const line = needsYouLine(needs);
+  await logEvent(campaign.userId, "tick", `Цикл агента: найдено +${d.found}, подготовлено ${prepared}, отправлено ${submitted}${decisions && line ? ` · ${line}` : ""}`, null, { found: d.found, prepared, submitted, waiting, decisions, questions: needs.questions, handoffs: needs.handoffs, applyDecisions: needs.applyDecisions });
   return { ...d, prepared, submitted, waiting, budget: startBudget };
 }
 
@@ -422,9 +533,10 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
 export async function pendingDecisions(campaignId: string, autoSubmit: boolean, autonomy: Parameters<typeof agentMaySubmit>[1]) {
   const [approvals, prepared] = await Promise.all([
     db.approval.count({ where: { status: "pending", opportunity: { campaignId } } }),
-    db.opportunity.findMany({ where: { campaignId, status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } }, select: { decision: true, match: true } }),
+    db.opportunity.findMany({ where: { campaignId, status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } }, select: { decision: true, match: true, pkg: { select: { answers: true } } } }),
   ]);
-  const needApply = prepared.filter((o) => !autoSubmit || !agentMaySubmit(o, autonomy)).length;
+  // A package waiting for a standing answer asked on another role is that question, not a separate decision.
+  const needApply = prepared.filter((o) => !hasOpenAnswers(o.pkg?.answers) && (!autoSubmit || !agentMaySubmit(o, autonomy))).length;
   return approvals + needApply;
 }
 
@@ -451,7 +563,7 @@ export async function ingestEmail(userId: string, msg: { from: string; subject: 
   if (next && (closed || (next !== "rejected" && !isAhead(next, opp.status)))) next = null;
   if (next) {
     await db.opportunity.update({ where: { id: oppId }, data: { status: next } });
-    await logEvent(userId, "inbox", `${opp.job.company}: ${INBOX_EVENT_RU[c.cls] ?? "новое письмо"} → статус «${STATUS_RU_EVENT[next] ?? next}»`, oppId, { confidence: c.confidence });
+    await logEvent(userId, "inbox", inboxEventText(opp.job.company, c.cls, next), oppId, { confidence: c.confidence });
   }
   if (closed) return { message: saved, updated: false };
   const NOTE: Record<string, { title: string; body: string }> = {
@@ -474,7 +586,12 @@ export async function ingestEmail(userId: string, msg: { from: string; subject: 
   return { message: saved, updated: Boolean(next) };
 }
 
-export async function createInterview(userId: string, opportunityId: string, round: string, scheduledAt: Date | null = null) {
+/**
+ * Interview Room for a round. The date: the email's or the user's time, else a placeholder three days ahead. Unless the
+ * user picked the exact time (`exact`), it is snapped by snapRoundTime (src/lib/time.ts): an interview to a business-hours
+ * slot in Almaty (weekday 10:00–18:00, 30-min grid), an assessment deadline to 23:59 of its day.
+ */
+export async function createInterview(userId: string, opportunityId: string, round: string, scheduledAt: Date | null = null, opts: { exact?: boolean } = {}) {
   const existing = await db.interview.findFirst({ where: { opportunityId, round } });
   if (existing) return existing;
   const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true } });
@@ -483,7 +600,7 @@ export async function createInterview(userId: string, opportunityId: string, rou
     name: profile.name, role: opp.job.title, company: opp.job.company, round, jd: opp.job.description, technologies: j<string[]>(opp.job.technologies, []), skills: profile.skills, yearsExperience: profile.yearsExperience,
     stories: stories.map((x) => ({ ...x, tags: j<string[]>(x.tags, []) })), facts: facts.map((f) => ({ ...f, teamSize: null })),
   });
-  const iv = await db.interview.create({ data: { userId, opportunityId, round, scheduledAt: scheduledAt ?? new Date(Date.now() + 3 * 86400000), pack: s(pack) } });
+  const iv = await db.interview.create({ data: { userId, opportunityId, round, scheduledAt: roundTime(round, scheduledAt, opts.exact), pack: s(pack) } });
   await logEvent(userId, "interview_room", `Interview Room создан: ${opp.job.company} — ${ROUND_LABEL[round] ?? round}`, opportunityId);
   return iv;
 }
@@ -492,7 +609,9 @@ export async function createInterview(userId: string, opportunityId: string, rou
  * Move a round to a new date: Interview.scheduledAt and the deadline of the emails that set it (same opportunity, same
  * kind) change together, so the Interview Room, the inbox and the push always show one date.
  */
-export async function rescheduleInterview(interviewId: string, at: Date) {
+export async function rescheduleInterview(interviewId: string, when: Date, opts: { exact?: boolean } = {}) {
+  const cur = await db.interview.findUniqueOrThrow({ where: { id: interviewId }, select: { round: true } });
+  const at = roundTime(cur.round, when, opts.exact);
   const iv = await db.interview.update({ where: { id: interviewId }, data: { scheduledAt: at }, select: { opportunityId: true, round: true, userId: true } });
   await db.inboxMessage.updateMany({
     where: { userId: iv.userId, opportunityId: iv.opportunityId, classification: iv.round === "assessment" ? "assessment" : "interview", deadline: { not: null } },
@@ -501,6 +620,13 @@ export async function rescheduleInterview(interviewId: string, at: Date) {
   if (iv.round === "assessment") {
     await db.inboxMessage.updateMany({ where: { userId: iv.userId, opportunityId: iv.opportunityId, classification: "assessment", deadline: null }, data: { deadline: at } });
   }
+  return at;
+}
+
+/** Stored time of a round: the given one snapped (unless exact), or a placeholder three days ahead, snapped. */
+function roundTime(round: string, at: Date | null, exact = false) {
+  if (at && exact) return at;
+  return snapRoundTime(round, at ?? new Date(Date.now() + 3 * 86400000));
 }
 
 /** The date of a round, for every screen: Interview.scheduledAt (an assessment's deadline, an interview's time). */

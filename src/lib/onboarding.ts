@@ -1,7 +1,9 @@
 import "server-only";
 import { db, j, s } from "./db";
 import { parseCV, reliableYears, type ParsedCV } from "./engine/profile";
-import { assessReadiness, suggestAdjacentRoles, type Readiness, type ReadinessInput } from "./engine/readiness";
+import { assessReadiness, isLocalMarket, marketNote, suggestAdjacentRoles, usdYearToKztMonth, type Readiness, type ReadinessInput } from "./engine/readiness";
+import { marketRange } from "./engine/market";
+import { count, plural } from "./ru";
 import { scoreJob, type CandidateCtx, type MatchResult } from "./engine/matching";
 import { jobCtx } from "./engine/agent";
 import { ensureSeedJobs } from "./engine/ingest";
@@ -239,6 +241,10 @@ export type CheckResult = {
     match: number; reasons: MatchResult["reasons"]; eligibility: MatchResult["eligibility"]; blockers: string[]; softGaps: string[]; pInterview: number;
   };
   positioning: null | { before: string; headline: string; after: string; skillsBefore: string[]; skillsAfter: string[] };
+  /** The user's target title exactly as typed (or the recognised family); show the level next to it, never merged into it. */
+  targetTitle?: string;
+  /** Salary market the check read (the candidate's likely market; KZ/CIS in ₸ per month with USD per year second). */
+  market?: { regions: string[]; local: boolean; usdYear: { low: number; mid: number; high: number }; kztMonth: { low: number; mid: number; high: number } | null; line: string };
 };
 
 const EN_IDX: Record<string, number> = { A1: 1, A2: 2, B1: 3, B2: 4, C1: 5, C2: 6 };
@@ -266,19 +272,32 @@ export async function buildCareerCheck(cvText: string, targetRaw: string): Promi
   const target = targetRaw.trim();
   let family = classifyRole(target || cv.headline || "");
   if (family === "other") family = bestFamilyBySkills(cv.skills);
+  // The user's title stays as written («Product Manager» never becomes «Senior Product Manager»); the level is separate.
   const roleLabel = target || ROLE_FAMILIES[family]?.label || "Other";
   const seniority = seniorityFromYears(cv.yearsExperience);
   const english = EN_IDX[cv.englishLevel] ? cv.englishLevel : "B1";
   const intl = (EN_IDX[english] ?? 3) >= 4;
   const countries = intl ? ["KZ", "CIS", "WORLD"] : ["KZ", "CIS"];
   const workModes = ["remote", "hybrid"];
+  // No target countries are asked on /check: the salary market is the candidate's likely one. A Kazakhstan (or unknown —
+  // /check assumes KZ citizenship) location reads the KZ/CIS market in ₸ per month; elsewhere the search regions.
+  const kzLocated = !cv.location.trim() || /kazakh|almaty|astana|nur-sultan|shymkent|karagand|aktobe|atyrau|pavlodar|kostanay|oskemen|taraz|казах|алмат|астан|шымкент|караганд|актоб|атырау|павлодар|костанай|тараз|\bKZ\b/i.test(cv.location);
+  const marketRegions = kzLocated ? ["KZ", "CIS"] : countries;
 
   const readiness = assessReadiness({
     profile: { yearsExperience: cv.yearsExperience, skills: cv.skills, englishLevel: english, cvText, summary: cv.summary, workAuth: ["KZ"], needsSponsorship: true, linkedin: cv.linkedin, github: cv.github, portfolio: "" },
     facts: cv.facts.map((f) => ({ kind: f.kind, metrics: f.metrics, verified: false })),
     stories: 0,
-    goal: { primaryRole: roleLabel, seniority, minSalary: 0, countries, workModes, dreamCompanies: [], sponsorshipNeeded: true },
+    goal: { primaryRole: roleLabel, seniority, minSalary: 0, countries, workModes, dreamCompanies: [], sponsorshipNeeded: true, countriesGiven: false, marketRegions },
   });
+  const range = marketRange(family, seniority, marketRegions);
+  const market: CheckResult["market"] = {
+    regions: marketRegions,
+    local: isLocalMarket(marketRegions),
+    usdYear: { low: range.low, mid: range.mid, high: range.high },
+    kztMonth: isLocalMarket(marketRegions) ? { low: usdYearToKztMonth(range.low), mid: usdYearToKztMonth(range.mid), high: usdYearToKztMonth(range.high) } : null,
+    line: marketNote(range, marketRegions),
+  };
 
   const strengths: string[] = [];
   const weaknesses: string[] = [];
@@ -286,7 +305,7 @@ export async function buildCareerCheck(cvText: string, targetRaw: string): Promi
     if (c.key === "stories" || c.key === "experience") continue; // not meaningful before facts are reviewed
     (c.status === "ok" ? strengths : weaknesses).push(`${c.label}: ${c.note}`);
   }
-  if (cv.skills.length >= 5) strengths.unshift(`${cv.skills.length} hard skills распознано в CV`);
+  if (cv.skills.length >= 5) strengths.unshift(`В CV ${plural(cv.skills.length, ["найден", "найдено", "найдено"])} ${count(cv.skills.length, ["навык", "навыка", "навыков"])}`);
   const roles = Array.from(new Set([ROLE_FAMILIES[family]?.label, ...suggestAdjacentRoles(family, cv.skills)].filter((x): x is string => Boolean(x) && x !== "Other"))).slice(0, 4);
 
   // Best single vacancy from the live/demo corpus.
@@ -332,7 +351,7 @@ export async function buildCareerCheck(cvText: string, targetRaw: string): Promi
   }
 
   return {
-    v: 1, target, roleLabel, seniority, years: cv.yearsExperience, english, skills: cv.skills,
+    v: 1, target, roleLabel, targetTitle: roleLabel, market, seniority, years: cv.yearsExperience, english, skills: cv.skills,
     factsCount: cv.facts.length, metricsCount: cv.facts.filter((f) => f.metrics).length, by,
     readiness, strengths: strengths.slice(0, 5), weaknesses: weaknesses.slice(0, 5), roles, job: jobOut, positioning,
   };

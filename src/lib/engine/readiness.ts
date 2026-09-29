@@ -9,7 +9,13 @@ export type ReadinessInput = {
   stories: number;
   /** Overall scores of the user's mock interviews (for the shared interview readiness). */
   mockScores?: number[];
-  goal: { primaryRole: string; seniority: string; minSalary: number; countries: string[]; workModes: string[]; dreamCompanies: string[]; sponsorshipNeeded: boolean };
+  goal: {
+    primaryRole: string; seniority: string; minSalary: number; countries: string[]; workModes: string[]; dreamCompanies: string[]; sponsorshipNeeded: boolean;
+    /** False when the user named no target countries (the free /check): the geo line says so instead of claiming a right to work. */
+    countriesGiven?: boolean;
+    /** Regions the salary market is read for; default = countries. The /check passes the candidate's likely market (KZ/CIS). */
+    marketRegions?: string[];
+  };
 };
 
 export type ReadinessCheck = { key: string; label: string; score: number; weight: number; note: string; status: "ok" | "warn" | "bad" };
@@ -27,6 +33,24 @@ export type Eligibility = {
 export type Readiness = { score: number; verdict: "ready" | "stretch" | "unrealistic"; probability: "high" | "medium" | "low" | "very_low"; checks: ReadinessCheck[]; suggestions: string[]; suggestedSeniority: string; suggestedRoles: string[]; interview: InterviewReadiness; eligibility: Eligibility };
 
 const NAMED_FOREIGN = ["EU", "UK", "US", "CA", "MENA"];
+
+/** The market is local: every region is Kazakhstan or the CIS (then salaries read in ₸ per month). */
+export const isLocalMarket = (regions: string[]) => regions.length > 0 && regions.every((r) => r === "KZ" || r === "CIS");
+
+/** A USD/year model figure as ₸ per month, rounded to 10 000 ₸. */
+export const usdYearToKztMonth = (usd: number) => Math.round((usd * 500) / 12 / 10000) * 10000;
+
+/**
+ * The salary market line. A local (KZ/CIS) market reads in ₸ per month with USD per year second:
+ * «Рынок Казахстана и СНГ ≈ 480 000–680 000 ₸ в месяц (≈ $11 000–16 000 в год)»; otherwise «Рынок ≈ $52 000–73 000 в год».
+ */
+export function marketNote(range: { low: number; high: number }, regions: string[]) {
+  if (isLocalMarket(regions)) {
+    const where = regions.includes("CIS") ? "Рынок Казахстана и СНГ" : "Рынок Казахстана";
+    return `${where} ≈ ${fmtMoneyRange(usdYearToKztMonth(range.low), usdYearToKztMonth(range.high), "KZT")} в месяц (≈ ${fmtMoneyRange(range.low, range.high)} в год)`;
+  }
+  return `Рынок ≈ ${fmtMoneyRange(range.low, range.high)} в год`;
+}
 const VISA_CAP = 65;
 
 /**
@@ -98,9 +122,10 @@ export function assessReadiness(input: ReadinessInput): Readiness {
   if (intl && en < 4) suggestions.push("Для международных ролей нужен английский B2+. Сфокусируйся на СНГ-рынке или remote-ролях с B1.");
 
   // Salary realism
-  const range = marketRange(family, goal.seniority, goal.countries);
+  const marketRegions = goal.marketRegions ?? goal.countries;
+  const range = marketRange(family, goal.seniority, marketRegions);
   const salScore = !goal.minSalary ? 80 : goal.minSalary <= range.mid ? 100 : goal.minSalary <= range.high ? 60 : 20;
-  push({ key: "salary", label: "Зарплатные ожидания", score: salScore, weight: 1, note: `Рынок ≈ ${fmtMoneyRange(range.low, range.high)}` });
+  push({ key: "salary", label: "Зарплатные ожидания", score: salScore, weight: 1, note: marketNote(range, marketRegions) });
   if (salScore < 50) suggestions.push(`Ожидание ${fmtMoney(goal.minSalary)} выше рынка для ${SENIORITY_LABEL[goal.seniority] ?? goal.seniority}. Снизь минимум до ~${fmtMoney(range.mid)} или подними уровень.`);
 
   // Geography & authorization
@@ -109,7 +134,8 @@ export function assessReadiness(input: ReadinessInput): Readiness {
   const onsiteOnly = !goal.workModes.includes("remote");
   const authorizedSomewhere = targetCountries.includes("*") || targetCountries.some((c) => authCountries.has(c));
   const geoScore = !onsiteOnly ? (authorizedSomewhere ? 100 : 70) : authorizedSomewhere ? 90 : profile.needsSponsorship ? 25 : 60;
-  push({ key: "geo", label: "География и право на работу", score: geoScore, weight: 1.2, note: authorizedSomewhere ? "Есть право работы в целевых странах" : "Нужна виза/спонсорство" });
+  const countriesGiven = goal.countriesGiven !== false && goal.countries.length > 0;
+  push({ key: "geo", label: "География и право на работу", score: geoScore, weight: 1.2, note: !countriesGiven ? "Страны не указаны" : authorizedSomewhere ? "Есть право работы в целевых странах" : "Нужна виза/спонсорство" });
   if (geoScore < 50) suggestions.push("Onsite-роли за рубежом без права на работу почти всегда блокируются. Добавь remote или страны со спонсорством.");
 
   // Portfolio / links

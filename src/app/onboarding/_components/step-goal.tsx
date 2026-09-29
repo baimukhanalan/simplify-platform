@@ -4,7 +4,7 @@ import { Sparkles } from "lucide-react";
 import { saveGoal, type FormState } from "@/lib/actions/onboarding";
 import { marketRange } from "@/lib/engine/market";
 import { fxToUsd, toUSD } from "@/lib/engine/fx";
-import { classifyRole, SENIORITY, SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { classifyRole, SENIORITY, SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
 import { cx } from "@/components/ui";
 import { useActionForm } from "../../_components/use-action-form";
 import { goalMarket, goalTitle } from "../../app/readiness/_components/model";
@@ -22,8 +22,8 @@ const usdYearToKztMonth = (usd: number) => roundTo((usd * KZT_PER_USD) / 12, 100
 const kztMonthToUsdYear = (kzt: number) => toUSD(kzt * 12, "KZT");
 const KZT_PRESETS = [400000, 600000, 800000, 1200000];
 const USD_PRESETS = [30000, 50000, 80000, 120000];
-const fmtKzt = (n: number) => `${n.toLocaleString("ru-RU")} ₸`;
-const fmtUsd = (n: number) => `$${n.toLocaleString("en-US")}`;
+const fmtKzt = (n: number) => fmtMoney(n, "KZT");
+const fmtUsd = (n: number) => fmtMoney(n);
 
 export const REGION_CHIPS: [string, string][] = [
   ["EU", "Европа"], ["US", "США"], ["UK", "Великобритания"], ["CA", "Канада"], ["WORLD", "Удалённо"], ["KZ", "Казахстан"], ["CIS", "СНГ"], ["MENA", "Ближний Восток"],
@@ -116,7 +116,7 @@ export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggest
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <label htmlFor={`${id}-sal`} className="label">{kzt ? "Минимальная зарплата, ₸ в месяц" : "Минимальная зарплата, USD в год"}</label>
-            <input id={`${id}-sal`} value={entered ? entered.toLocaleString(kzt ? "ru-RU" : "en-US") : ""} onChange={(e) => setSalary(e.target.value.replace(/\D/g, "").slice(0, 8))} inputMode="numeric" placeholder={kzt ? usdYearToKztMonth(range.mid).toLocaleString("ru-RU") : range.mid.toLocaleString("en-US")} className="field num" aria-describedby={`${id}-mkt`} />
+            <input id={`${id}-sal`} value={entered ? entered.toLocaleString("ru-RU") : ""} onChange={(e) => setSalary(e.target.value.replace(/\D/g, "").slice(0, 8))} inputMode="numeric" placeholder={kzt ? usdYearToKztMonth(range.mid).toLocaleString("ru-RU") : range.mid.toLocaleString("ru-RU")} className="field num" aria-describedby={`${id}-mkt`} />
             {/*
               The save action stores minSalary as USD / year, so ₸ are converted here. salaryCurrency + salaryLocal carry the
               original annual ₸ amount for the action to keep the goal in KZT once it reads them.
@@ -131,7 +131,7 @@ export function StepGoal({ initial, note, years, suggestedSeniority, roleSuggest
               ))}
             </div>
             <span id={`${id}-mkt`} className="text-[12px] text-ink-3">
-              Рынок для цели: <span className="num">{kzt ? `${fmtKzt(usdYearToKztMonth(range.low))}–${fmtKzt(usdYearToKztMonth(range.high))} в месяц` : `$${Math.round(range.low / 1000)}k–$${Math.round(range.high / 1000)}k в год`}</span>
+              Рынок для цели: <span className="num">{kzt ? `${fmtKzt(usdYearToKztMonth(range.low))}–${fmtKzt(usdYearToKztMonth(range.high))} в месяц` : `${fmtMoney(range.low)}–${fmtMoney(range.high)} в год`}</span>
               {sal > range.high && <span className="text-amber"> · выше рынка — вакансий будет мало</span>}
               {sal > 0 && sal <= range.mid && <span className="text-green"> · реалистично</span>}
             </span>

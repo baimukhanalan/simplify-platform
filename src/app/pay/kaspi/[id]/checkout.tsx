@@ -5,8 +5,9 @@ import { useRouter } from "next/navigation";
 import { Check, Loader2, Smartphone, X } from "lucide-react";
 import type { InvoiceView } from "@/lib/payments/kaspi";
 import { Logo } from "@/components/ui";
+import { fmtKzt } from "@/lib/engine/taxonomy";
 
-const fmt = (n: number) => `${n.toLocaleString("ru-RU")} ₸`;
+const fmt = (n: number) => fmtKzt(n);
 
 const ERRORS: Record<string, string> = {
   "campaign already active": "У тебя уже идёт кампания — повторная оплата не нужна.",
@@ -90,7 +91,7 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
   return (
     <>
     <div className="flex items-center justify-between">
-      <Link href={paid ? "/app" : newInvoiceHref} className="inline-flex min-h-10 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green" aria-label={paid ? "Simplify — в кабинет" : "Simplify — назад к выбору плана"}><Logo /></Link>
+      <Link href={paid ? "/app" : newInvoiceHref} className="inline-flex min-h-10 shrink-0 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green" aria-label={paid ? "Simplify — в кабинет" : "Simplify — назад к выбору плана"}><Logo /></Link>
       {/* Nothing to cancel once the money went through. */}
       {!paid && <Link href={newInvoiceHref} className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-3 hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Отменить</Link>}
     </div>

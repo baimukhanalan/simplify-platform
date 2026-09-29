@@ -49,6 +49,8 @@ export type MatchResult = {
   pInterview: number; priority: number; lane: "standard" | "target" | "mass"; segment: string; freshnessDays: number;
   /** The role is one the goal asks for (primary or extra role; a mass-hiring role in Mass mode). Off-goal roles are never queued by the agent. */
   onGoal: boolean;
+  /** A dream-company role held back only by level: shown as the user's decision (DREAM_DECISION), never queued by the agent. */
+  userDecision: boolean;
 };
 
 /**
@@ -171,12 +173,20 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date(), opts: S
   // Apply/Auto on the role overrides it (then it is only a note).
   if (seniorityIndex(c.goal.seniority) >= seniorityIndex("middle") && isEntryProgram(job)) (opts.userPicked ? softGaps : blockers).push(BELOW_GOAL);
 
+  // A dream company blocked only by level (below the goal, or one level/years step too far) is the user's call, not a silent
+  // skip: the lines become soft gaps and the role waits for the user's Apply / Skip (DREAM_DECISION marks it).
+  const dream = c.goal.dreamCompanies.some((d) => d && job.company.toLowerCase().includes(d.toLowerCase()));
+  let userDecision = false;
+  if (dream && blockers.length && blockers.every(isLevelBlocker)) {
+    softGaps.unshift(...blockers.splice(0));
+    if (!opts.userPicked) { softGaps.unshift(DREAM_DECISION); userDecision = true; }
+  }
+
   const eligibility = blockers.length ? "blocked" : softGaps.length > 2 ? "soft" : "eligible";
 
   // ——— Ranking: P(Interview | candidate, job, company, timing) ———
   const freshnessDays = Math.max(0, (now.getTime() - job.postedAt.getTime()) / 86400000);
   const fresh = freshnessDays < 1 ? 1.25 : freshnessDays < 3 ? 1.12 : freshnessDays < 7 ? 1 : freshnessDays < 14 ? 0.82 : freshnessDays < 30 ? 0.6 : 0.35;
-  const dream = c.goal.dreamCompanies.some((d) => d && job.company.toLowerCase().includes(d.toLowerCase()));
   const competition = job.remote === "remote" && !job.massHiring ? 0.8 : 1; // global remote roles attract more applicants
   const massBoost = job.massHiring ? 1.35 : 1;
   const segmentWeight = c.allocation[job.roleFamily] ?? 1;
@@ -188,10 +198,28 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date(), opts: S
 
   const onGoal = wanted.includes(job.roleFamily) || (c.goal.mode === "mass" && job.massHiring);
 
-  return { match, reasons, eligibility, blockers, softGaps, pInterview: Math.round(pInterview * 1000) / 1000, priority, lane, segment: job.roleFamily, freshnessDays: Math.round(freshnessDays * 10) / 10, onGoal };
+  return { match, reasons, eligibility, blockers, softGaps, pInterview: Math.round(pInterview * 1000) / 1000, priority, lane, segment: job.roleFamily, freshnessDays: Math.round(freshnessDays * 10) / 10, onGoal, userDecision };
 }
 
 export const BELOW_GOAL = "Уровень ниже цели";
+
+/** Soft-gap marker: a dream-company role held back only by level — the agent never takes it on its own; the user decides. */
+export const DREAM_DECISION = "Компания мечты — реши сам";
+
+/** Level lines: below the goal (internship / graduate programme), or years / seniority above the candidate. */
+export function isLevelBlocker(line: string) {
+  const t = blockerRu(line);
+  return t === BELOW_GOAL || /^Нужно .+ опыта, у тебя .+ — роль на уровень выше$/.test(t) || /^Уровень .+ недостижим с текущим опытом$/.test(t);
+}
+
+/**
+ * Blockers the user may override with Apply / Auto: only «Уровень ниже цели» (any company) or, at a dream company, any
+ * level line. Everything else (visa, language, the plan, the user's own filters…) stays a hard stop. Empty = not blocked.
+ */
+export function isOverridable(blockers: string[] | string, opts: { dream?: boolean } = {}) {
+  const list = Array.isArray(blockers) ? blockers : (() => { try { const v = JSON.parse(blockers || "[]"); return Array.isArray(v) ? (v as string[]) : []; } catch { return []; } })();
+  return list.length > 0 && list.every((b) => blockerRu(b) === BELOW_GOAL || (opts.dream === true && isLevelBlocker(b)));
+}
 
 /**
  * Who fails whom. "filter" = the job fails the user's own choices (salary floor, work format, relocation, regions, the

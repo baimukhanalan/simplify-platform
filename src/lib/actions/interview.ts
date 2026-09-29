@@ -221,7 +221,7 @@ export async function createNextRound(form: FormData) {
   if (iv.status !== "passed" || !next) redirect(room(iv.id, "debrief"));
   const raw = String(form.get("scheduledAt") ?? "");
   const when = raw ? new Date(raw) : null;
-  const created = await createInterview(user.id, iv.opportunityId, next, when && !Number.isNaN(when.getTime()) ? when : null);
+  const created = await createInterview(user.id, iv.opportunityId, next, when && !Number.isNaN(when.getTime()) ? when : null, { exact: true });
   if (isAhead(next, iv.opportunity.status)) await db.opportunity.update({ where: { id: iv.opportunityId }, data: { status: next } });
   revalidatePath("/app", "layout");
   redirect(room(created.id));

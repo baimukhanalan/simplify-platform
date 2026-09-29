@@ -23,7 +23,7 @@ export async function createShareLink(): Promise<ShareResult> {
 export async function revokeShareLink(): Promise<{ ok: true }> {
   const user = await requireUser();
   const res = await db.campaign.updateMany({ where: { userId: user.id, shareToken: { not: null } }, data: { shareToken: null } });
-  if (res.count) await logEvent(user.id, "share_revoked", "Публичная ссылка на Simplify journey отключена");
+  if (res.count) await logEvent(user.id, "share_revoked", "Публичная ссылка на историю поиска отключена");
   revalidatePath("/app/hired");
   return { ok: true };
 }
@@ -50,7 +50,7 @@ async function issue(userId: string, campaignId: string): Promise<ShareResult> {
         if (fresh?.shareToken) return { ok: true, path: `/share/${fresh.shareToken}` };
         continue;
       }
-      await logEvent(userId, "share_created", "Создана публичная ссылка на Simplify journey");
+      await logEvent(userId, "share_created", "Создана публичная ссылка на историю поиска");
       return { ok: true, path: `/share/${token}` };
     } catch {
       // unique collision — astronomically unlikely, retry with a new token

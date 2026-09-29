@@ -7,6 +7,7 @@ import { db, j, s, noNul } from "../db";
 import { parseCV } from "../engine/profile";
 import { count } from "../ru";
 import { marketRange } from "../engine/market";
+import { usdToGoalAmount } from "../engine/fx";
 import { REGIONS, SENIORITY, classifyRole, cleanRoleTitle, extractSkills } from "../engine/taxonomy";
 import { buildCareerCheck, chatTurnsFor, confirmSeniority, intlAuthRegions, markStepDone, readinessForUser, syncSeniorityFromYears, syncYearsFromFacts, LAST_STEP, STEP } from "../onboarding";
 import { cleanIntent, intentToGoal } from "../../app/_components/campaign-intent";
@@ -279,7 +280,8 @@ export async function applyAdjustment(form: FormData) {
     await confirmSeniority(user.id, r.suggestedSeniority);
   } else if (kind === "salary") {
     const range = marketRange(classifyRole(g.primaryRole), g.seniority, countries);
-    await db.goal.update({ where: { userId: user.id }, data: { minSalary: range.mid } });
+    // The market median is a USD model figure; the goal keeps its own currency (₸ stays ₸).
+    await db.goal.update({ where: { userId: user.id }, data: { minSalary: usdToGoalAmount(range.mid, g.currency) } });
   } else if (kind === "remote") {
     const modes = Array.from(new Set([...j<string[]>(g.workModes, []), "remote"]));
     await db.goal.update({ where: { userId: user.id }, data: { workModes: s(modes) } });

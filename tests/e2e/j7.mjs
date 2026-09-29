@@ -117,15 +117,18 @@ const lastTick = async (userId) => (await db.event.findFirst({ where: { userId, 
   check(newSens === 0, "J7.sens.decline", "sensitive=decline -> no new sensitive approvals", newSens);
   const pk = await db.applicationPackage.findFirst({ where: { opportunity: { campaignId: camp.id, updatedAt: { gte: new Date(Date.now() - 60000) } } } });
   const ans = pk && JSON.parse(pk.answers).find((x) => x.kind === "sensitive");
-  check(ans?.a === "I don't wish to answer" && ans.status === "approved", "J7.sens.answer", "sensitive answered 'I don't wish to answer'", ans);
+  // Round 8: the employer-facing opt-out is "I prefer not to answer" (SENSITIVE_DECLINE, src/lib/engine/autonomy.ts); the UI shows «Предпочитаю не указывать».
+  check(ans?.a === "I prefer not to answer" && ans.status === "approved", "J7.sens.answer", "sensitive answered 'I prefer not to answer'", ans);
   const stillPending = await db.approval.count({ where: { userId: c.user.id, kind: "sensitive", status: "pending" } });
   console.log(`  sensitive approvals created before switching to decline still pending: ${stillPending} (queue not cleaned up)`);
   check(stillPending === 0, "J7.sens.decline.backlog", "switching to 'prefer not to say' resolves the already-queued sensitive questions", stillPending);
 }
 
 // ——— 4. outsideCountries ON -> fewer blockers
+// Round 8: a Local / CIS plan never applies outside KZ/CIS («Вне тарифа Local / CIS»), whatever the Agent screen says —
+// so the toggle is exercised on an International campaign with a KZ-only goal, and the Local plan is checked to stay scoped.
 {
-  const { c, camp } = await fresh("j7ctry", { where: ["kz"], plan: "local", salary: 0 });
+  const { c, camp } = await fresh("j7ctry", { where: ["kz"], plan: "international", salary: 0 });
   const blockedBefore = await db.opportunity.count({ where: { campaignId: camp.id, eligibility: "blocked" } });
   await save(c, { outsideCountries: "on" });
   await run(c);
@@ -134,7 +137,18 @@ const lastTick = async (userId) => (await db.event.findFirst({ where: { userId, 
   await save(c, {});
   await run(c);
   const blockedBack = await db.opportunity.count({ where: { campaignId: camp.id, eligibility: "blocked" } });
-  check(blockedBack >= blockedBefore - 1, "J7.ctry.back", "turning it OFF re-blocks", { blockedBack });
+  // Roles the agent prepared while the toggle was ON must be re-checked too: otherwise the next cycle submits them outside the goal.
+  const stale = await db.opportunity.findMany({ where: { campaignId: camp.id, status: "prepared", eligibility: { not: "blocked" }, softGaps: { contains: "Страна вне цели" } }, include: { job: { select: { title: true, company: true } } } });
+  check(blockedBack >= blockedBefore - 1 && stale.length === 0, "J7.ctry.back", "turning it OFF re-blocks (prepared packages included)", { blockedBefore, blockedBack, preparedStillEligibleOutsideGoal: stale.map((o) => `${o.job.title} — ${o.job.company}`) });
+}
+{
+  const { c, camp } = await fresh("j7ctryl", { where: ["kz"], plan: "local", salary: 0 });
+  await save(c, { outsideCountries: "on" });
+  await run(c);
+  const opps = await db.opportunity.findMany({ where: { campaignId: camp.id }, include: { job: { select: { countries: true, title: true } } } });
+  const outside = opps.filter((o) => o.blockers.includes("Вне тарифа"));
+  const leaked = outside.filter((o) => o.eligibility !== "blocked" || ["prepared", "submitted"].includes(o.status));
+  check(outside.length > 0 && leaked.length === 0, "J7.ctry.local", "Local plan + outsideCountries ON: roles outside KZ/CIS stay blocked «Вне тарифа Local / CIS», none prepared/submitted", { outside: outside.length, leaked: leaked.map((o) => `${o.job.title} ${o.job.countries} ${o.status}`).slice(0, 5) });
 }
 
 // ——— 5. belowSalaryFloor

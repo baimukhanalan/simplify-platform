@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { scoreJob, requiredYears, type CandidateCtx, type JobCtx } from "../src/lib/engine/matching";
+import { scoreJob, requiredYears, DREAM_DECISION, type CandidateCtx, type JobCtx } from "../src/lib/engine/matching";
 import { normalizeTitle, roleKey } from "../src/lib/engine/taxonomy";
 import { careerScore } from "../src/lib/engine/career";
 import { assessReadiness } from "../src/lib/engine/readiness";
@@ -37,7 +37,7 @@ const job = (over: Partial<JobCtx> = {}): JobCtx => ({
 // ——— 1a: roles clearly above the candidate are hard-blocked ———
 describe("1a · no applications above the candidate's level", () => {
   test("a 2-year analyst is blocked from Senior Data Analyst (5+ years)", () => {
-    const r = scoreJob(candidate(), job({ title: "Senior Data Analyst", seniority: "senior", minYears: 5 }), NOW);
+    const r = scoreJob(candidate(), job({ company: "Acme", title: "Senior Data Analyst", seniority: "senior", minYears: 5 }), NOW);
     assert.equal(r.eligibility, "blocked");
     assert.ok(r.blockers.some((b) => /Нужно 5\+ лет опыта, у тебя 2 года/.test(b)), r.blockers.join(" | "));
     assert.equal(r.pInterview, 0);
@@ -45,8 +45,8 @@ describe("1a · no applications above the candidate's level", () => {
 
   test("a Senior title with no stated years still implies 4+ — blocked for 2 years", () => {
     assert.equal(requiredYears({ minYears: 0, seniority: "senior" }), 4);
-    assert.equal(scoreJob(candidate(), job({ title: "Senior Data Analyst", seniority: "senior", minYears: 0 }), NOW).eligibility, "blocked");
-    assert.equal(scoreJob(candidate(), job({ title: "Lead Data Analyst", seniority: "lead", minYears: 0 }), NOW).eligibility, "blocked");
+    assert.equal(scoreJob(candidate(), job({ company: "Acme", title: "Senior Data Analyst", seniority: "senior", minYears: 0 }), NOW).eligibility, "blocked");
+    assert.equal(scoreJob(candidate(), job({ company: "Acme", title: "Lead Data Analyst", seniority: "lead", minYears: 0 }), NOW).eligibility, "blocked");
   });
 
   test("a one-step stretch stays soft: 3 years for a Senior role (4+), 2 years for 3+", () => {
@@ -58,7 +58,7 @@ describe("1a · no applications above the candidate's level", () => {
   });
 
   test("fractional years read in Russian with a decimal comma", () => {
-    const r = scoreJob(candidate({ yearsExperience: 3.4 }), job({ minYears: 6 }), NOW);
+    const r = scoreJob(candidate({ yearsExperience: 3.4 }), job({ company: "Acme", minYears: 6 }), NOW);
     assert.ok(r.blockers.some((b) => b.includes("у тебя 3,4 года")), r.blockers.join(" | "));
   });
 
@@ -192,9 +192,11 @@ describe("1a/1b · discover()", () => {
     const titles = opps.map((o) => `${o.job.company}:${o.job.title}:${o.status}`).sort();
     assert.equal(opps.filter((o) => o.job.company === "Dupco").length, 1, titles.join(", "));
     assert.ok(!opps.some((o) => ["data_scientist", "qa"].includes(o.job.roleFamily)), titles.join(", "));
+    // A dream company held back only by level is the user's decision now (round 10 · 3), not a silent skip.
     const senior = opps.find((o) => o.job.title === "Senior Data Analyst");
-    assert.equal(senior?.status, "skipped");
-    assert.equal(senior?.eligibility, "blocked");
+    assert.equal(senior?.status, "qualified");
+    assert.notEqual(senior?.eligibility, "blocked");
+    assert.ok(JSON.parse(senior!.softGaps).includes(DREAM_DECISION));
     assert.equal(opps.find((o) => o.job.title === "BI Analyst")?.status, "qualified");
 
     // A second pass does not add the other location either.

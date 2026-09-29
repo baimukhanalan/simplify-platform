@@ -3,10 +3,10 @@ import { CircleAlert, CircleCheck, Gauge, Pencil } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Chip, PageHeader, Script } from "@/components/ui";
-import { SENIORITY_LABEL } from "@/lib/engine/taxonomy";
+import { SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
 import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
-import { CAMPAIGN_MODE_RU, WORK_MODE_RU } from "../../_components/ru";
+import { CAMPAIGN_MODE_RU, WORK_MODE_RU, industriesRu } from "../../_components/ru";
 import { goalMarket, goalTitle } from "../readiness/_components/model";
 import { Facts } from "../profile/_components/editable";
 import { GoalForm, type GoalValues } from "./_components/goal-form";
@@ -18,8 +18,7 @@ const SIZE_LABEL: Record<string, string> = { any: "Любой", startup: "Ста
 
 function money(n: number, cur: string) {
   if (!n) return "";
-  if (cur === "KZT") return `от ${n.toLocaleString("ru-RU")} ₸ / год`;
-  return `от ${cur === "EUR" ? "€" : "$"}${n.toLocaleString("en-US")} / год`;
+  return `от ${fmtMoney(n, cur)} / год`;
 }
 
 export default async function GoalPage({ searchParams }: { searchParams: Promise<{ need?: string; edit?: string; saved?: string }> }) {
@@ -99,7 +98,7 @@ export default async function GoalPage({ searchParams }: { searchParams: Promise
           ["Зарплата", money(initial.minSalary, initial.currency) || "Не важно"],
           ["Регионы", regions || "—"],
           ["Формат", initial.workModes.map((m) => WORK_MODE_RU[m] ?? m).join(", ")],
-          ["Индустрии", initial.industries.join(", ") || "Любые"],
+          ["Индустрии", industriesRu(initial.industries) || "Любые"],
           ["Размер компании", SIZE_LABEL[initial.companySize] ?? initial.companySize],
           ["Переезд", initial.relocation ? "Переезд возможен" : "Без переезда"],
         ]} />

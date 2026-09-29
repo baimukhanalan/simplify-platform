@@ -13,6 +13,7 @@ import { StatusMover } from "../../opportunities/_components/bits";
 import { AgentStatus, type Need } from "../../../_components/agent-status";
 import { endSentence, shortDate, statusRu } from "../../../_components/ru";
 import { Timeline, type Step } from "./_components/timeline";
+import { SentAnswer } from "../../../_components/sent-answer";
 import { placeRu } from "../../opportunities/_lib/when";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
@@ -179,7 +180,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
                   <li key={`${a.q}-${i}`} className="grid gap-1 px-4 py-3 sm:grid-cols-[1fr_auto] sm:gap-4">
                     <div className="min-w-0">
                       <div className="text-[13.5px] text-head">{a.q}</div>
-                      <div className={cx("mt-0.5 break-words text-[13.5px]", a.a ? "text-ink-2" : "italic text-ink-3")}>{a.a || "без ответа"}</div>
+                      <div className={cx("mt-0.5 break-words text-[13.5px]", a.a ? "text-ink-2" : "italic text-ink-3")}>{a.a ? <SentAnswer answer={a.a} /> : "без ответа"}</div>
                     </div>
                     <div className="flex items-start sm:justify-end">
                       <Chip tone={a.status === "pending" ? "amber" : a.category === "approval" ? "green" : "neutral"}>

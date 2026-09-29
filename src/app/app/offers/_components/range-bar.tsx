@@ -1,9 +1,10 @@
 import { cx } from "@/components/ui";
+import { fmtMoney } from "@/lib/engine/taxonomy";
 
 /** Market range bar (CSS only): band low→high, median tick, offer / target / final markers. */
 export function RangeBar({ low, mid, high, offer, target, final, currency }: { low: number; mid: number; high: number; offer: number; target?: number; final?: number; currency: string }) {
-  const format = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(n);
-  const short = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }).format(n);
+  const format = (n: number) => fmtMoney(n, currency);
+  const short = format;
   const values = [low, high, offer, target ?? offer, final ?? offer];
   const min = Math.min(...values) * 0.9;
   const max = Math.max(...values) * 1.06;

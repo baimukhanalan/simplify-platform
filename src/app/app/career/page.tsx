@@ -8,20 +8,19 @@ import { db, j } from "@/lib/db";
 import { ButtonLink, Card, Chip, Label, Progress, Ring, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { setCareerMode, recordSnapshot } from "@/lib/actions/account";
-import { ROLE_FAMILIES, SENIORITY, SENIORITY_LABEL, seniorityFromYears, type Seniority } from "@/lib/engine/taxonomy";
+import { ROLE_FAMILIES, SENIORITY, SENIORITY_LABEL, seniorityFromYears, fmtMoney, type Seniority } from "@/lib/engine/taxonomy";
 import { agentState } from "../_components/today-data";
 import { betterPayingRoles, careerHistory } from "@/lib/career";
 import { loadCareer } from "./_components/data";
 import { HistoryChart } from "./_components/history-chart";
 import { BREAKDOWN, baseRole, nextMilestone, recommendation } from "./_components/next-step";
-import { WORK_MODE_RU, plural } from "../../_components/ru";
+import { WORK_MODE_RU, marketBasisRu, plural } from "../../_components/ru";
 import { placeRu } from "@/lib/ru";
 
 export const metadata: Metadata = { title: "Режим карьеры" };
 
-/** "$58 000" — Russian thousands separator (non-breaking space). */
-const usd = (n: number) => `$${Math.round(n).toLocaleString("ru-RU")}`;
-const kUsd = (n: number) => `$${Math.round(n / 1000)}k`;
+/** "$58 000" — one money format for the whole product (src/lib/engine/taxonomy.ts). */
+const usd = (n: number) => fmtMoney(n);
 const toneFor = (v: number) => (v >= 75 ? "green" : v >= 50 ? "teal" : v >= 30 ? "amber" : "rose") as "green" | "teal" | "amber" | "rose";
 
 export default async function CareerPage({ searchParams }: { searchParams: Promise<{ hired?: string }> }) {
@@ -73,10 +72,10 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
               <span className="truncate text-[13.5px] text-ink-3">{c.accepted ? <>в {c.accepted.company}</> : currentTitle ? "цель текущей кампании" : <Link href="/app/goal" className="underline underline-offset-2">задать в разделе «Цель»</Link>}</span>
             </div>
           </div>
-          <Tile label="Market Value" value={kUsd(c.marketValue)} hint={`рынок ${kUsd(c.range.low)}–${kUsd(c.range.high)}`} />
+          <Tile label="Market Value" value={usd(c.marketValue)} hint={`${marketBasisRu(c.marketBasis)} · рынок ${usd(c.range.low)}–${usd(c.range.high)}, с учётом навыков`} />
           <Tile
             label={c.compensationKind === "actual" ? "Текущая компенсация" : "Ожидание по зарплате"}
-            value={c.currentSalary ? kUsd(c.currentSalary) : "—"}
+            value={c.currentSalary ? usd(c.currentSalary) : "—"}
             hint={c.compensationLabel || <Link href="/app/profile#conditions" className="underline underline-offset-2">указать в профиле</Link>}
             tone={c.underpaid ? "rose" : undefined}
           />
@@ -134,7 +133,7 @@ export default async function CareerPage({ searchParams }: { searchParams: Promi
             <p className="text-[15px] text-white/85">
               <span className="num text-[26px] leading-none text-[#7fe3b6]">{betterCount}</span>{" "}
               {plural(betterCount, ["вакансия сейчас платит", "вакансии сейчас платят", "вакансий сейчас платят"])} в среднем на 25%+ больше {compWord}
-              <span className="text-white/50"> (от {kUsd(threshold)})</span>
+              <span className="text-white/50"> (от {usd(threshold)})</span>
             </p>
           )}
           {betterCount > 0 && (

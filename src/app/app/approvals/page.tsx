@@ -123,7 +123,7 @@ export default async function ApprovalsPage() {
               <li key={r.id} className="flex flex-col gap-1 py-2.5 text-[13px] sm:flex-row sm:items-start sm:gap-3">
                 <Chip tone={r.status === "rejected" ? "rose" : "green"} className="w-fit">{r.status === "rejected" ? "отклонено" : "решено"}</Chip>
                 <span className="min-w-0 flex-1 break-words text-ink-2 [overflow-wrap:anywhere]">
-                  {r.opportunity ? <Link href={`/app/opportunities/${r.opportunity.id}`} className="text-head hover:underline">{r.opportunity.job.company}</Link> : null}
+                  {r.opportunity ? <Link href={`/app/opportunities/${r.opportunity.id}`} className="-my-[11px] inline-block py-[11px] text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">{r.opportunity.job.company}</Link> : null}
                   {r.opportunity ? " · " : ""}{r.kind === "handoff" ? "отправлено тобой через официальную форму" : r.question}
                   {r.answer && r.kind !== "handoff" && <span className="text-ink-3"> → {answerRu(r.answer)}</span>}
                 </span>

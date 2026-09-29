@@ -29,7 +29,7 @@ export function Stories({ stories, facts }: { stories: (Story & { fact: Fact | n
         <Mic className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
         <p>
           <span className="font-medium text-head">Материал для интервью.</span> Из этих историй агент собирает подсказки и готовит тебя к поведенческим вопросам.
-          {missing.length > 0 && <> Не покрыты темы: {missing.map((t) => t.label).join(", ")}.</>}
+          {missing.length > 0 && <> Не покрыты темы: {missing.map((t) => t.label.toLowerCase()).join(", ")}.</>}
         </p>
       </div>
 

@@ -31,7 +31,10 @@ function hiddenOn(m: Moment, todayShowsOffer: boolean) {
     if (todayShowsOffer) hideExact.push("/app"); // Today's «Следующий шаг» is the offer already.
   }
   if (m.type === "hired") hidePrefix.push("/app/hired");
-  return { hideExact, hidePrefix };
+  // One vacancy / one application: a bar about another company would sit right above this job's title and read as
+  // its header. The bell (Notifier) still carries it there.
+  const hidePattern = "^/app/(opportunities|applications)/[^/]+/?$";
+  return { hideExact, hidePrefix, hidePattern };
 }
 
 /**
