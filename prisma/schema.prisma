@@ -11,61 +11,76 @@ datasource db {
 }
 
 model User {
-  id             String   @id @default(cuid())
-  email          String   @unique
-  passwordHash   String
-  name           String
-  role           String   @default("user") // user | admin | partner
-  careerMode     String   @default("active") // active | passive
-  referredByCode String?
-  consents       String   @default("{}") // {terms, autoSubmit, emailScan, copilot, analytics}
-  autonomy       String   @default("{}") // agent permissions, see src/lib/engine/autonomy.ts
-  createdAt      DateTime @default(now())
+  id               String    @id @default(cuid())
+  email            String    @unique
+  passwordHash     String
+  name             String
+  role             String    @default("user") // user | admin | partner
+  careerMode       String    @default("active") // active | passive
+  referredByCode   String?
+  consents         String    @default("{}") // {terms, autoSubmit, emailScan, copilot, analytics}
+  autonomy         String    @default("{}") // agent permissions, see src/lib/engine/autonomy.ts
+  locale           String    @default("ru") // ru | kk | en — interface language
+  notifyPrefs      String    @default("{}") // {telegram, webpush, email} per-channel toggles
+  telegramChatId   String? // linked Telegram chat (bot notifications)
+  telegramLinkCode String? // one-time deep-link code: t.me/<bot>?start=<code>
+  telegramLinkedAt DateTime?
+  inboxAlias       String? // personal forwarding address local part: <alias>@in.simplify.kz
+  referralCode     String? // this user's own invite code (referredByCode = the code they signed up with)
+  createdAt        DateTime  @default(now())
 
-  profile      Profile?
-  goal         Goal?
-  facts        Fact[]
-  stories      Story[]
-  miniAnswers  MiniInterviewAnswer[]
-  campaigns    Campaign[]
-  payments     Payment[]
-  events       Event[]
-  approvals    Approval[]
-  inbox        InboxMessage[]
-  interviews   Interview[]
-  offers       Offer[]
-  snapshots    CareerSnapshot[]
-  partner      Partner?
-  notifications Notification[]
-  integrations  Integration[]
+  profile           Profile?
+  goal              Goal?
+  facts             Fact[]
+  stories           Story[]
+  miniAnswers       MiniInterviewAnswer[]
+  campaigns         Campaign[]
+  payments          Payment[]
+  events            Event[]
+  approvals         Approval[]
+  inbox             InboxMessage[]
+  interviews        Interview[]
+  offers            Offer[]
+  snapshots         CareerSnapshot[]
+  partner           Partner?
+  notifications     Notification[]
+  integrations      Integration[]
+  pushSubscriptions PushSubscription[]
+  referralsMade     Referral[]            @relation("referrer")
+  referredBy        Referral?             @relation("referred")
+
+  @@index([telegramChatId])
+  @@index([telegramLinkCode])
+  @@index([inboxAlias])
+  @@index([referralCode])
 }
 
 model Profile {
-  id                String  @id @default(cuid())
-  userId            String  @unique
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  headline          String  @default("")
-  location          String  @default("")
-  city              String  @default("")
-  country           String  @default("KZ")
-  citizenship       String  @default("KZ")
-  workAuth          String  @default("[\"KZ\"]") // country codes with legal work authorization
-  languages         String  @default("[]") // [{lang, level}]
-  englishLevel      String  @default("B2")
-  yearsExperience   Float   @default(0)
-  skills            String  @default("[]") // string[] — verified skills
-  salaryExpectation Int     @default(0) // annual USD
-  remotePref        String  @default("remote") // remote | hybrid | onsite | any
-  relocation        Boolean @default(false)
-  needsSponsorship  Boolean @default(true)
-  phone             String  @default("")
-  linkedin          String  @default("")
-  github            String  @default("")
-  portfolio         String  @default("")
-  summary           String  @default("")
-  cvText            String  @default("")
-  cvFileName        String  @default("")
-  noticePeriod      String  @default("2 weeks")
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  headline          String   @default("")
+  location          String   @default("")
+  city              String   @default("")
+  country           String   @default("KZ")
+  citizenship       String   @default("KZ")
+  workAuth          String   @default("[\"KZ\"]") // country codes with legal work authorization
+  languages         String   @default("[]") // [{lang, level}]
+  englishLevel      String   @default("B2")
+  yearsExperience   Float    @default(0)
+  skills            String   @default("[]") // string[] — verified skills
+  salaryExpectation Int      @default(0) // annual USD
+  remotePref        String   @default("remote") // remote | hybrid | onsite | any
+  relocation        Boolean  @default(false)
+  needsSponsorship  Boolean  @default(true)
+  phone             String   @default("")
+  linkedin          String   @default("")
+  github            String   @default("")
+  portfolio         String   @default("")
+  summary           String   @default("")
+  cvText            String   @default("")
+  cvFileName        String   @default("")
+  noticePeriod      String   @default("2 weeks")
   updatedAt         DateTime @updatedAt
 }
 
@@ -122,44 +137,47 @@ model Story {
 }
 
 model Goal {
-  id                String  @id @default(cuid())
-  userId            String  @unique
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  primaryRole       String  @default("")
-  extraRoles        String  @default("[]")
-  seniority         String  @default("junior") // intern | junior | middle | senior | lead
-  minSalary         Int     @default(0) // annual, in currency
-  currency          String  @default("USD")
-  countries         String  @default("[]") // ISO codes or regions: EU, US, UK, CA, KZ, CIS, WORLD
-  industries        String  @default("[]")
-  workModes         String  @default("[\"remote\"]")
-  relocation        Boolean @default(false)
-  sponsorshipNeeded Boolean @default(true)
-  dreamCompanies    String  @default("[]")
-  blockedCompanies  String  @default("[]")
-  companySize       String  @default("any") // startup | scaleup | corporate | any
-  mode              String  @default("autonomous") // autonomous | target | mass
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  primaryRole       String   @default("")
+  extraRoles        String   @default("[]")
+  seniority         String   @default("junior") // intern | junior | middle | senior | lead
+  minSalary         Int      @default(0) // annual, in currency
+  currency          String   @default("USD")
+  countries         String   @default("[]") // ISO codes or regions: EU, US, UK, CA, KZ, CIS, WORLD
+  industries        String   @default("[]")
+  workModes         String   @default("[\"remote\"]")
+  relocation        Boolean  @default(false)
+  sponsorshipNeeded Boolean  @default(true)
+  dreamCompanies    String   @default("[]")
+  blockedCompanies  String   @default("[]")
+  companySize       String   @default("any") // startup | scaleup | corporate | any
+  mode              String   @default("autonomous") // autonomous | target | mass
   updatedAt         DateTime @updatedAt
 }
 
 model Campaign {
-  id             String    @id @default(cuid())
-  userId         String
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan           String // local | international
-  priceKzt       Int
-  status         String    @default("draft") // draft | active | paused | hired | expired
-  mode           String    @default("autonomous")
-  readiness      Int       @default(0)
-  dailyLimit     Int       @default(8)
-  autoSubmit     Boolean   @default(true)
-  allocation     String    @default("{}") // segment -> weight, learned by the feedback loop
-  startedAt      DateTime?
-  endsAt         DateTime?
-  lastRunAt      DateTime?
-  hiredAt        DateTime?
-  shareToken     String?   @unique // public HIRED journey card
-  createdAt      DateTime  @default(now())
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                String // local | international
+  priceKzt            Int
+  status              String    @default("draft") // draft | active | paused | hired | expired
+  mode                String    @default("autonomous")
+  readiness           Int       @default(0)
+  dailyLimit          Int       @default(8)
+  autoSubmit          Boolean   @default(true)
+  allocation          String    @default("{}") // segment -> weight, learned by the feedback loop
+  startedAt           DateTime?
+  endsAt              DateTime?
+  lastRunAt           DateTime?
+  hiredAt             DateTime?
+  shareToken          String?   @unique // public HIRED journey card
+  bonusDays           Int       @default(0) // days added on top of the plan (referral rewards, guarantee extension)
+  guaranteeStatus     String    @default("") // "" | extended — «no interview in 60 days → free extension»
+  guaranteeExtendedAt DateTime?
+  createdAt           DateTime  @default(now())
 
   opportunities Opportunity[]
   payments      Payment[]
@@ -185,60 +203,60 @@ model Payment {
 }
 
 model Job {
-  id          String   @id @default(cuid())
-  source      String // greenhouse | lever | remotive | arbeitnow | seed
-  externalId  String
-  dedupeKey   String   @unique
-  company     String
-  title       String
-  roleFamily  String   @default("other")
-  seniority   String   @default("middle")
-  location    String   @default("")
-  countries   String   @default("[]")
-  remote      String   @default("onsite") // remote | hybrid | onsite
-  salaryMin   Int?
-  salaryMax   Int?
-  currency    String   @default("USD")
-  description String   @default("")
-  requirements String  @default("[]")
-  technologies String  @default("[]")
-  minYears    Float    @default(0)
-  education   String   @default("")
-  workAuth    String   @default("[]") // required authorization (country codes); [] = none stated
-  sponsorship String   @default("unknown") // yes | no | unknown
-  languages   String   @default("[\"English\"]")
-  industry    String   @default("")
-  companySize String   @default("")
-  massHiring  Boolean  @default(false)
-  postedAt    DateTime
-  url         String   @default("")
-  active      Boolean  @default(true)
-  fetchedAt   DateTime @default(now())
+  id           String   @id @default(cuid())
+  source       String // greenhouse | lever | remotive | arbeitnow | seed
+  externalId   String
+  dedupeKey    String   @unique
+  company      String
+  title        String
+  roleFamily   String   @default("other")
+  seniority    String   @default("middle")
+  location     String   @default("")
+  countries    String   @default("[]")
+  remote       String   @default("onsite") // remote | hybrid | onsite
+  salaryMin    Int?
+  salaryMax    Int?
+  currency     String   @default("USD")
+  description  String   @default("")
+  requirements String   @default("[]")
+  technologies String   @default("[]")
+  minYears     Float    @default(0)
+  education    String   @default("")
+  workAuth     String   @default("[]") // required authorization (country codes); [] = none stated
+  sponsorship  String   @default("unknown") // yes | no | unknown
+  languages    String   @default("[\"English\"]")
+  industry     String   @default("")
+  companySize  String   @default("")
+  massHiring   Boolean  @default(false)
+  postedAt     DateTime
+  url          String   @default("")
+  active       Boolean  @default(true)
+  fetchedAt    DateTime @default(now())
 
   opportunities Opportunity[]
 }
 
 model Opportunity {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   campaignId   String
-  campaign     Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign     Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   jobId        String
-  job          Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  match        Int      @default(0)
-  matchReasons String   @default("[]") // [{label, ok}]
-  eligibility  String   @default("eligible") // eligible | soft | blocked
-  blockers     String   @default("[]")
-  softGaps     String   @default("[]")
-  pInterview   Float    @default(0)
-  priority     Float    @default(0)
-  lane         String   @default("standard") // standard | target | mass
-  segment      String   @default("other")
-  decision     String   @default("") // "" | apply (user confirmed) | auto (agent may submit) | skip
-  status       String   @default("found")
+  job          Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  match        Int       @default(0)
+  matchReasons String    @default("[]") // [{label, ok}]
+  eligibility  String    @default("eligible") // eligible | soft | blocked
+  blockers     String    @default("[]")
+  softGaps     String    @default("[]")
+  pInterview   Float     @default(0)
+  priority     Float     @default(0)
+  lane         String    @default("standard") // standard | target | mass
+  segment      String    @default("other")
+  decision     String    @default("") // "" | apply (user confirmed) | auto (agent may submit) | skip
+  status       String    @default("found")
   // found | qualified | prepared | submitted | pending | assessment | recruiter | hiring_manager | technical | final | offer | rejected | skipped | hired
   submittedAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   pkg        ApplicationPackage?
   events     Event[]
@@ -308,22 +326,26 @@ model InboxMessage {
   confidence     Float        @default(0)
   deadline       DateTime?
   simulated      Boolean      @default(false)
+  source         String       @default("") // "" (engine/sim) | forward (inbound email to the personal alias) | gmail
+  externalId     String? // provider Message-ID, for de-duplication of inbound mail
   receivedAt     DateTime     @default(now())
+
+  @@index([externalId])
 }
 
 model Interview {
-  id            String      @id @default(cuid())
-  userId        String
-  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  opportunityId String
-  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
-  round         String // assessment | recruiter | hiring_manager | technical | final
-  scheduledAt   DateTime?
-  status        String      @default("upcoming") // upcoming | done | passed | failed
-  copilotAllowed Boolean    @default(true)
-  pack          String      @default("{}")
-  debrief       String      @default("{}")
-  createdAt     DateTime    @default(now())
+  id             String      @id @default(cuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId  String
+  opportunity    Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  round          String // assessment | recruiter | hiring_manager | technical | final
+  scheduledAt    DateTime?
+  status         String      @default("upcoming") // upcoming | done | passed | failed
+  copilotAllowed Boolean     @default(true)
+  pack           String      @default("{}")
+  debrief        String      @default("{}")
+  createdAt      DateTime    @default(now())
 
   mocks MockSession[]
 
@@ -397,15 +419,17 @@ model CareerCheck {
 
 // In-app "push" moments: interview / assessment / offer / hired.
 model Notification {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String // interview | assessment | offer | hired | rejection | info
-  title     String
-  body      String    @default("")
-  href      String    @default("")
-  readAt    DateTime?
-  createdAt DateTime  @default(now())
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           String // interview | assessment | offer | hired | rejection | info
+  title          String
+  body           String    @default("")
+  href           String    @default("")
+  readAt         DateTime?
+  telegramSentAt DateTime? // delivered to Telegram
+  pushSentAt     DateTime? // delivered as Web Push
+  createdAt      DateTime  @default(now())
 }
 
 // External accounts a user connected (hh.kz OAuth) and the browser-extension token.
@@ -427,4 +451,49 @@ model Integration {
 
   @@unique([userId, provider])
   @@unique([provider, externalUserId])
+}
+
+// Web Push (PWA) subscriptions — one per browser/device.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String   @default("")
+  createdAt DateTime @default(now())
+}
+
+// «Bring a friend»: one row per invited user. Reward is applied once, when the invited user's first payment succeeds.
+model Referral {
+  id             String    @id @default(cuid())
+  referrerId     String
+  referrer       User      @relation("referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  referredUserId String    @unique
+  referred       User      @relation("referred", fields: [referredUserId], references: [id], onDelete: Cascade)
+  code           String
+  status         String    @default("signed_up") // signed_up | paid | rewarded
+  rewardDays     Int       @default(0)
+  discountKzt    Int       @default(0)
+  createdAt      DateTime  @default(now())
+  rewardedAt     DateTime?
+}
+
+// Server/client errors captured in production (own lightweight monitoring; forwarded to Sentry when SENTRY_DSN is set).
+model ErrorLog {
+  id          String    @id @default(cuid())
+  fingerprint String    @unique // hash of message + top stack frame + route — repeated errors bump `count`
+  level       String    @default("error") // error | warning
+  source      String    @default("server") // server | client | cron | action
+  message     String
+  stack       String    @default("")
+  route       String    @default("")
+  digest      String    @default("")
+  userId      String?
+  meta        String    @default("{}")
+  count       Int       @default(1)
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
 }
