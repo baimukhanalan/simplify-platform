@@ -12,13 +12,16 @@ import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Field, PageHeader, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { AutonomyForm } from "./_components/autonomy-form";
+import { HhCard } from "./_components/hh-card";
 import { AgentStatus } from "../../_components/agent-status";
 import { endSentence, handoffsWaiting, questionsWaiting } from "../../_components/ru";
 
 export const metadata: Metadata = { title: "Agent" };
 
-export default async function AgentPage() {
+export default async function AgentPage({ searchParams }: { searchParams: Promise<{ hh?: string | string[] }> }) {
   const user = await requireUser();
+  const hhParam = (await searchParams).hh;
+  const hhNotice = typeof hhParam === "string" ? hhParam : undefined;
   const autonomy = readAutonomy(user.autonomy);
   const [campaign, approvals, handoffs] = await Promise.all([runningCampaign(user.id), pendingApprovalsCount(user.id), pendingHandoffsCount(user.id)]);
   const demo = demoToolsEnabled(user);
@@ -93,6 +96,14 @@ export default async function AgentPage() {
                 <ButtonLink href="/app/campaign" size="sm" className="self-start">Начать кампанию</ButtonLink>
               </>
             )}
+          </Card>
+
+          <HhCard userId={user.id} notice={hhNotice} />
+
+          <Card className="flex flex-col gap-2">
+            <h2 className="label">Расширение Apply Assist</h2>
+            <p className="text-[13.5px] leading-relaxed text-ink-2">Заполняет официальную форму работодателя из твоего пакета — отправляешь ты сам.</p>
+            <Link href="/app/extension" className="self-start text-[13.5px] text-teal underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-green">Подключить расширение →</Link>
           </Card>
 
           <Card className="flex flex-col gap-3">

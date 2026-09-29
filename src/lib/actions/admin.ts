@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin } from "../auth";
 import { db } from "../db";
 import { runTick, logEvent } from "../engine/agent";
-import { ingestLive } from "../engine/ingest";
+import { ingestLive, type IngestReport } from "../engine/ingest";
 
 export async function adminRunTick(form: FormData) {
   const admin = await requireAdmin();
@@ -15,7 +15,7 @@ export async function adminRunTick(form: FormData) {
   revalidatePath("/admin");
 }
 
-export type IngestState = { report?: Record<string, number | string>; at?: string; error?: string } | undefined;
+export type IngestState = { report?: IngestReport; at?: string; error?: string } | undefined;
 
 export async function adminIngest(_: IngestState, form: FormData): Promise<IngestState> {
   await requireAdmin();

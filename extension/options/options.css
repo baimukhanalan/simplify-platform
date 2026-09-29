@@ -1,0 +1,11 @@
+.wrap { max-width: 560px; margin: 48px auto; padding: 0 16px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 34px; line-height: 1.05; }
+.lead { margin: 0; color: var(--ink-2); font-size: 15px; }
+.stack { display: flex; flex-direction: column; gap: 16px; padding: 20px; }
+.stack-sm { display: flex; flex-direction: column; gap: 8px; }
+section.stack-sm { padding: 18px 20px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.status { margin: 0; font-size: 13.5px; min-height: 1.4em; }
+.status.ok { color: var(--green); }
+.status.err { color: var(--rose); }
+.list { margin: 0; padding-left: 18px; color: var(--ink-2); display: flex; flex-direction: column; gap: 6px; }

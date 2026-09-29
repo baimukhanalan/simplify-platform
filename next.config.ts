@@ -1,7 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // The extension zip route reads the unpacked extension from disk at request time.
+  outputFileTracingIncludes: { "/api/extension/download": ["./extension/**/*"] },
 };
 
 export default nextConfig;

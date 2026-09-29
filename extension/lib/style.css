@@ -1,0 +1,32 @@
+/* Shared look for the popup and options page — Simplify palette (see src/app/globals.css). */
+:root {
+  --ink: #141414; --ink-2: rgb(20 20 20 / .82); --ink-3: rgb(20 20 20 / .62);
+  --head: #233b3b; --teal: rgb(68 97 102); --green: #1a6e48; --green-soft: rgb(26 110 72 / .12);
+  --mint: #eef7f2; --line: rgb(35 59 59 / .14); --cta: rgb(38 36 36);
+  --amber: #9a6b12; --amber-soft: rgb(196 140 30 / .14); --rose: #a3383a; --rose-soft: rgb(163 56 58 / .1);
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif; color: var(--ink); background: linear-gradient(180deg, #f3faf6, #fbfdfc); }
+h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; color: var(--head); letter-spacing: -.01em; margin: 0; }
+.label { font: 11px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+.card { background: rgb(255 255 255 / .86); border: 1px solid rgb(0 0 0 / .07); border-radius: 18px; padding: 14px; box-shadow: 0 1px 2px rgb(0 0 0 / .04), 0 8px 24px -12px rgb(35 59 59 / .18); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 18px; border-radius: 999px; border: 0; font: 500 13.5px/1 inherit; font-family: inherit; cursor: pointer; transition: background .15s, transform .1s; }
+.btn:active { transform: scale(.98); }
+.btn:disabled { opacity: .55; cursor: default; }
+.btn-primary { background: var(--cta); color: #fcfcfc; }
+.btn-primary:hover:not(:disabled) { background: #2f2c2c; }
+.btn-green { background: var(--green); color: #fff; }
+.btn-green:hover:not(:disabled) { background: #15603e; }
+.btn-glass { background: #fff; color: var(--head); border: 1px solid var(--line); }
+.btn-ghost { background: transparent; color: var(--head); }
+.btn:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.field { width: 100%; border-radius: 12px; border: 1px solid var(--line); background: #fff; padding: 10px 12px; font: 13.5px/1.3 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
+.field:focus { border-color: var(--green); box-shadow: 0 0 0 4px rgb(26 110 72 / .12); outline: none; }
+.chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid transparent; border-radius: 999px; padding: 4px 9px; font: 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.chip-green { background: var(--green-soft); color: var(--green); }
+.chip-amber { background: var(--amber-soft); color: var(--amber); }
+.chip-rose { background: var(--rose-soft); color: var(--rose); }
+.chip-neutral { background: #fff; color: var(--head); border-color: rgb(0 0 0 / .07); }
+.muted { color: var(--ink-3); font-size: 12.5px; }
+a { color: var(--teal); }
+.hidden { display: none !important; }

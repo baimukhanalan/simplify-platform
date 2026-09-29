@@ -1,0 +1,24 @@
+body { width: 360px; min-height: 220px; }
+.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; padding: 14px 14px 10px; }
+.sub { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
+.icon-btn { width: 32px; height: 32px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--head); cursor: pointer; font-size: 15px; line-height: 1; }
+main { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+.job h2 { font-size: 19px; line-height: 1.15; }
+.job .company { color: var(--ink-2); margin-top: 2px; font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.actions { display: flex; flex-direction: column; gap: 8px; }
+.actions .btn { width: 100%; }
+.check { display: flex; flex-direction: column; gap: 6px; }
+.check h3 { margin: 4px 0 0; }
+.check ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.check li { display: flex; gap: 8px; font-size: 12.5px; color: var(--ink-2); line-height: 1.35; }
+.check li .mark { flex: none; width: 16px; text-align: center; font-weight: 700; }
+.check li.ok .mark { color: var(--green); }
+.check li.warn .mark { color: var(--amber); }
+.check li.err .mark { color: var(--rose); }
+.note { font-size: 12.5px; color: var(--ink-2); background: var(--mint); border-radius: 12px; padding: 10px 12px; }
+.note.warn { background: var(--amber-soft); color: #5d420c; }
+.note.err { background: var(--rose-soft); color: var(--rose); }
+.confirm { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--line); padding-top: 10px; }
+.confirm .row { display: flex; gap: 8px; }
+.confirm .row .btn { flex: 1; }

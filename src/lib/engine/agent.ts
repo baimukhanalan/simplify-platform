@@ -423,11 +423,12 @@ export async function prepare(opportunityId: string, opts: PrepareOptions = {}) 
 }
 
 /**
- * Execution layer. Demo vacancies go through the simulated ATS adapter. Live vacancies are
+ * Execution layer. Demo vacancies go through the simulated ATS adapter. hh.kz vacancies go through the hh API as the
+ * user (their connected account + chosen resume, src/lib/hh/apply.ts) or become handoffs. Other live vacancies are
  * user-authorized handoffs: the package is ready and the user submits through the official form.
  */
 export async function submit(opportunityId: string, via: "agent" | "user" = "agent") {
-  const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true, pkg: { select: { id: true, answers: true } }, approvals: { where: { status: "pending" } } } });
+  const opp = await db.opportunity.findUniqueOrThrow({ where: { id: opportunityId }, include: { job: true, campaign: true, pkg: { select: { id: true, answers: true, coverLetter: true } }, approvals: { where: { status: "pending" } } } });
   if (APPLIED_OR_LATER.includes(opp.status)) return { ok: false, reason: "already-submitted" };
   if (!opp.pkg) return { ok: false, reason: "no-package" }; // nothing may be written for an unprepared opportunity
   if (opp.status === "skipped" && via === "agent") return { ok: false, reason: "blocked" };
@@ -445,7 +446,38 @@ export async function submit(opportunityId: string, via: "agent" | "user" = "age
   if ((opp.approvals.length || hasOpenAnswers(opp.pkg.answers)) && via === "agent") return { ok: false, reason: "approvals" };
   // Never twice to one role in a campaign. A user handoff is recorded regardless: the user already sent it themselves.
   if (via === "agent" && (await duplicateOf(opp))) return { ok: false, reason: "duplicate" };
-  if (opp.job.source !== "demo" && via === "agent") {
+  let method = via === "user" ? "user-handoff" : `ats:${opp.job.source}`;
+  let hhNote: object = {};
+  // hh.kz adapter (src/lib/hh/apply.ts): the same gates as above (consent, autonomy, daily limit, open questions) were
+  // applied by the caller; hh's API then sends the application as the user with their own resume, or hands it to them.
+  if (opp.job.source === "hh" && via === "agent") {
+    const { submitViaHh } = await import("../hh/apply");
+    let r: Awaited<ReturnType<typeof submitViaHh>>;
+    try {
+      r = await submitViaHh(opp.campaign.userId, opp.job, opp.pkg.coverLetter);
+    } catch (e) {
+      await logEvent(opp.campaign.userId, "hh_error", `hh.kz: отклик не отправлен — ${roleLabelRu(opp.job)} (${e instanceof Error ? e.message.slice(0, 160) : "ошибка"})`, opportunityId);
+      return { ok: false, reason: "hh-error" };
+    }
+    if (r.kind === "later") {
+      await logEvent(opp.campaign.userId, "hh_wait", `hh.kz: отклик отложен — ${r.reason}: ${roleLabelRu(opp.job)}`, opportunityId, { detail: r.detail });
+      return { ok: false, reason: "hh-later" };
+    }
+    if (r.kind === "closed") {
+      await db.job.update({ where: { id: opp.job.id }, data: { active: false } });
+      await db.opportunity.update({ where: { id: opportunityId }, data: { status: "skipped" } });
+      await logEvent(opp.campaign.userId, "hh_closed", `hh.kz: ${r.reason} — ${roleLabelRu(opp.job)}`, opportunityId);
+      return { ok: false, reason: "closed" };
+    }
+    if (r.kind === "handoff") {
+      const exists = await db.approval.findFirst({ where: { opportunityId, kind: "handoff", status: "pending" } });
+      if (!exists) await db.approval.create({ data: { userId: opp.campaign.userId, opportunityId, kind: "handoff", question: `${opp.job.company}: ${r.reason}`, proposed: r.url } });
+      await logEvent(opp.campaign.userId, "hh_handoff", `hh.kz: ${roleLabelRu(opp.job)} — ${r.reason}`, opportunityId, { detail: r.detail });
+      return { ok: false, reason: "handoff" };
+    }
+    method = "hh-api";
+    hhNote = { negotiationId: r.negotiationId, already: Boolean(r.already) };
+  } else if (opp.job.source !== "demo" && via === "agent") {
     const exists = await db.approval.findFirst({ where: { opportunityId, kind: "handoff", status: "pending" } });
     if (!exists) await db.approval.create({ data: { userId: opp.campaign.userId, opportunityId, kind: "handoff", question: `Отправь заявку в ${opp.job.company} через официальную форму`, proposed: opp.job.url } });
     return { ok: false, reason: "handoff" };
@@ -453,8 +485,8 @@ export async function submit(opportunityId: string, via: "agent" | "user" = "age
   // Conditional write: an overlapping run that already submitted wins, this one becomes a no-op.
   const moved = await db.opportunity.updateMany({ where: { id: opportunityId, status: { notIn: APPLIED_OR_LATER } }, data: { status: "submitted", submittedAt: new Date() } });
   if (!moved.count) return { ok: false, reason: "already-submitted" };
-  await db.applicationPackage.update({ where: { opportunityId }, data: { submitMethod: via === "user" ? "user-handoff" : `ats:${opp.job.source}` } });
-  await logEvent(opp.campaign.userId, "submitted", `Заявка отправлена: ${roleLabelRu(opp.job)}`, opportunityId, { method: via });
+  await db.applicationPackage.update({ where: { opportunityId }, data: { submitMethod: method } });
+  await logEvent(opp.campaign.userId, "submitted", `Заявка отправлена${method === "hh-api" ? " через hh.kz" : ""}: ${roleLabelRu(opp.job)}`, opportunityId, { method: via, ...hhNote });
   return { ok: true };
 }
 

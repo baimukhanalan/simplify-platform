@@ -13,6 +13,7 @@ import { Card, Chip, Label, PageHeader, Ring, Script, cx } from "@/components/ui
 import { AgentStatus, type Need } from "../../../_components/agent-status";
 import { industryRu, placeWithFormat, plural, shortDate } from "../../../_components/ru";
 import { fmtNum } from "@/lib/ru";
+import { hhEnabled, hhIntegration, readHhMeta } from "@/lib/hh/client";
 import { SubmitButton } from "@/components/client";
 import { LaneChip, StatusChip } from "../_components/bits";
 import { DecisionBar } from "../_components/decision";
@@ -45,10 +46,18 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
   if (!opp) notFound();
   const { job, pkg } = opp;
 
-  const [candidate, facts] = await Promise.all([
+  const [candidate, facts, hh] = await Promise.all([
     fitCandidate(user),
     db.fact.findMany({ where: { userId: user.id, kind: "employment" }, select: { title: true, org: true, details: true }, orderBy: { createdAt: "asc" } }),
+    job.source === "hh" && hhEnabled() ? hhIntegration(user.id) : null,
   ]);
+  // hh.kz vacancies: who applies and with which resume (src/lib/hh/apply.ts).
+  const hhMeta = readHhMeta(hh?.meta);
+  const hhLine = job.source !== "hh" ? null
+    : !hhEnabled() && !pkg?.submitMethod.startsWith("hh-") ? "Вакансия с hh.kz: отклик отправляешь ты сам на hh.kz — автоматические отклики появятся позже."
+    : pkg?.submitMethod === "hh-api" || pkg?.submitMethod === "hh-user" ? "Отклик отправлен через hh.kz — от твоего аккаунта и резюме. Статус обновляется автоматически."
+    : hh?.accessToken && hh.resumeId && hhMeta.status !== "reconnect" ? `Подача через hh.kz: от твоего аккаунта и резюме «${hhMeta.resumeTitle || "выбранное резюме"}». Вакансии с тестом или анкетой агент оставит тебе.`
+    : "Подача через hh.kz: подключи свой аккаунт и выбери резюме в «Агент» → hh.kz — иначе отклик отправляешь ты сам.";
   const fitOpp = { match: opp.match, eligibility: opp.eligibility, pInterview: opp.pInterview, reasons: j<Reason[]>(opp.matchReasons, []), blockers: j<string[]>(opp.blockers, []).map(blockerRu), softGaps: j<string[]>(opp.softGaps, []).map(blockerRu) };
   const strengths = whyFits(fitOpp, job, candidate, 8);
   const riskList = risks(fitOpp, job, candidate);
@@ -113,6 +122,11 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
         <aside className="flex flex-col gap-5 lg:sticky lg:top-6 lg:col-start-2 lg:row-start-1" aria-label="Решение по вакансии">
           <Card strong className="flex flex-col gap-4">
             <Label>Решение</Label>
+            {hhLine && (
+              <p className="rounded-xl border border-teal/15 bg-teal/5 px-3.5 py-2.5 text-[13px] leading-snug text-ink-2">
+                {hhLine}{hhEnabled() && !hh?.resumeId && !applied && <> <Link href="/app/agent#hh" className="text-teal underline-offset-2 hover:underline">Настроить</Link></>}
+              </p>
+            )}
             {applied ? (
               <div className="flex flex-col gap-3">
                 <p className="flex items-center gap-2 text-[14px] text-head"><Check className="size-4 text-green" aria-hidden />Заявка отправлена {shortDate(opp.submittedAt)}</p>

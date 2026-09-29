@@ -37,7 +37,7 @@ function Ext({ href }: { href: string }) {
 
 /* ───────────── Основное ───────────── */
 
-export function Basics({ name, email, profile: p, goal, currentRole }: { name: string; email: string; profile: Profile; goal: Goal | null; currentRole: string }) {
+export function Basics({ name, email, profile: p, goal, currentRole, hh }: { name: string; email: string; profile: Profile; goal: Goal | null; currentRole: string; hh?: { connected: boolean; name: string; resume: string } | null }) {
   const markets = [...new Set(j<string[]>(goal?.countries, []).map((c) => (regionRu(c) !== c ? regionRu(c) : REGIONS[c]?.label ?? c)))].join(", ");
   const location = [placeRu(p.city || p.location), COUNTRY_LABEL[p.country] ?? p.country].filter(Boolean).join(", ");
   return (
@@ -58,6 +58,16 @@ export function Basics({ name, email, profile: p, goal, currentRole }: { name: s
             {p.github && <span className="text-ink-3">GitHub: <Ext href={p.github} /></span>}
             {p.portfolio && <span className="text-ink-3">Портфолио: <Ext href={p.portfolio} /></span>}
             {p.phone && <span className="text-ink-3">Телефон: <span className="text-head">{p.phone}</span></span>}
+            {hh && (
+              <span className="text-ink-3">
+                hh.kz:{" "}
+                {hh.connected ? (
+                  <span className="text-head">{hh.name || "подключён"}{hh.resume ? ` · резюме «${hh.resume}»` : <span className="text-amber"> · резюме не выбрано</span>}</span>
+                ) : (
+                  <Link href="/app/agent#hh" className="inline-flex min-h-10 items-center rounded text-amber underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-green">не подключён</Link>
+                )}
+              </span>
+            )}
           </div>
           {p.summary && <p className="max-w-3xl text-[14px] leading-relaxed text-ink-2">{p.summary}</p>}
         </div>

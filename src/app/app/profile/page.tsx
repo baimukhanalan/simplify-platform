@@ -9,6 +9,7 @@ import { Experience } from "./_components/facts";
 import { Stories } from "./_components/stories";
 import { deriveStrengths } from "./_components/strengths";
 import { byRecency } from "../../_components/positions";
+import { hhEnabled, hhIntegration, readHhMeta } from "@/lib/hh/client";
 
 export const metadata: Metadata = { title: "Career Profile" };
 
@@ -23,12 +24,16 @@ const NAV = [
 
 export default async function ProfilePage() {
   const user = await requireUser();
-  const [profile, goal, facts, stories] = await Promise.all([
+  const [profile, goal, facts, stories, hhRow] = await Promise.all([
     db.profile.findUnique({ where: { userId: user.id } }),
     db.goal.findUnique({ where: { userId: user.id } }),
     db.fact.findMany({ where: { userId: user.id }, orderBy: { createdAt: "asc" } }),
     db.story.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { fact: true } }),
+    hhEnabled() ? hhIntegration(user.id) : null,
   ]);
+  // Sources line: the hh.kz account the agent applies from (/app/agent#hh).
+  const hhMeta = readHhMeta(hhRow?.meta);
+  const hh = !hhEnabled() ? null : hhRow?.accessToken ? { connected: true, name: hhMeta.name ?? "", resume: hhRow.resumeId ? hhMeta.resumeTitle || "выбрано" : "" } : { connected: false, name: "", resume: "" };
 
   if (!profile || (!profile.cvText && facts.length === 0 && !profile.headline)) {
     return (
@@ -70,7 +75,7 @@ export default async function ProfilePage() {
       </nav>
 
       <div className="flex flex-col gap-5">
-        <Basics name={user.name} email={user.email} profile={profile} goal={goal} currentRole={currentRole} />
+        <Basics name={user.name} email={user.email} profile={profile} goal={goal} currentRole={currentRole} hh={hh} />
         <Skills skills={skills} facts={facts} />
         <Strengths items={strengths} />
         <Constraints profile={profile} goal={goal} />

@@ -12,6 +12,7 @@ import path from "node:path";
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-cron-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 process.env.CRON_SECRET = "cron-test-secret";
+process.env.SIMPLIFY_LIVE_INGEST = "0"; // no network in tests: the live ingest step is covered by tests/sources.test.ts
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.ANTHROPIC_AUTH_TOKEN;
 

@@ -87,7 +87,7 @@ export const LANE: Record<string, { label: string; tone: Tone }> = {
 
 export const REMOTE_LABEL: Record<string, string> = { remote: "Удалённо", hybrid: "Гибрид", onsite: "В офисе" };
 
-export const SOURCE_LABEL: Record<string, string> = { demo: "Demo", greenhouse: "Greenhouse", lever: "Lever", remotive: "Remotive", arbeitnow: "Arbeitnow", seed: "Seed" };
+export const SOURCE_LABEL: Record<string, string> = { hh: "hh.kz", demo: "Demo", greenhouse: "Greenhouse", lever: "Lever", remotive: "Remotive", arbeitnow: "Arbeitnow", seed: "Seed" };
 
 export const INBOX_CLASS: Record<string, { label: string; tone: Tone; effect: string }> = {
   confirmation: { label: "Подтверждение", tone: "neutral", effect: "Submitted → Pending: заявку получили" },

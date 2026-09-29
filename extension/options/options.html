@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simplify Apply Assist — настройки</title>
+  <link rel="stylesheet" href="../lib/style.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main class="wrap">
+    <div class="label">Simplify · Apply Assist</div>
+    <h1>Подключение расширения</h1>
+    <p class="lead">Расширение заполняет формы работодателей из твоего пакета в Simplify. Отправляешь заявку всегда ты сам.</p>
+
+    <form id="form" class="card stack" autocomplete="off">
+      <label class="stack-sm">
+        <span class="label">Ключ расширения</span>
+        <input id="token" class="field" type="password" spellcheck="false" placeholder="Вставь ключ из Simplify → Расширение" required>
+        <span class="muted">Создай ключ на странице <a id="pairLink" href="#" target="_blank" rel="noopener">Simplify → Расширение</a>. Он хранится только в этом браузере.</span>
+      </label>
+      <label class="stack-sm">
+        <span class="label">Адрес Simplify</span>
+        <input id="baseUrl" class="field" type="url" spellcheck="false" required>
+        <span class="muted">Обычно менять не нужно. Для локальной разработки: http://localhost:3210</span>
+      </label>
+      <div class="row">
+        <button class="btn btn-primary" type="submit" id="save">Сохранить и проверить</button>
+        <button class="btn btn-ghost" type="button" id="forget">Забыть ключ</button>
+      </div>
+      <p id="status" role="status" aria-live="polite" class="status"></p>
+    </form>
+
+    <section class="card stack-sm">
+      <div class="label">Что расширение делает и чего не делает</div>
+      <ul class="list">
+        <li>Заполняет поля только после твоего клика «Заполнить форму».</li>
+        <li>Прикрепляет CV, подготовленный Simplify под эту вакансию, и вставляет письмо.</li>
+        <li>Никогда не нажимает «Отправить» и не отвечает на деликатные и юридические вопросы — только подсвечивает их.</li>
+      </ul>
+    </section>
+  </main>
+  <script src="../lib/api.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
