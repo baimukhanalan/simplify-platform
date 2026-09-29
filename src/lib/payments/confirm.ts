@@ -2,6 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { currentUserId } from "../auth";
 import { db } from "../db";
+import { captureError } from "../monitoring";
 import { rateLimitUser } from "../rate-limit";
 import { MOCK_PAID_CAP_24H, MOCK_PROVIDER, appBaseUrl, isExpired, mockEnabled, mockPaidLast24h, runningCampaign, signMock, view, type WebhookEvent } from "./kaspi";
 
@@ -46,6 +47,7 @@ export async function confirmInvoicePayment(req: Request, id: string, opts: { le
     res = await fetch(`${base}/api/payments/kaspi/webhook`, { method: "POST", headers: { "content-type": "application/json", ...signMock(raw) }, body: raw, cache: "no-store", signal: AbortSignal.timeout(30_000) });
   } catch (e) {
     console.error("[kaspi] webhook delivery failed", e);
+    await captureError(e, { userId, meta: { step: "kaspi-webhook-delivery", paymentId: p.id } });
     return err("webhook delivery failed", 502);
   }
   if (!res.ok) return err("webhook delivery failed", 502, { webhookStatus: res.status });

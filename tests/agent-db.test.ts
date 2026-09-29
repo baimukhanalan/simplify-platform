@@ -184,7 +184,8 @@ describe("a finished campaign stops asking", () => {
     const o = await makeOpp(campaign.id);
     await agent.prepare(o.id);
     assert.ok((await opsData.pendingApprovalsCount(user.id)) > 0);
-    await db.campaign.update({ where: { id: campaign.id }, data: { status: "paused", endsAt: new Date(Date.now() - 1000) } });
+    // guaranteeStatus "extended": the interview guarantee was already used (tests/guarantee.test.ts covers the extension).
+    await db.campaign.update({ where: { id: campaign.id }, data: { status: "paused", endsAt: new Date(Date.now() - 1000), guaranteeStatus: "extended" } });
     // Before any tick: the running-campaign filter already hides them.
     assert.equal(await opsData.pendingApprovalsCount(user.id), 0);
     const r = await agent.runTick(campaign.id);

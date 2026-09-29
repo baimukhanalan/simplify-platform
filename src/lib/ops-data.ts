@@ -7,6 +7,7 @@ import { agentQueue, dailyUsage, hasOpenAnswers } from "./engine/agent";
 import { FICTIONAL_SOURCE, isSimulation } from "./mode";
 import { DREAM_DECISION } from "./engine/matching";
 import { reachedInterview } from "./engine/insights";
+import { settleGuarantees } from "./engine/guarantee";
 import { APPLIED_OR_LATER, roleKey } from "./engine/taxonomy";
 import { startOfToday } from "./time";
 import { count } from "./ru";
@@ -18,7 +19,10 @@ export const isOverdue = (c: { status: string; endsAt: Date | null }, now = new 
 
 /** The campaign the operating screens show: the latest non-draft one (active, paused, hired or expired). */
 export async function currentCampaign(userId: string) {
-  const c = await db.campaign.findFirst({ where: { userId, status: { not: "draft" } }, orderBy: { createdAt: "desc" } });
+  let c = await db.campaign.findFirst({ where: { userId, status: { not: "draft" } }, orderBy: { createdAt: "desc" } });
+  // Interview guarantee first (src/lib/engine/guarantee.ts): an overdue campaign without interviews is extended, not over.
+  // Re-read even when this call didn't win the extension: a concurrent caller (the layout, a tick) may have.
+  if (c && isOverdue(c) && c.guaranteeStatus === "") { await settleGuarantees(userId); c = await db.campaign.findUnique({ where: { id: c.id } }); }
   // Show a campaign that ran out by date as expired right away; the next agent cycle persists it.
   return c && isOverdue(c) ? { ...c, status: "expired" } : c;
 }
@@ -27,7 +31,9 @@ export async function currentCampaign(userId: string) {
 export const runningCampaignWhere = (now = new Date()) => ({ status: { in: ["active", "paused"] }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] });
 
 /** The campaign the agent can still work on (active or paused, and not past its end date). */
-export function runningCampaign(userId: string) {
+export async function runningCampaign(userId: string) {
+  // An overdue campaign the interview guarantee is about to extend counts as running (settleGuarantees is a no-op otherwise).
+  await settleGuarantees(userId);
   return db.campaign.findFirst({ where: { userId, ...runningCampaignWhere() }, orderBy: { createdAt: "desc" } });
 }
 

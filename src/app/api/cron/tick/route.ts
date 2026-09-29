@@ -6,6 +6,7 @@ import { hhEnabled } from "@/lib/hh/client";
 import { isSimulation } from "@/lib/mode";
 import { syncHhNegotiations } from "@/lib/hh/sync";
 import { simulateAllEmployers } from "@/lib/engine/simulation";
+import { captureError, flushMonitoring } from "@/lib/monitoring";
 
 /** Constant-time bearer check on bytes (length compared in bytes, so non-ASCII input can't make timingSafeEqual throw). */
 function bearerOk(header: string | null, secret: string) {
@@ -45,7 +46,7 @@ export async function GET(req: Request) {
     try {
       const rep = await ingestLive("", { budgetMs: INGEST_BUDGET_MS });
       ingest = Object.fromEntries(Object.entries(rep).map(([k, v]) => [k, { added: v.added, errors: v.errors.length }]));
-    } catch (e) { console.error("[cron] ingest failed", e); }
+    } catch (e) { console.error("[cron] ingest failed", e); await captureError(e, { source: "cron", route: "/api/cron/tick", meta: { step: "ingest" } }); }
   }
   const campaigns = await db.campaign.findMany({
     where: { OR: [{ status: "active" }, { status: "paused", endsAt: { lte: now } }] },
@@ -62,13 +63,13 @@ export async function GET(req: Request) {
       // stays inside maxDuration; the cron prepares the rest next time.
       const r = await runTick(c.id, left < PREPARE_TAIL_MS ? { maxPrepare: Math.max(1, Math.floor(left / PREPARE_MS)) } : {});
       if ("skipped" in r) { if (r.skipped === "expired") expired++; } else ran++;
-    } catch (e) { failed++; console.error("[cron] tick failed", c.id, e); }
+    } catch (e) { failed++; console.error("[cron] tick failed", c.id, e); await captureError(e, { source: "cron", route: "/api/cron/tick", userId: c.userId, meta: { step: "tick", campaignId: c.id } }); }
   }
   // Simulation mode (src/lib/mode.ts): fictional employers answer applications that are due (no-op in live mode).
   let employers: { users: number; steps: number } | undefined;
   try {
     employers = await simulateAllEmployers(campaigns.filter((c) => c.status === "active").map((c) => c.userId), started + SIM_DEADLINE_MS);
-  } catch (e) { console.error("[cron] employer simulation failed", e); }
+  } catch (e) { console.error("[cron] employer simulation failed", e); await captureError(e, { source: "cron", route: "/api/cron/tick", meta: { step: "employers" } }); }
   // hh.kz: pull negotiation states for connected users (only when the integration is configured on the server).
   let hh: { synced: number; failed: number; deferred: number } | undefined;
   // Simulation mode: the fictional corpus only — no hh traffic from the cron.
@@ -77,8 +78,9 @@ export async function GET(req: Request) {
     hh = { synced: 0, failed: 0, deferred: 0 };
     for (const [i, u] of users.entries()) {
       if (Date.now() - started > HH_SYNC_DEADLINE_MS) { hh.deferred = users.length - i; break; }
-      try { await syncHhNegotiations(u.userId, { deadline: started + HH_SYNC_DEADLINE_MS }); hh.synced++; } catch (e) { hh.failed++; console.error("[cron] hh sync failed", u.userId, e); }
+      try { await syncHhNegotiations(u.userId, { deadline: started + HH_SYNC_DEADLINE_MS }); hh.synced++; } catch (e) { hh.failed++; console.error("[cron] hh sync failed", u.userId, e); await captureError(e, { source: "cron", route: "/api/cron/tick", userId: u.userId, meta: { step: "hh-sync" } }); }
     }
   }
+  await flushMonitoring(2000); // throttled occurrences of this run's errors are written before the function freezes
   return Response.json({ ran, expired, failed, deferred, ...(employers?.steps ? { employers } : {}), ...(hh ? { hh } : {}), ...(ingest ? { ingest } : {}) });
 }

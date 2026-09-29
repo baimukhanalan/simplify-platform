@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { ButtonLink, Card, Label, Script } from "@/components/ui";
 import { agentState } from "../_components/today-data";
 import { ShareJourney } from "./_components/share-journey";
+import { ReferralCta } from "../referral/_components/cta";
 import { plural } from "../../_components/ru";
 import { firstName, journeyStats, latestHiredCampaign } from "./_lib/journey";
 
@@ -88,6 +89,7 @@ export default async function HiredPage() {
             Перейти в Career<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </Link>
           <p className="max-w-sm text-[12.5px] text-white/50">{after}</p>
+          <ReferralCta tone="dark" className="mt-3 max-w-sm" />
         </div>
         <ShareJourney initialPath={campaign.shareToken ? `/share/${campaign.shareToken}` : null} shareText={shareText} />
       </div>

@@ -1,9 +1,12 @@
 "use server";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { Prisma } from "@prisma/client";
 import { db, noNul } from "../db";
 import { createSession, destroySession, hashPassword, verifyPassword, safeNext } from "../auth";
 import { rateLimit } from "../rate-limit";
+import { legalAcceptance } from "../legal";
+import { REFERRAL_COOKIE, REFERRAL_DISCOUNT_PCT, attachReferral, findReferrer, firstName } from "../referral";
 
 // Compared against when the email is unknown, so response time doesn't reveal registered emails.
 const DUMMY_HASH = "$2b$10$amW.fFYYQfcqtq3LP07xoOVkitHOgBKqneTNY/32vhppfmc8w9MRi";
@@ -33,7 +36,7 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
   if (name.length < 2) return { error: "Введи имя" };
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { error: "Некорректный email" };
   if (password.length < 8) return { error: "Пароль — минимум 8 символов" };
-  if (form.get("terms") !== "on") return { error: "Нужно согласие с условиями и политикой данных" };
+  if (form.get("terms") !== "on") return { error: "Нужно принять пользовательское соглашение и дать согласие на обработку персональных данных" };
   if (await db.user.findUnique({ where: { email } })) return { error: "Аккаунт с таким email уже есть — войди" };
   // An unknown or malformed code is ignored (signup still succeeds), never stored.
   const partner = ref ? await db.partner.findUnique({ where: { code: ref }, select: { code: true } }) : null;
@@ -42,7 +45,7 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
     user = await db.user.create({
       data: {
         name, email, passwordHash: await hashPassword(password), referredByCode: partner?.code ?? null,
-        consents: JSON.stringify({ terms: true, autoSubmit: true, emailScan: false, copilot: true, analytics: form.get("analytics") === "on", at: new Date().toISOString() }),
+        consents: JSON.stringify({ terms: true, autoSubmit: true, emailScan: false, copilot: true, analytics: form.get("analytics") === "on", at: new Date().toISOString(), legal: legalAcceptance() }),
         profile: { create: {} }, goal: { create: {} },
       },
     });
@@ -52,6 +55,10 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
     throw e;
   }
   await db.event.create({ data: { userId: user.id, type: "signup", message: "Аккаунт создан" } });
+  // «Приведи друга»: a friend's code from the form, else the 30-day invite cookie set by /r/<code>. A partner code wins.
+  const jar = await cookies();
+  if (!partner) await attachReferral(user.id, ref ?? jar.get(REFERRAL_COOKIE)?.value);
+  jar.delete(REFERRAL_COOKIE);
   await createSession(user.id);
   const plan = String(form.get("plan") ?? "");
   redirect(plan === "local" || plan === "international" ? `/onboarding?plan=${plan}` : "/onboarding");
@@ -72,7 +79,9 @@ export async function checkReferral(code: string): Promise<ReferralCheck> {
   const rl = await rateLimit("referral-check", 30, 10 * 60 * 1000);
   if (!rl.ok) return { valid: false, partnerName: null };
   const partner = await db.partner.findUnique({ where: { code: ref }, select: { name: true } });
-  return partner ? { valid: true, partnerName: partner.name } : { valid: false, partnerName: null };
+  if (partner) return { valid: true, partnerName: partner.name };
+  const friend = await findReferrer(ref);
+  return friend ? { valid: true, partnerName: `${firstName(friend.name)} · −${REFERRAL_DISCOUNT_PCT}% на первую кампанию` } : { valid: false, partnerName: null };
 }
 
 export async function logout() {

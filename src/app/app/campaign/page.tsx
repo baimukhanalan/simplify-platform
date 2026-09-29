@@ -1,21 +1,25 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { ArrowRight, Check, CircleAlert, Pause, Play, TicketPercent } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Pause, Play, ShieldCheck, TicketPercent } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { isOverdue, pendingApprovalsCount, pendingHandoffsCount } from "@/lib/ops-data";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { ButtonLink, Card, Chip, Label, PageHeader, Progress, Ring, Script, cx } from "@/components/ui";
 import { PaymentHistory } from "./_components/payment-history";
+import { GUARANTEE_PROMISE, GuaranteeCard } from "./_components/guarantee";
+import { guaranteeView, settleGuarantees, type GuaranteeView } from "@/lib/engine/guarantee";
 import { SubmitButton } from "@/components/client";
 import { checkout, setCampaignStatus } from "@/lib/actions/campaign";
 import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
 import { Disclosure } from "../profile/_components/bits";
 import { AgentStatus } from "../../_components/agent-status";
-import { LegalLinks } from "../../_components/legal-page";
+import { OfferAcceptance } from "../../_components/legal-page";
 import { PLAN_COOKIE, cleanPlan, type PlanKey } from "../../_components/plan-pref";
 import { handoffsWaiting, plural, questionsWaiting } from "../../_components/ru";
+import { referralOfferFor, referralPrice, type ReferralOffer } from "@/lib/referral";
+import { ReferralCta } from "../referral/_components/cta";
 
 export const metadata: Metadata = { title: "Кампания и оплата" };
 
@@ -48,6 +52,8 @@ const date = (d: Date | null | undefined) => (d ? d.toLocaleDateString("ru-RU", 
 
 export default async function CampaignPage() {
   const user = await requireUser();
+  // Interview guarantee: an overdue campaign without interviews is extended before it could be shown as over.
+  await settleGuarantees(user.id);
   const [rows, payments, approvals, handoffs, jar] = await Promise.all([
     db.campaign.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { _count: { select: { opportunities: { where: { submittedAt: { not: null } } } } } } }),
     db.payment.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { campaign: { select: { plan: true } } } }),
@@ -58,6 +64,7 @@ export default async function CampaignPage() {
   // A campaign past endsAt is over even before an agent cycle writes status="expired": no Pause/Run, show the buy form.
   const campaigns = rows.map((c) => (isOverdue(c) ? { ...c, status: "expired" } : c));
   const active = campaigns.find((c) => c.status === "active" || c.status === "paused");
+  const guarantee = active ? await guaranteeView(active) : null;
   const past = campaigns.filter((c) => c !== active && c.status !== "draft");
   const last = past[0];
   const consents = j<{ autoSubmit?: boolean }>(user.consents, {});
@@ -68,6 +75,7 @@ export default async function CampaignPage() {
       ]
     : [];
   const autonomy = readAutonomy(user.autonomy);
+  const offer = active ? null : await referralOfferFor(user.id);
 
   return (
     <>
@@ -89,7 +97,7 @@ export default async function CampaignPage() {
         />
       )}
 
-      {active ? <ActiveCampaign c={active} autoSubmitConsent={consents.autoSubmit !== false} autoApply={autonomy.submitApplications} minMatch={autonomy.autoApplyMinMatch} /> : (
+      {active ? <ActiveCampaign c={active} guarantee={guarantee} autoSubmitConsent={consents.autoSubmit !== false} autoApply={autonomy.submitApplications} minMatch={autonomy.autoApplyMinMatch} /> : (
         <>
           {last && (last.status === "hired" || last.status === "expired") && (
             <div className="mb-6 flex animate-rise flex-col gap-2 rounded-2xl border border-line bg-white/70 px-4 py-3.5 text-[14px] text-ink-2 sm:flex-row sm:items-center sm:justify-between">
@@ -103,10 +111,13 @@ export default async function CampaignPage() {
           <Checkout
             hasGoal={Boolean(user.goal?.primaryRole)}
             partner={user.referredByCode ?? ""}
+            offer={offer}
             recommended={cleanPlan(jar.get(PLAN_COOKIE)?.value) ?? (j<string[]>(user.goal?.countries, []).some((c) => !["KZ", "CIS"].includes(c)) ? "international" : "local")}
           />
         </>
       )}
+
+      <ReferralCta className="mt-6 animate-rise" />
 
       <div className="mt-10 grid gap-6 lg:grid-cols-2">
         <PaymentHistory payments={payments} />
@@ -136,7 +147,7 @@ export default async function CampaignPage() {
 }
 
 /** Plan picker. Partner attribution comes only from the signup referral — shown read-only, never typed here. */
-function Checkout({ hasGoal, partner, recommended }: { hasGoal: boolean; partner: string; recommended: PlanKey }) {
+function Checkout({ hasGoal, partner, recommended, offer = null }: { hasGoal: boolean; partner: string; recommended: PlanKey; offer?: ReferralOffer | null }) {
   return (
     <form action={checkout} className="flex flex-col gap-6">
       <div className="grid gap-4 md:grid-cols-2">
@@ -148,7 +159,17 @@ function Checkout({ hasGoal, partner, recommended }: { hasGoal: boolean; partner
               <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-col gap-1.5">
                   <Label><span id={`plan-${key}`}>{plan.label}</span></Label>
-                  <div className="num text-[40px] leading-none text-head">{fmtKzt(plan.priceKzt)}</div>
+                  {offer ? (
+                    <>
+                      <div className="flex flex-wrap items-baseline gap-x-2.5">
+                        <span className="num text-[40px] leading-none text-head">{fmtKzt(referralPrice(plan.priceKzt).amount)}</span>
+                        <s className="num text-[16px] text-ink-3"><span className="sr-only">Без скидки: </span>{fmtKzt(plan.priceKzt)}</s>
+                      </div>
+                      <div className="text-[12.5px] text-green">−{offer.pct}% по приглашению · {offer.referrerName}</div>
+                    </>
+                  ) : (
+                    <div className="num text-[40px] leading-none text-head">{fmtKzt(plan.priceKzt)}</div>
+                  )}
                   <div className="text-[13px] text-ink-3">за {plan.days} дней кампании · разовый платёж</div>
                 </div>
                 {rec && <Chip tone="green" dot>Рекомендуем</Chip>}
@@ -182,6 +203,10 @@ function Checkout({ hasGoal, partner, recommended }: { hasGoal: boolean; partner
             ))}
           </ul>
         </div>
+        <p className="flex items-start gap-2 border-t border-line pt-5 text-[13px] text-ink-2">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />
+          <span><span className="font-medium text-head">Гарантия интервью.</span> {GUARANTEE_PROMISE}</span>
+        </p>
         {partner && (
           <p className="flex items-center gap-2 border-t border-line pt-5 text-[13px] text-ink-2">
             <TicketPercent className="size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
@@ -190,14 +215,14 @@ function Checkout({ hasGoal, partner, recommended }: { hasGoal: boolean; partner
         )}
         <div className="flex items-start gap-2.5 rounded-2xl bg-head/[.04] px-4 py-3 text-[13px] text-ink-2">
           <CircleAlert className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.8} aria-hidden />
-          <p><span className="font-medium text-head">Оплата через Kaspi Pay.</span> Кампания запускается сразу после подтверждения оплаты. Оплачивая, ты принимаешь <LegalLinks />.</p>
+          <p><span className="font-medium text-head">Оплата через Kaspi Pay.</span> Кампания запускается сразу после подтверждения оплаты. <OfferAcceptance /></p>
         </div>
       </Card>
     </form>
   );
 }
 
-function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch }: { c: { id: string; plan: string; status: string; readiness: number; dailyLimit: number; autoSubmit: boolean; startedAt: Date | null; endsAt: Date | null; lastRunAt: Date | null }; autoSubmitConsent: boolean; autoApply: boolean; minMatch: number }) {
+function ActiveCampaign({ c, guarantee, autoSubmitConsent, autoApply, minMatch }: { guarantee: GuaranteeView | null; c: { id: string; plan: string; status: string; readiness: number; dailyLimit: number; autoSubmit: boolean; startedAt: Date | null; endsAt: Date | null; lastRunAt: Date | null }; autoSubmitConsent: boolean; autoApply: boolean; minMatch: number }) {
   // The agent sends on its own only with the consent (campaign.autoSubmit mirrors it) — and then either for roles above
   // the auto-apply threshold (Autonomy.submitApplications) or only for roles marked Apply / Auto.
   const autoLine = !c.autoSubmit || !autoSubmitConsent
@@ -252,6 +277,7 @@ function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch }: { c: { id
       </Card>
 
       <div className="flex flex-col gap-6">
+        {guarantee && <GuaranteeCard view={guarantee} style={{ animationDelay: "40ms" }} />}
         <Card className="animate-rise" style={{ animationDelay: "80ms" }}>
           <Label className="mb-3">Настройки агента</Label>
           <p className="text-[13.5px] text-ink-2">
@@ -265,7 +291,7 @@ function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch }: { c: { id
           <div className="flex flex-col gap-2 text-[13.5px] text-ink-2">
             <p>Тариф {plan.label} — до <span className="num text-head">{plan.dailyLimit}</span> {plural(plan.dailyLimit, ["заявки", "заявок", "заявок"])} в день. Лимит защищает качество: каждая заявка персонализирована, а не разослана массово.</p>
             <p>Агент никогда не подаёт дважды в одну вакансию и пропускает вакансии, где ты не проходишь по обязательным требованиям.</p>
-            <p className="text-ink-3">Пауза не продлевает 60 дней кампании.</p>
+            <p className="text-ink-3">Пауза не продлевает срок кампании.</p>
           </div>
         </Card>
       </div>

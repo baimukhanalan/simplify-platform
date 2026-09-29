@@ -4,8 +4,11 @@ import type { Prisma } from "@prisma/client";
 import { db, isPostgres, j, s } from "../db";
 import { runningCampaignWhere } from "../ops-data";
 import { PLANS } from "../engine/taxonomy";
+import { offerAcceptance } from "../legal";
 import { logEvent, notify } from "../engine/agent";
+import { announceGuarantee, applyGuaranteeWith, settleGuarantees, type GuaranteeResult } from "../engine/guarantee";
 import { assessReadinessFor } from "./readiness-snapshot";
+import { announceDeferredCredit, applyDeferredReferralCredit, markReferralPaid, referralOfferFor, referralPrice, rewardReferrer } from "../referral";
 
 /**
  * Kaspi Pay. Mirrors a typical merchant flow:
@@ -199,6 +202,8 @@ export const isExpired = (p: { meta: string }, now = new Date()) => new Date(j<M
 
 /** A running campaign blocks new invoices and payments (one campaign at a time, no double charge). */
 export async function runningCampaign(userId: string) {
+  // An overdue campaign the interview guarantee extends is still running: no new invoice for it.
+  await settleGuarantees(userId);
   return db.campaign.findFirst({ where: { userId, ...runningCampaignWhere() }, orderBy: { createdAt: "desc" }, select: { id: true } });
 }
 
@@ -221,13 +226,18 @@ export async function createInvoice(userId: string, planKey: string) {
   const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { referredByCode: true } });
   const code = (user.referredByCode ?? "").trim().toUpperCase();
   const partner = code ? await db.partner.findUnique({ where: { code } }) : null;
+  // «Приведи друга»: −10% on the invited user's first campaign (src/lib/referral.ts). Revenue share follows the amount charged.
+  const offer = await referralOfferFor(userId);
+  const price = offer ? referralPrice(plan.priceKzt) : { amount: plan.priceKzt, discountKzt: 0 };
+  const referral = offer ? { referral: { fullKzt: plan.priceKzt, discountKzt: price.discountKzt, pct: offer.pct, from: offer.referrerName } } : {};
   return db.payment.create({
     data: {
-      userId, amount: plan.priceKzt, currency: "KZT", provider, status: "pending", plan: plan.key,
+      userId, amount: price.amount, currency: "KZT", provider, status: "pending", plan: plan.key,
       externalId: `KSP-${randomBytes(16).toString("hex").toUpperCase()}`, // 128 bits: invoice ids are unguessable
       // Built-in gateway payments move no money (any mode): attribution is kept, no revenue share is owed.
-      partnerCode: partner?.code ?? null, partnerCut: partner && provider !== MOCK_PROVIDER ? Math.round(plan.priceKzt * partner.revShare) : 0,
-      meta: s({ expiresAt: new Date(Date.now() + INVOICE_TTL_MS).toISOString() }),
+      partnerCode: partner?.code ?? null, partnerCut: partner && provider !== MOCK_PROVIDER ? Math.round(price.amount * partner.revShare) : 0,
+      // Offer acceptance: the checkout screens say «Оплачивая, ты принимаешь условия публичной оферты» — the version shown is recorded.
+      meta: s({ expiresAt: new Date(Date.now() + INVOICE_TTL_MS).toISOString(), ...referral, offer: offerAcceptance() }),
     },
   });
 }
@@ -355,7 +365,7 @@ export async function activatePaid(paymentId: string, charge?: Charge): Promise<
   const userId = found.userId;
   const readiness = await assessReadinessFor(userId).catch(() => 0);
 
-  type Inner = ActivateResult & { externalId?: string | null; planLabel?: string; days?: number; late?: boolean; newlyBlocked?: boolean };
+  type Inner = ActivateResult & { externalId?: string | null; planLabel?: string; days?: number; late?: boolean; newlyBlocked?: boolean; referralId?: string | null; referralDays?: number; guarantees?: { id: string; r: GuaranteeResult }[] };
   const r = await db.$transaction(async (tx): Promise<Inner> => {
     // Serializes activations and bookkeeping of the same user: two invoices paid concurrently can't both start a
     // campaign, and two deliveries can't both append (or lose) a refund entry.
@@ -382,13 +392,19 @@ export async function activatePaid(paymentId: string, charge?: Charge): Promise<
     if (activationBlocked(meta)) return { ...base, kind: "refund_due" };
 
     const now = new Date();
+    // Interview guarantee before expiry (src/lib/engine/guarantee.ts): an overdue campaign without a single interview is
+    // extended by 30 days, not expired — the user never loses the guarantee to a payment. The extended campaign is then
+    // running, so this payment becomes refund_due below (money back + the free 30 days).
+    const due = await tx.campaign.findMany({ where: { userId, status: { in: ["active", "paused"] }, endsAt: { lte: now }, guaranteeStatus: "" }, select: { id: true } });
+    const guarantees: { id: string; r: GuaranteeResult }[] = [];
+    for (const c of due) guarantees.push({ id: c.id, r: await applyGuaranteeWith(tx, c.id, now) });
     // Campaigns past endsAt are over even if no tick has expired them yet.
     await tx.campaign.updateMany({ where: { userId, status: { in: ["active", "paused"] }, endsAt: { lte: now } }, data: { status: "expired" } });
     const existing = await tx.campaign.findFirst({ where: { userId, ...runningCampaignWhere(now) }, select: { id: true } });
     if (existing) {
       const next = withRefund(meta, meta.transactionId ?? charge?.tx ?? "", "campaign_already_active", { conflictingCampaignId: existing.id });
       await tx.payment.update({ where: { id: p.id }, data: { meta: s(next) } });
-      return { ...base, kind: "refund_due", newlyBlocked: true };
+      return { ...base, kind: "refund_due", newlyBlocked: true, guarantees };
     }
     const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { consents: true, goal: { select: { mode: true } } } });
     const plan = PLANS[p.plan as keyof typeof PLANS] ?? PLANS.local;
@@ -400,19 +416,26 @@ export async function activatePaid(paymentId: string, charge?: Charge): Promise<
     });
     await tx.payment.update({ where: { id: p.id }, data: { campaignId: campaign.id } });
     await tx.user.update({ where: { id: userId }, data: { careerMode: "active" } });
+    // «Приведи друга»: this user's invite turns «paid» (once), and days credited to this user for invited friends go on the new campaign.
+    const referralId = await markReferralPaid(tx, userId, p.meta);
+    const referralDays = await applyDeferredReferralCredit(tx, userId, campaign.id, now);
     // Other open invoices can no longer be paid by mistake (a late payment on one is handled as refund_due). The reason
     // is recorded so the payment history doesn't claim they ran out of time.
     const others = await tx.payment.findMany({ where: { userId, id: { not: p.id }, status: "pending", provider: { in: KASPI_PROVIDERS } }, select: { id: true, meta: true } });
     for (const o of others) {
       await tx.payment.update({ where: { id: o.id }, data: { status: "expired", meta: s({ ...j<Meta>(o.meta, {}), expiredReason: "campaign_started", expiredAt: now.toISOString() }) } });
     }
-    return { ...base, kind: "created", campaignId: campaign.id, planLabel: plan.label, days: plan.days };
+    return { ...base, kind: "created", campaignId: campaign.id, planLabel: plan.label, days: plan.days, referralId, referralDays };
   });
 
+  for (const g of r.guarantees ?? []) await announceGuarantee(g.r, g.id);
   if (r.duplicateCharge) await logEvent(userId, "payment_refund_due", `Повторное списание по счёту ${r.externalId} (${charge?.tx}) — будет возвращено`);
   if (r.late && r.claimed) await logEvent(userId, "payment_late", `Оплата по истёкшему счёту ${r.externalId} получена${r.kind === "refund_due" ? " — кампания уже идёт, платёж будет возвращён" : ""}`);
   if (r.kind === "created") {
     await logEvent(userId, "campaign_started", `Оплата Kaspi Pay ${r.externalId} прошла. Career Campaign «${r.planLabel}» запущена на ${r.days} дней`);
+    // After commit, under the referrer's own lock. A failure here leaves the referral «paid» — applied at the referrer's next campaign.
+    if (r.referralId) await rewardReferrer(r.referralId).catch((e) => console.error("[referral] reward failed", e));
+    if (r.referralDays) await announceDeferredCredit(userId, r.referralDays);
   } else if (r.kind === "refund_due" && r.newlyBlocked) {
     await logEvent(userId, "payment_refund_due", `Оплата ${r.externalId} получена, но кампания уже идёт — платёж будет возвращён`);
     await notify(userId, "info", "Платёж будет возвращён", `Счёт ${r.externalId} оплачен, но у тебя уже есть активная кампания — деньги вернутся тем же способом оплаты.`, "/app/campaign");

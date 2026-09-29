@@ -8,6 +8,8 @@ import { SiteHeader } from "./_components/site-header";
 import { IntentFlow } from "./_components/intent-flow";
 import { PLAN_COPY, PLAN_ORDER, fitPlan } from "./_components/plan-pref";
 import { count } from "./_components/ru";
+import { LEGAL_DOCS, LEGAL_ORDER } from "@/lib/legal";
+import { LocaleSwitcher } from "@/components/locale-switcher";
 
 const HOW = [
   { n: "01", title: "Ты задаёшь цель", text: "Роль, страны, зарплата. Загружаешь CV — агент собирает Career Profile." },
@@ -123,9 +125,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         <Logo className="!h-[18px] opacity-70" />
         <nav aria-label="Документы и сервисы" className="flex flex-wrap items-center justify-center gap-x-4">
           <Link href="/check" className="inline-flex min-h-10 items-center hover:text-head focus-visible:outline-2 focus-visible:outline-green">Проверка CV</Link>
-          <Link href="/terms" className="inline-flex min-h-10 items-center hover:text-head focus-visible:outline-2 focus-visible:outline-green">Условия</Link>
-          <Link href="/privacy" className="inline-flex min-h-10 items-center hover:text-head focus-visible:outline-2 focus-visible:outline-green">Политика данных</Link>
+          {LEGAL_ORDER.map((k) => (
+            <Link key={k} href={LEGAL_DOCS[k].href} className="inline-flex min-h-10 items-center hover:text-head focus-visible:outline-2 focus-visible:outline-green">{LEGAL_DOCS[k].short}</Link>
+          ))}
         </nav>
+        <LocaleSwitcher />
         <span>© {new Date().getFullYear()} Simplify · Алматы</span>
       </footer>
     </div>

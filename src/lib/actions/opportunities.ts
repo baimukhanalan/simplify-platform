@@ -9,6 +9,7 @@ import { isSimulation } from "../mode";
 import { QUEUE_MATCH, blockingQuestions, currentEligibility, duplicateOf, logEvent, prepare, settleSharedAnswers, submit } from "../engine/agent";
 import { blockerKind } from "../engine/matching";
 import { count } from "../ru";
+import { captureError } from "../monitoring";
 
 export type DecisionState = {
   ok?: boolean;
@@ -135,6 +136,7 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
     return { ok: true, message: "Пакет готов, отправка ждёт.", href: `/app/opportunities/${id}`, hrefLabel: "Открыть" };
   } catch (e) {
     console.error("apply failed", e);
+    await captureError(e, { source: "action", userId: user.id, meta: { step: "apply", opportunityId: id } });
     refresh(id);
     return { error: "Не удалось подготовить заявку. Попробуй ещё раз." };
   }

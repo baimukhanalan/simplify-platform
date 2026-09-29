@@ -119,9 +119,23 @@ describe("cron time budget", () => {
   test("a paused campaign past its end date is expired by cron (visited, not counted as ran)", async () => {
     await db.campaign.updateMany({ data: { status: "expired" } });
     const p = await campaign(null);
-    await db.campaign.update({ where: { id: p.id }, data: { status: "paused", endsAt: new Date(realNow() - 1000) } });
+    // The interview guarantee was already used, so the end date is final.
+    await db.campaign.update({ where: { id: p.id }, data: { status: "paused", endsAt: new Date(realNow() - 1000), guaranteeStatus: "extended" } });
     const body = await (await call()).json();
     assert.deepEqual(body, { ran: 0, expired: 1, failed: 0, deferred: 0 });
     assert.equal((await db.campaign.findUniqueOrThrow({ where: { id: p.id } })).status, "expired");
+  });
+
+  test("a paused campaign past its end date without a single interview is extended by the guarantee, not expired", async () => {
+    await db.campaign.updateMany({ data: { status: "expired" } });
+    const p = await campaign(null);
+    const endsAt = new Date(realNow() - 1000);
+    await db.campaign.update({ where: { id: p.id }, data: { status: "paused", endsAt } });
+    const body = await (await call()).json();
+    assert.deepEqual(body, { ran: 0, expired: 0, failed: 0, deferred: 0 });
+    const c = await db.campaign.findUniqueOrThrow({ where: { id: p.id } });
+    assert.equal(c.status, "paused");
+    assert.equal(c.guaranteeStatus, "extended");
+    assert.equal(c.endsAt!.getTime() - endsAt.getTime(), 30 * 86400000);
   });
 });

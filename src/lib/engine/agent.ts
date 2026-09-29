@@ -588,11 +588,17 @@ export type TickOptions = {
 
 /** One agent cycle: discover → re-rank → prepare → submit, within the daily limit (the Almaty calendar day, like the UI). */
 export async function runTick(campaignId: string, opts: TickOptions = {}) {
-  const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+  let campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+  // Interview guarantee before expiry (src/lib/engine/guarantee.ts): no interview in the campaign → +30 days, once.
+  if ((campaign.status === "active" || campaign.status === "paused") && campaign.endsAt && campaign.endsAt <= new Date()) {
+    if ((await (await import("./guarantee")).applyGuarantee(campaignId)).applied) campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
+  }
   // Expiry first: a campaign paused past its end date is over too, not "paused forever".
-  if ((campaign.status === "active" || campaign.status === "paused") && campaign.endsAt && campaign.endsAt < new Date()) {
-    // Conditional: a concurrent tick (or HIRED) that already ended the campaign wins; its questions are closed either way.
-    const ended = await db.campaign.updateMany({ where: { id: campaignId, status: { in: ["active", "paused"] } }, data: { status: "expired" } });
+  if ((campaign.status === "active" || campaign.status === "paused") && campaign.endsAt && campaign.endsAt <= new Date()) {
+    // Conditional: a concurrent tick (or HIRED) that already ended the campaign wins, and so does a concurrent guarantee
+    // extension (endsAt moved into the future); its questions are closed either way.
+    const ended = await db.campaign.updateMany({ where: { id: campaignId, status: { in: ["active", "paused"] }, endsAt: { lte: new Date() } }, data: { status: "expired" } });
+    if (!ended.count && (await db.campaign.count({ where: { id: campaignId, endsAt: { gt: new Date() }, status: { in: ["active", "paused"] } } }))) return { skipped: "extended" };
     const closed = await closeCampaignApprovals(campaignId);
     if (ended.count) await logEvent(campaign.userId, "campaign_status", `Кампания завершена по сроку${closed ? ` — ${count(closed, ["открытый вопрос закрыт", "открытых вопроса закрыто", "открытых вопросов закрыто"])}` : ""}`);
     return { skipped: "expired" };
@@ -687,12 +693,12 @@ const ROUND_STATUS: Record<string, string> = { recruiter: "recruiter", hiring_ma
 
 const CLOSED = new Set(["hired", "rejected"]);
 
-export async function ingestEmail(userId: string, msg: { from: string; subject: string; body: string; simulated?: boolean; opportunityId?: string }) {
+export async function ingestEmail(userId: string, msg: { from: string; subject: string; body: string; simulated?: boolean; opportunityId?: string; source?: string; externalId?: string }) {
   msg = { ...msg, from: noNul(msg.from), subject: noNul(msg.subject), body: noNul(msg.body) };
   const c = classifyEmail(msg.subject, msg.body);
   const opps = await db.opportunity.findMany({ where: { campaign: { userId }, status: { in: APPLIED_OR_LATER } }, include: { job: { select: { company: true, title: true } } } });
   const oppId = msg.opportunityId ?? matchCompany(msg.from, msg.subject, msg.body, opps.map((o) => ({ id: o.id, company: o.job.company, title: o.job.title, status: o.status, updatedAt: o.updatedAt })));
-  const saved = await db.inboxMessage.create({ data: { userId, opportunityId: oppId, fromAddr: msg.from, subject: msg.subject, body: msg.body, classification: c.cls, confidence: c.confidence, deadline: c.deadline, simulated: Boolean(msg.simulated) } });
+  const saved = await db.inboxMessage.create({ data: { userId, opportunityId: oppId, fromAddr: msg.from, subject: msg.subject, body: msg.body, classification: c.cls, confidence: c.confidence, deadline: c.deadline, simulated: Boolean(msg.simulated), ...(msg.source ? { source: msg.source } : {}), ...(msg.externalId ? { externalId: msg.externalId } : {}) } });
   const opp = oppId ? opps.find((o) => o.id === oppId) : undefined;
   if (!oppId || !opp) return { message: saved, updated: false };
   const closed = CLOSED.has(opp.status); // hired / rejected are final: mail never reopens them

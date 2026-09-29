@@ -87,3 +87,6 @@ body {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* PP Supply Mono has no Kazakh letters (Қ Ң Ұ Ү Ө Ә Ғ І Һ): in Kazakh, set mono text in the Cyrillic mono so a word never mixes two fonts. */
+:lang(kk) { --font-mono: var(--font-mono-cyr), ui-monospace, monospace; }

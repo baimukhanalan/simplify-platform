@@ -1,17 +1,27 @@
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
+import { db, j } from "@/lib/db";
 import { isSimulation } from "@/lib/mode";
 import { logout } from "@/lib/actions/auth";
 import { currentCampaign, interviewCounts, unreadMoments, visibleLinkedScope } from "@/lib/ops-data";
+import { settleGuarantees } from "@/lib/engine/guarantee";
 import { needsYouCached } from "../_components/global-needs";
 import { Nav } from "./nav";
 import { PushMoment } from "./_components/push-moment";
 import { Notifier } from "./_components/notifier";
+import { Pwa } from "@/components/pwa/pwa";
 import { LogOut } from "lucide-react";
+import { getT } from "@/lib/i18n/server";
+import { I18nScope } from "@/lib/i18n/scope";
+import { needsLegalAcceptance } from "@/lib/legal";
+import { LegalBanner } from "./_components/legal-banner";
+import { LegalFooter } from "../_components/legal-page";
 
 const DAY = 86400000;
 
 async function shellData(userId: string) {
+  // Interview guarantee (src/lib/engine/guarantee.ts): an overdue campaign without interviews is extended before any
+  // number below reads it, so it never flashes «Завершена» between its end time and the next agent cycle.
+  await settleGuarantees(userId);
   const since = new Date(Date.now() - 3 * DAY);
   const [waiting, responses, interviews, offers, openOffers, campaign, moments] = await Promise.all([
     // needsYou: the same numbers as every «Нужно от тебя» block; the badge = everything on the «Подтверждения» screen.
@@ -39,8 +49,9 @@ async function shellData(userId: string) {
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  const { counts, clock, moments, todayShowsOffer } = await shellData(user.id);
+  const [{ counts, clock, moments, todayShowsOffer }, t] = await Promise.all([shellData(user.id), getT()]);
   return (
+    <I18nScope ns={["nav", "errors"]}>
     <div className="flex min-h-dvh flex-col lg:flex-row">
       <Nav counts={counts} role={user.role} campaign={clock} userName={user.name} quietQueue={isSimulation()} />
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-16 pt-4 sm:px-8 lg:pt-6">
@@ -51,14 +62,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
           <span className="hidden text-[13px] text-ink-3 lg:inline">{user.name}</span>
           <form action={logout} className="hidden lg:block">
-            <button className="grid size-9 place-items-center rounded-full glass text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green" aria-label="Выйти" title="Выйти"><LogOut className="size-4" aria-hidden /></button>
+            <button className="grid size-9 place-items-center rounded-full glass text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green" aria-label={t("common.signOut")} title={t("common.signOut")}><LogOut className="size-4" aria-hidden /></button>
           </form>
         </div>
         <div className="mx-auto w-full max-w-[1180px]">
+          {needsLegalAcceptance(j<unknown>(user.consents, {})) && <LegalBanner />}
           {moments.top && <PushMoment m={moments.top} more={moments.more} todayShowsOffer={todayShowsOffer} />}
           {children}
         </div>
+        <LegalFooter className="mt-16 !px-0" />
       </main>
+      <Pwa />
     </div>
+    </I18nScope>
   );
 }

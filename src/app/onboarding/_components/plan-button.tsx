@@ -1,10 +1,12 @@
 "use client";
 import { useFormStatus } from "react-dom";
 import { cx } from "@/components/ui";
+import { useT } from "@/lib/i18n/client";
 
 /** Submit button that shows pending only for the plan that was actually chosen. */
 export function PlanButton({ plan, featured, children }: { plan: string; featured?: boolean; children: React.ReactNode }) {
   const { pending, data } = useFormStatus();
+  const t = useT();
   const mine = pending && data?.get("plan") === plan;
   return (
     <button
@@ -15,7 +17,7 @@ export function PlanButton({ plan, featured, children }: { plan: string; feature
       )}
     >
       {mine && <span className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />}
-      {mine ? "Запускаем кампанию…" : children}
+      {mine ? t("onboarding.launching") : children}
     </button>
   );
 }

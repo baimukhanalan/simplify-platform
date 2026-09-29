@@ -3,11 +3,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  BadgeDollarSign, Bot, BriefcaseBusiness, Handshake, Lock, LogOut, Menu, Mic, MessageSquareText, Rocket, Search, ShieldCheck, Sprout, Sun, Wrench, X,
+  BadgeDollarSign, Bot, BriefcaseBusiness, Gift, Handshake, Lock, LogOut, Menu, Mic, MessageSquareText, Rocket, Search, ShieldCheck, Sprout, Sun, Wrench, X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cx } from "@/components/ui";
 import { logout } from "@/lib/actions/auth";
+import { LocaleSwitcher } from "@/components/locale-switcher";
+import { useT } from "@/lib/i18n/client";
+import type { NsKey } from "@/lib/i18n/translator";
 
 type Item = { href: string; label: string; icon: LucideIcon; badge?: "approvals" | "responses" | "interviews"; also?: string[] };
 
@@ -28,8 +31,16 @@ const SECONDARY: Item[] = [
   { href: "/app/inbox", label: "Ответы работодателей", icon: MessageSquareText, badge: "responses" },
   { href: "/app/approvals", label: "Подтверждения", icon: ShieldCheck, badge: "approvals" },
   { href: "/app/campaign", label: "Кампания и оплата", icon: Rocket },
+  { href: "/app/referral", label: "Пригласи друга", icon: Gift },
   { href: "/app/settings", label: "Приватность", icon: Lock },
 ];
+
+/** Dictionary key per destination (src/lib/i18n/dictionaries: nav.*). An item without one shows its `label` as written. */
+const NAV_KEY: Record<string, NsKey<"nav">> = {
+  "/app": "today", "/app/opportunities": "opportunities", "/app/applications": "applications", "/app/interviews": "interviews", "/app/career": "career",
+  "/app/agent": "agent", "/app/offers": "offers", "/app/inbox": "inbox", "/app/approvals": "approvals", "/app/campaign": "campaign", "/app/referral": "referral",
+  "/app/settings": "settings", "/partners": "partners", "/admin": "ops",
+};
 
 export type NavCounts = { approvals: number; responses: number; interviews: number; offers: number };
 
@@ -37,6 +48,8 @@ export type NavCounts = { approvals: number; responses: number; interviews: numb
 export function Nav({ counts, role, campaign, userName, quietQueue = false }: { counts: NavCounts; role: string; campaign: { status: string; day: number | null; total: number } | null; userName: string; quietQueue?: boolean }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const t = useT();
+  const labelOf = (it: Item) => (NAV_KEY[it.href] ? t(`nav.${NAV_KEY[it.href]}`) : it.label);
   const isActive = (it: Item) =>
     it.href === "/app" ? path === "/app" : [it.href, ...(it.also ?? [])].some((h) => path === h || path.startsWith(`${h}/`));
 
@@ -67,7 +80,7 @@ export function Nav({ counts, role, campaign, userName, quietQueue = false }: { 
 
   const list = (
     <div className="flex flex-col gap-7">
-      <nav aria-label="Основная навигация">
+      <nav aria-label={t("nav.mainAria")}>
         <ul className="flex flex-col gap-0.5">
           {primary.map((it) => {
             const active = isActive(it);
@@ -84,8 +97,8 @@ export function Nav({ counts, role, campaign, userName, quietQueue = false }: { 
                   )}
                 >
                   <it.icon className={cx("size-[18px] transition-colors", active ? "text-green" : "text-teal/70 group-hover:text-teal")} strokeWidth={1.7} aria-hidden />
-                  <span className="flex-1">{it.label}</span>
-                  {n > 0 && <span className="num min-w-5 rounded-full bg-green px-1.5 py-0.5 text-center text-[11px] leading-none text-white">{n}<span className="sr-only">{it.badge === "interviews" ? " предстоит" : " новых"}</span></span>}
+                  <span className="flex-1">{labelOf(it)}</span>
+                  {n > 0 && <span className="num min-w-5 rounded-full bg-green px-1.5 py-0.5 text-center text-[11px] leading-none text-white">{n}<span className="sr-only">{` ${it.badge === "interviews" ? t("nav.srUpcoming") : t("nav.srNew")}`}</span></span>}
                 </Link>
               </li>
             );
@@ -93,8 +106,8 @@ export function Nav({ counts, role, campaign, userName, quietQueue = false }: { 
         </ul>
       </nav>
 
-      <nav aria-label="Дополнительно">
-        <div className="label mb-1.5 px-3 !text-[11px] !text-ink-3">Ещё</div>
+      <nav aria-label={t("nav.moreAria")}>
+        <div className="label mb-1.5 px-3 !text-[11px] !text-ink-3">{t("nav.more")}</div>
         <ul className="flex flex-col">
           {[...SECONDARY.filter((it) => !(quietQueue && it.href === "/app/approvals")), ...extra].map((it) => {
             const active = isActive(it);
@@ -111,10 +124,10 @@ export function Nav({ counts, role, campaign, userName, quietQueue = false }: { 
                   )}
                 >
                   <it.icon className={cx("size-[15px]", active ? "text-green" : "text-ink-4")} strokeWidth={1.7} aria-hidden />
-                  <span className="flex-1">{it.label}</span>
+                  <span className="flex-1">{labelOf(it)}</span>
                   {n > 0 && (
                     <span className={cx("num min-w-[18px] rounded-full px-1.5 py-0.5 text-center text-[11px] leading-none", it.badge === "approvals" ? "bg-amber-soft text-amber" : "bg-green-soft text-green")}>
-                      {n}<span className="sr-only">{it.badge === "approvals" ? " ждут ответа" : " новых"}</span>
+                      {n}<span className="sr-only">{` ${it.badge === "approvals" ? t("nav.srWaiting") : t("nav.srNew")}`}</span>
                     </span>
                   )}
                 </Link>
@@ -130,20 +143,20 @@ export function Nav({ counts, role, campaign, userName, quietQueue = false }: { 
     <Link href="/app/agent" className="glass flex flex-col gap-1.5 !rounded-2xl p-3.5 transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-green">
       <span className="flex items-center gap-2">
         <span className={cx("size-2 rounded-full", campaign.status === "active" ? "bg-green animate-pulse-dot" : campaign.status === "paused" ? "bg-amber" : "bg-ink-4")} aria-hidden />
-        <span className="label !text-[11px] !text-head">{campaign.status === "active" ? "Агент · работает" : campaign.status === "paused" ? "Агент · на паузе" : campaign.status === "hired" ? "Работа найдена" : "Кампания завершена"}</span>
+        <span className="label !text-[11px] !text-head">{campaign.status === "active" ? t("nav.agentActive") : campaign.status === "paused" ? t("nav.agentPaused") : campaign.status === "hired" ? t("nav.hired") : t("nav.ended")}</span>
       </span>
       {campaign.day != null && (
-        <span className="text-[12.5px] text-ink-3">День кампании <span className="num text-head">{campaign.day}</span> / {campaign.total}</span>
+        <span className="text-[12.5px] text-ink-3">{t.rich("nav.campaignDay", { day: String(campaign.day), total: String(campaign.total) }, { b: (c) => <span className="num text-head">{c}</span> })}</span>
       )}
     </Link>
   ) : (
-    <Link href="/app/campaign" className="flex h-11 items-center justify-center rounded-full bg-cta text-[14px] font-medium text-white shadow-(--shadow-cta) focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">Начать кампанию</Link>
+    <Link href="/app/campaign" className="flex h-11 items-center justify-center rounded-full bg-cta text-[14px] font-medium text-white shadow-(--shadow-cta) focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">{t("nav.startCampaign")}</Link>
   );
 
   return (
     <>
       <div className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-mint-2/80 px-4 py-3 backdrop-blur-xl lg:hidden">
-        <Link href="/app" aria-label="Simplify — Today" className="inline-flex min-h-10 items-center rounded-lg pr-2 focus-visible:outline-2 focus-visible:outline-green">
+        <Link href="/app" aria-label={t("nav.homeAria")} className="inline-flex min-h-10 items-center rounded-lg pr-2 focus-visible:outline-2 focus-visible:outline-green">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/nav_logo.svg" alt="Simplify" className="h-5" />
         </Link>
@@ -152,7 +165,7 @@ export function Nav({ counts, role, campaign, userName, quietQueue = false }: { 
           onClick={() => setOpen(!open)}
           aria-expanded={open}
           aria-controls="mobile-nav"
-          aria-label={open ? "Закрыть меню" : "Открыть меню"}
+          aria-label={open ? t("nav.closeMenu") : t("nav.openMenu")}
           className="relative grid size-10 place-items-center rounded-full glass focus-visible:outline-2 focus-visible:outline-green"
         >
           {open ? <X className="size-4" aria-hidden /> : <Menu className="size-4" aria-hidden />}
@@ -165,17 +178,18 @@ export function Nav({ counts, role, campaign, userName, quietQueue = false }: { 
           <div className="mt-6">{status}</div>
           <form action={logout} className="mt-4 flex items-center justify-between rounded-2xl border border-line px-4 py-3">
             <span className="text-[13px] text-ink-3">{userName}</span>
-            <button className="inline-flex min-h-10 items-center gap-2 text-[13px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green"><LogOut className="size-4" aria-hidden />Выйти</button>
+            <button className="inline-flex min-h-10 items-center gap-2 text-[13px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green"><LogOut className="size-4" aria-hidden />{t("common.signOut")}</button>
           </form>
+          <LocaleSwitcher className="mt-3" />
         </div>
       )}
       <aside className="scroll-thin sticky top-0 hidden h-dvh w-[240px] shrink-0 flex-col gap-7 overflow-y-auto px-4 py-6 lg:flex">
-        <Link href="/app" className="px-3" aria-label="Simplify — Today">
+        <Link href="/app" className="px-3" aria-label={t("nav.homeAria")}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/brand/nav_logo.svg" alt="Simplify" className="h-[22px]" />
         </Link>
         {list}
-        <div className="mt-auto">{status}</div>
+        <div className="mt-auto flex flex-col gap-2">{status}<LocaleSwitcher /></div>
       </aside>
     </>
   );

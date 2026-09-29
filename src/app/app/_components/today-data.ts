@@ -9,6 +9,8 @@ import { APP_TZ as TZ, startOfToday } from "@/lib/time";
 import { regionsRu } from "@/app/_components/ru";
 import { count, fmtNum, roleLabelRu, type Forms } from "@/lib/ru";
 import { STRONG_MATCH } from "@/lib/engine/matching";
+import type { NsKey, T } from "@/lib/i18n/translator";
+import { regionNames } from "@/lib/i18n/labels";
 
 const DAY = 86400000;
 
@@ -62,7 +64,7 @@ export function goalLine(goal: { primaryRole: string; countries: string; minSala
 export function doingNow(status: string, regions: string[], findJobs: boolean, personalize: boolean) {
   if (status === "paused") return "Кампания на паузе — агент не ищет и не отправляет новые заявки.";
   if (status === "hired") return "Кампания завершена оффером. Агент продолжает следить за рынком в фоне — это видно в Career.";
-  if (status === "expired") return "60 дней кампании прошли. Вся история сохранена ниже.";
+  if (status === "expired") return "Срок кампании закончился. Вся история сохранена ниже.";
   if (!findJobs) return personalize ? "Поиск новых вакансий выключен — агент готовит заявки из уже найденных." : "Поиск и персонализация выключены в настройках агента.";
   const inList = regions.filter((r) => r !== "WORLD").map((r) => REGION_IN[r] ?? r);
   const world = regions.includes("WORLD");
@@ -173,6 +175,67 @@ export function discoverySentence(b: Pick<Breakdown, "found" | "qualified" | "we
 }
 export type StageKey = (typeof STAGES)[number]["key"];
 
+/* ——— The same lines in the interface language (Today renders these; the Russian originals above stay for other screens) ——— */
+
+export const STAGE_LABEL: Record<StageKey, NsKey<"today">> = {
+  goal: "stageGoal", search: "stageSearch", applications: "stageApplications", assessments: "stageAssessments", interviews: "stageInterviews", offers: "stageOffers", hired: "stageHired",
+};
+
+export function greetingKey(now = new Date()): NsKey<"today"> {
+  const h = almatyHour(now);
+  return h >= 5 && h < 12 ? "greetingMorning" : h >= 12 && h < 18 ? "greetingAfternoon" : "greetingEvening";
+}
+
+/** «Сегодня» / «Вчера» / «27 сентября» in the interface language. */
+export function dayLabelT(t: T, key: string, now = new Date()) {
+  if (key === dayKey(now)) return t("today.dayToday");
+  if (key === dayKey(new Date(now.getTime() - DAY))) return t("today.dayYesterday");
+  const [y, m, d] = key.split("-").map(Number);
+  return t.date(new Date(Date.UTC(y, m - 1, d, 12)), "dayMonth");
+}
+
+/** goalLine() in the interface language: «Data Analyst · Европа, США · $60 000+». */
+export function goalLineT(t: T, goal: { primaryRole: string; countries: string; minSalary: number; currency: string } | null) {
+  if (!goal?.primaryRole) return null;
+  const regions = regionsFor(j<string[]>(goal.countries, []));
+  return [goal.primaryRole, regionNames(t, regions), goal.minSalary ? `${t.money(goal.minSalary, goal.currency)}+` : ""].filter(Boolean).join(" · ");
+}
+
+const IN_KEY: Record<string, NsKey<"today">> = { KZ: "inKZ", CIS: "inCIS", EU: "inEU", UK: "inUK", US: "inUS", CA: "inCA", MENA: "inMENA" };
+
+/** doingNow() in the interface language. */
+export function doingNowT(t: T, status: string, regions: string[], findJobs: boolean, personalize: boolean) {
+  if (status === "paused") return t("today.doingPaused");
+  if (status === "hired") return t("today.doingHired");
+  if (status === "expired") return t("today.doingExpired");
+  if (!findJobs) return personalize ? t("today.doingNoSearch") : t("today.doingOff");
+  const inList = regions.filter((r) => r !== "WORLD").map((r) => (IN_KEY[r] ? t(`today.${IN_KEY[r]}`) : r));
+  const world = regions.includes("WORLD");
+  const where = inList.length ? t(world ? "today.whereInWorld" : "today.whereIn", { list: t.list(inList) }) : world ? t("today.whereWorld") : t("today.whereGoal");
+  return t(personalize ? "today.doingSearchCv" : "today.doingSearch", { where });
+}
+
+/** discoverySentence(b, «Сегодня») in the interface language — same rules: zero parts hidden, one role never «Остальные: 1 …». */
+export function todaySentenceT(t: T, b: Pick<Breakdown, "found" | "qualified" | "weaker" | "blocked" | "setAside"> & { filtered?: number }) {
+  if (!b.found) return t("today.foundNone");
+  const filtered = Math.min(b.blocked, b.filtered ?? 0);
+  const min = STRONG_MATCH;
+  const kinds = [
+    { n: b.qualified, k: "Qualified" },
+    { n: b.weaker, k: "Weaker" },
+    { n: b.blocked - filtered, k: "Blocked" },
+    { n: filtered, k: "Filtered" },
+    { n: b.setAside, k: "SetAside" },
+  ].filter((x) => x.n > 0) as { n: number; k: "Qualified" | "Weaker" | "Blocked" | "Filtered" | "SetAside" }[];
+  const head = t("today.foundHead", { n: b.found });
+  if (kinds.length === 1) {
+    const k = kinds[0].k;
+    if (b.found === 1) return `${head} — ${t(`today.one${k}`, { min })}.`;
+    return `${head} — ${t(b.found === 2 ? "today.both" : "today.all")} ${t(`today.all${k}`, { min })}.`;
+  }
+  return `${head}: ${kinds.map((x) => t(`today.kind${x.k}`, { n: x.n, min })).join(", ")}.`;
+}
+
 /**
  * The number shown under each stage of the progress rail — each stage counts only its own thing:
  * Search = found, Applications = submitted-or-later (the same number as «Подано»), and so on. Empty = nothing shown.
@@ -208,15 +271,19 @@ export type TimelineItem = {
   kind: "found" | "skipped" | "prepared" | "submitted" | "response" | "interview" | "offer" | "rejection" | "system";
   text: string;
   detail?: string;
+  /** `detail` in the interface language (today.*). */
+  detailKey?: "hasQuestion";
   href?: string;
   cta?: string;
+  /** The CTA in the interface language (today.*); `cta` is its Russian original. */
+  ctaKey?: "prepare" | "openOffer";
   match?: number;
 };
 
-const RESPONSE_COPY: Record<string, (c: string) => { text: string; kind: TimelineItem["kind"]; cta?: string }> = {
-  interview: (c) => ({ text: `${c}: приглашение на интервью`, kind: "interview", cta: "Подготовиться" }),
-  assessment: (c) => ({ text: `${c}: следующий этап — тестовое задание`, kind: "interview", cta: "Подготовиться" }),
-  offer: (c) => ({ text: `Оффер от ${c}`, kind: "offer", cta: "Открыть оффер" }),
+const RESPONSE_COPY: Record<string, (c: string) => { text: string; kind: TimelineItem["kind"]; cta?: string; ctaKey?: TimelineItem["ctaKey"] }> = {
+  interview: (c) => ({ text: `${c}: приглашение на интервью`, kind: "interview", cta: "Подготовиться", ctaKey: "prepare" }),
+  assessment: (c) => ({ text: `${c}: следующий этап — тестовое задание`, kind: "interview", cta: "Подготовиться", ctaKey: "prepare" }),
+  offer: (c) => ({ text: `Оффер от ${c}`, kind: "offer", cta: "Открыть оффер", ctaKey: "openOffer" }),
   rejection: (c) => ({ text: `${c}: отказ. Статус обновлён автоматически`, kind: "rejection" }),
 };
 
@@ -273,7 +340,7 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
     const href = e.opportunityId ? `/app/opportunities/${e.opportunityId}` : undefined;
     if (e.type === "prepared" && job) {
       const waits = /ждут подтверждения/.test(e.message);
-      items.push({ id: e.id, at: e.createdAt, kind: "prepared", text: `CV адаптирован: ${roleLabelRu(job)}`, detail: waits ? "есть вопрос к тебе" : undefined, href, match: e.opportunity?.match });
+      items.push({ id: e.id, at: e.createdAt, kind: "prepared", text: `CV адаптирован: ${roleLabelRu(job)}`, detail: waits ? "есть вопрос к тебе" : undefined, detailKey: waits ? "hasQuestion" : undefined, href, match: e.opportunity?.match });
     } else if (e.type === "submitted" && job) {
       items.push({ id: e.id, at: e.createdAt, kind: "submitted", text: `Заявка отправлена: ${roleLabelRu(job)}`, href });
     } else if (e.type === "interview_room") {
@@ -294,7 +361,7 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
     const c = copy(company);
     const iv = m.opportunity?.interviews.find((i) => (m.classification === "assessment" ? i.round === "assessment" : i.round !== "assessment"));
     const href = m.classification === "offer" ? "/app/offers" : iv ? `/app/interviews/${iv.id}` : m.opportunity ? `/app/opportunities/${m.opportunity.id}` : "/app/inbox";
-    items.push({ id: `m-${m.id}`, at: m.receivedAt, kind: c.kind, text: c.text, href, cta: c.cta });
+    items.push({ id: `m-${m.id}`, at: m.receivedAt, kind: c.kind, text: c.text, href, cta: c.cta, ctaKey: c.ctaKey });
   }
 
   items.sort((a, b) => b.at.getTime() - a.at.getTime());
@@ -365,6 +432,8 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
     queue,
     goalLine: line,
     doing: doingNow(campaign.status, regions, autonomy.findJobs, autonomy.personalizeCv),
+    /** Inputs of `doing`, for doingNowT (the same line in the interface language). */
+    doingInput: { regions, findJobs: autonomy.findJobs, personalize: autonomy.personalizeCv },
     approvals,
     handoffs,
     upcoming,

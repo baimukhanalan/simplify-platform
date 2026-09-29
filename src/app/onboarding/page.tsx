@@ -23,14 +23,21 @@ import { StepChat } from "./_components/step-chat";
 import { StepGoal } from "./_components/step-goal";
 import { StepReadiness } from "./_components/step-readiness";
 import { StepPlan } from "./_components/step-plan";
+import { referralOfferFor } from "@/lib/referral";
+import { getT } from "@/lib/i18n/server";
+import { I18nScope } from "@/lib/i18n/scope";
+import type { T } from "@/lib/i18n/translator";
+import { STEP_KEY } from "@/lib/i18n/labels";
 
-export const metadata: Metadata = { title: "Запуск кампании" };
+export async function generateMetadata(): Promise<Metadata> {
+  return { title: (await getT())("meta.onboarding") };
+}
 
 const KIND_ORDER = ["employment", "project", "education"];
 
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUser();
-  const sp = await searchParams;
+  const [sp, t] = await Promise.all([searchParams, getT()]);
   const intent = intentFromParams(sp);
   const urlPlan = cleanPlan(sp.plan);
   const [facts, answers, done, campaign, latest, jar] = await Promise.all([
@@ -90,7 +97,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
           relocation: override?.relocation ?? goal?.relocation ?? false,
           industries: j<string[]>(goal?.industries, []),
         }}
-        note={override ? "Агент обновил цель по твоим новым ответам — проверь и сохрани." : !done.has(STEP.goal) && !goalEmpty && jar.get(INTENT_USED_COOKIE) ? "Агент заполнил цель по твоим ответам на первом экране. Проверь — и дальше." : undefined}
+        note={override ? t("onboarding.noteUpdated") : !done.has(STEP.goal) && !goalEmpty && jar.get(INTENT_USED_COOKIE) ? t("onboarding.noteFilled") : undefined}
         years={years}
         suggestedSeniority={seniorityFromYears(years)}
         roleSuggestions={suggestions}
@@ -98,52 +105,38 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
     );
   } else if (step === STEP.readiness) {
     const data = goalEmpty ? null : await loadReadiness(user.id);
-    body = data ? <StepReadiness data={data} /> : <NeedGoal />;
+    body = data ? <StepReadiness data={data} /> : <NeedGoal t={t} />;
   } else {
-    body = goalEmpty ? <NeedGoal /> : <StepPlan partner={user.referredByCode ?? ""} activeCampaign={Boolean(campaign)} ended={ended} preferred={plan} fit={fitPlan(j<string[]>(goal?.countries, []))} />;
+    body = goalEmpty ? <NeedGoal t={t} /> : <StepPlan partner={user.referredByCode ?? ""} offer={campaign ? null : await referralOfferFor(user.id)} activeCampaign={Boolean(campaign)} ended={ended} preferred={plan} fit={fitPlan(j<string[]>(goal?.countries, []))} />;
   }
 
   return (
+    <I18nScope ns={["onboarding", "cv", "seniority", "regions"]}>
     <div className="min-h-dvh overflow-x-clip">
       <IntentSync goalEmpty={goalEmpty} urlIntent={intent} />
       <RememberPlan plan={urlPlan} />
-      <SiteHeader right={<Link href="/app" className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Продолжить позже</Link>} />
+      <SiteHeader right={<Link href="/app" className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">{t("onboarding.continueLater")}</Link>} />
       <div className="mx-auto grid w-full max-w-[1180px] gap-6 px-4 pb-24 sm:px-8 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-12 lg:pt-6">
         <StepRail current={step} done={Array.from(done)} complete={Boolean(campaign)} />
         <main className="flex min-w-0 flex-col gap-6" id="main-content" tabIndex={-1}>
           <div key={step} className="flex flex-col gap-2.5 animate-rise">
-            <Label>Шаг {step} из {LAST_STEP} · {meta.label}</Label>
-            <h1 className="h-serif text-[clamp(30px,4vw,46px)]">{TITLES[step]}</h1>
-            {SUBS[step] && <p className="max-w-2xl text-[15px] text-ink-2">{SUBS[step]}</p>}
+            <Label>{t("onboarding.stepOf", { step: String(step), total: String(LAST_STEP), label: t(`onboarding.${STEP_KEY[meta.key]}Label`) })}</Label>
+            <h1 className="h-serif text-[clamp(30px,4vw,46px)]">{t.rich(`onboarding.title${step as 1 | 2 | 3 | 4 | 5}`, {}, { s: (c) => <span className="script">{c}</span> })}</h1>
+            <p className="max-w-2xl text-[15px] text-ink-2">{t(`onboarding.sub${step as 1 | 2 | 3 | 4 | 5}`)}</p>
           </div>
           <div key={`b${step}`} className="animate-rise [animation-delay:80ms]">{body}</div>
         </main>
       </div>
     </div>
+    </I18nScope>
   );
 }
 
-function NeedGoal() {
+function NeedGoal({ t }: { t: T }) {
   return (
     <div className="glass flex flex-col items-start gap-3 p-6">
-      <p className="text-[15px] text-ink-2">Сначала подтверди цель — без неё агент не знает, что искать.</p>
-      <Link href={`/onboarding?step=${STEP.goal}`} className="inline-flex h-11 items-center rounded-full bg-cta px-5 text-[14.5px] font-medium text-white shadow-(--shadow-cta) focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">К цели</Link>
+      <p className="text-[15px] text-ink-2">{t("onboarding.needGoal")}</p>
+      <Link href={`/onboarding?step=${STEP.goal}`} className="inline-flex h-11 items-center rounded-full bg-cta px-5 text-[14.5px] font-medium text-white shadow-(--shadow-cta) focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green">{t("onboarding.toGoal")}</Link>
     </div>
   );
 }
-
-const S = ({ children }: { children: ReactNode }) => <span className="script">{children}</span>;
-const TITLES: Record<number, ReactNode> = {
-  1: <>Загрузи то, что <S>уже</S> есть</>,
-  2: <>Пара вопросов от <S>агента</S></>,
-  3: <>Твоя <S>цель</S></>,
-  4: <>Где ты <S>сейчас</S></>,
-  5: <>Запускаем <S>кампанию</S></>,
-};
-const SUBS: Record<number, string> = {
-  1: "CV, LinkedIn, GitHub, портфолио, сертификаты. Агент сам всё разберёт — ничего не нужно перепечатывать.",
-  2: "Короткие ответы помогают показать твой опыт в цифрах и понять, куда можно подаваться. 3–5 минут.",
-  3: "Проверь, что агент правильно понял, что искать. Цель можно поменять в любой момент.",
-  4: "Насколько профиль готов к цели — и что агент сделает, чтобы его усилить.",
-  5: "60 дней агент ищет вакансии, адаптирует CV, подаёт заявки и готовит тебя к интервью.",
-};

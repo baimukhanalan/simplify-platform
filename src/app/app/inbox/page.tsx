@@ -12,6 +12,8 @@ import { agoRu } from "../opportunities/_lib/when";
 import { ButtonLink, Chip, Empty, PageHeader, cx } from "@/components/ui";
 import { isSimulation } from "@/lib/mode";
 import { PasteEmail } from "./_components/paste-email";
+import { ForwardingCard } from "./_components/forwarding-card";
+import { forwardingStatus } from "@/lib/inbound/service";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { needsList, needsYouCached } from "../../_components/global-needs";
 import { assessmentDeadline, plural, statusRu } from "../../_components/ru";
@@ -57,11 +59,15 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
   const cls = typeof sp.c === "string" && INBOX_CLASS[sp.c] ? sp.c : "";
   const user = await requireUser();
 
-  const [messages, counts, waiting] = await Promise.all([
+  const [messages, counts, waiting, forwarding] = await Promise.all([
     load(user.id, cls),
     db.inboxMessage.groupBy({ by: ["classification"], where: { userId: user.id, ...visibleLinkedScope() }, _count: true }),
     needsYouCached(user.id),
+    // The setup card is an extra: a failure there must never take the inbox down.
+    forwardingStatus(user.id).catch((e) => (console.error("[inbound] status failed", e), null)),
   ]);
+  // Set-up in progress (waiting for the first letter or a confirmation code) goes first; a working one sits at the end.
+  const forwardingFirst = Boolean(forwarding && (forwarding.verification || (forwarding.state === "live" && !forwarding.lastAt)));
   const count = (k: string) => (k ? counts.find((c) => c.classification === k)?._count ?? 0 : counts.reduce((a, c) => a + c._count, 0));
   const total = count("");
 
@@ -85,6 +91,8 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
       />
 
       <AgentStatus needs={needs} working="Ответы работодателей агент разбирает сам." className="-mt-3" />
+
+      {forwarding && forwardingFirst && <ForwardingCard status={forwarding} />}
 
       {total > 0 && (
         <nav aria-label="Фильтр по типу ответа" className="flex flex-wrap gap-1.5">
@@ -149,6 +157,8 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
           )}
         </ul>
       )}
+
+      {forwarding && !forwardingFirst && <ForwardingCard status={forwarding} />}
 
       {/* Live mode: until a mailbox is connected, employer mail can be pasted by hand (Inbox Intelligence). */}
       {!isSimulation() && (
@@ -219,7 +229,9 @@ function ResponseCard({ m }: { m: Msg }) {
             {!["interview", "assessment", "offer", "rejection", "confirmation"].includes(m.classification) && m.subject}
           </h2>
           {o && <p className="text-[13.5px] text-ink-3">{o.job.title} · сейчас: {statusRu(o.status).toLowerCase()}</p>}
-          {!o && <p className="text-[13px] text-amber">Не связано с заявкой — компания не найдена среди твоих заявок.</p>}
+          {!o && (m.classification === "info" || m.classification === "unknown"
+            ? <p className="break-all text-[13px] text-ink-3">{m.fromAddr}</p>
+            : <p className="text-[13px] text-amber">Не связано с заявкой — компания не найдена среди твоих заявок.</p>)}
         </div>
       </div>
 

@@ -1,12 +1,15 @@
+"use client";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AlertCircle, CheckCircle2, ArrowLeft } from "lucide-react";
 import { completeStep } from "@/lib/actions/onboarding";
 import { SubmitButton } from "@/components/client";
 import { cx } from "@/components/ui";
+import { useT } from "@/lib/i18n/client";
 
 /** Footer for steps that save inline: marks the step done and moves on. */
-export function ContinueBar({ step, label = "Далее", note, back = true }: { step: number; label?: string; note?: ReactNode; back?: boolean }) {
+export function ContinueBar({ step, label, note, back = true }: { step: number; label?: string; note?: ReactNode; back?: boolean }) {
+  const t = useT();
   return (
     <div className="mt-2 flex flex-col-reverse items-stretch gap-3 border-t border-line pt-5 sm:flex-row sm:items-center sm:justify-between">
       {back && step > 1 ? <BackLink step={step} /> : <span />}
@@ -14,7 +17,7 @@ export function ContinueBar({ step, label = "Далее", note, back = true }: {
         {note && <span className="text-[12.5px] text-ink-3 sm:text-right">{note}</span>}
         <form action={completeStep}>
           <input type="hidden" name="step" value={step} />
-          <SubmitButton pendingText="Сохраняем…" className="w-full sm:w-auto">{label} →</SubmitButton>
+          <SubmitButton pendingText={t("common.saving")} className="w-full sm:w-auto">{label ?? t("common.next")} →</SubmitButton>
         </form>
       </div>
     </div>
@@ -22,9 +25,10 @@ export function ContinueBar({ step, label = "Далее", note, back = true }: {
 }
 
 export function BackLink({ step }: { step: number }) {
+  const t = useT();
   return (
     <Link href={`/onboarding?step=${step - 1}`} className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full px-4 text-[14px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
-      <ArrowLeft className="size-4" /> Назад
+      <ArrowLeft className="size-4" /> {t("common.back")}
     </Link>
   );
 }

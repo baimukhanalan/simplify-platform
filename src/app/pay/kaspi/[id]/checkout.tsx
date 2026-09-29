@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Smartphone } from "lucide-react";
+import { Check, Gift, Loader2, Smartphone } from "lucide-react";
 import type { InvoiceView } from "@/lib/payments/kaspi";
 import { Logo } from "@/components/ui";
 import { fmtKzt } from "@/lib/engine/taxonomy";
@@ -24,7 +24,7 @@ const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-3 focus-
  * Kaspi Pay invoice. When the gateway confirms in-page (instant), the page shows a normal confirmation with a
  * single «Оплатить» action; otherwise it waits for the confirmation from the Kaspi app.
  */
-export function KaspiCheckout({ initial, goal, instant, newInvoiceHref }: { initial: InvoiceView; goal: string; instant: boolean; newInvoiceHref: string }) {
+export function KaspiCheckout({ initial, goal, instant, newInvoiceHref, discount = null }: { initial: InvoiceView; goal: string; instant: boolean; newInvoiceHref: string; discount?: { fullKzt: number; label: string } | null }) {
   const router = useRouter();
   const [inv, setInv] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -107,8 +107,16 @@ export function KaspiCheckout({ initial, goal, instant, newInvoiceHref }: { init
             <div className="text-[15px] font-medium text-head">{inv.planLabel} · 60 дней</div>
             {goal && <div className="mt-0.5 text-[13px] text-ink-3">{goal}</div>}
           </div>
-          <div className="num text-[28px] leading-none text-head">{fmt(inv.amount)}</div>
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            {discount && discount.fullKzt > inv.amount && <s className="num text-[15px] leading-none text-ink-3"><span className="sr-only">Без скидки: </span>{fmt(discount.fullKzt)}</s>}
+            <div className="num text-[28px] leading-none text-head">{fmt(inv.amount)}</div>
+          </div>
         </div>
+        {discount && discount.fullKzt > inv.amount && (
+          <p className="-mt-2 inline-flex items-center gap-2 self-start rounded-full bg-green-soft px-3 py-1.5 text-[13px] text-green">
+            <Gift className="size-3.5 shrink-0" strokeWidth={1.8} aria-hidden />{discount.label}
+          </p>
+        )}
         <div className="flex items-center justify-between rounded-2xl bg-head/[.04] px-4 py-3 text-[13px]">
           <span className="text-ink-3">Счёт</span>
           <span className="font-mono text-[12px] text-head">{inv.invoiceId}</span>

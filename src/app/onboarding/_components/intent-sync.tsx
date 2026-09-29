@@ -2,6 +2,7 @@
 import { useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { applyIntent } from "@/lib/actions/onboarding";
+import { useT } from "@/lib/i18n/client";
 import { INTENT_USED_COOKIE, clearStoredIntent, readStoredIntent, type Intent } from "../../_components/campaign-intent";
 
 /**
@@ -13,6 +14,7 @@ export function IntentSync({ goalEmpty, urlIntent }: { goalEmpty: boolean; urlIn
   const router = useRouter();
   const ran = useRef(false);
   const [saving, start] = useTransition();
+  const t = useT();
 
   useEffect(() => {
     if (ran.current) return;
@@ -35,7 +37,7 @@ export function IntentSync({ goalEmpty, urlIntent }: { goalEmpty: boolean; urlIn
 
   return saving ? (
     <p role="status" className="fixed inset-x-0 top-3 z-50 mx-auto w-fit rounded-full border border-green/20 bg-white/90 px-4 py-2 text-[13px] text-head shadow-(--shadow-glass) animate-fade">
-      Цель сохраняется…
+      {t("onboarding.intentSaving")}
     </p>
   ) : null;
 }

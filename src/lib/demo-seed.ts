@@ -15,6 +15,7 @@ import { PLANS, seniorityFromYears } from "./engine/taxonomy";
 import { loadCareer } from "./career";
 import { assessReadinessFor } from "./payments/readiness-snapshot";
 import { startOfToday } from "./time";
+import { REFERRAL_REWARD_DAYS, ensureReferralCode, referralPrice } from "./referral";
 
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
@@ -75,6 +76,42 @@ async function removeOrphans() {
 /** Marks the seed's own payment rows (internal meta, never shown), so a reseed can clean them up. */
 const SEED_MARK = '"seededBy":"showcase"';
 
+/** Friends the showcase account invited: day = days after the campaign start they signed up; paidDay = when they paid. */
+const SHOWCASE_FRIENDS = [
+  { email: "dana.ermekova.94@mail.kz", name: "Dana Ermekova", day: 1, paidDay: 3 },
+  { email: "timur.abenov.work@gmail.com", name: "Timur Abenov", day: 5, paidDay: null },
+  { email: "madina.serikkyzy@inbox.kz", name: "Madina Serikkyzy", day: 7.4, paidDay: null },
+] as const;
+
+async function seedReferrals(userId: string, campaignId: string, startedAt: number, realNow: number) {
+  const code = await ensureReferralCode(userId);
+  const discountKzt = referralPrice(PLANS.local.priceKzt).discountKzt;
+  let rewarded = 0;
+  for (const f of SHOWCASE_FRIENDS) {
+    if (await db.user.findUnique({ where: { email: f.email }, select: { id: true } })) continue; // taken by a real account
+    const signedUp = new Date(Math.min(startedAt + f.day * DAY, realNow - HOUR));
+    const friend = await db.user.create({
+      data: { email: f.email, name: f.name, passwordHash: await hashPassword(randomBytes(24).toString("hex")), createdAt: signedUp, profile: { create: {} }, goal: { create: {} } },
+    });
+    const paidAt = f.paidDay != null ? new Date(Math.min(startedAt + f.paidDay * DAY, realNow - HOUR)) : null;
+    await db.referral.create({
+      data: {
+        referrerId: userId, referredUserId: friend.id, code, createdAt: signedUp,
+        ...(paidAt ? { status: "rewarded", rewardDays: REFERRAL_REWARD_DAYS, discountKzt, rewardedAt: paidAt } : { status: "signed_up" }),
+      },
+    });
+    if (paidAt) {
+      rewarded += REFERRAL_REWARD_DAYS;
+      await db.event.create({ data: { userId, type: "referral_reward", message: `Друг оплатил кампанию — к твоей добавлено ${REFERRAL_REWARD_DAYS} дней`, createdAt: paidAt } });
+      await db.notification.create({ data: { userId, type: "info", title: `Друг оплатил кампанию — +${REFERRAL_REWARD_DAYS} дней к твоей`, body: "Спасибо за приглашение. Дата окончания кампании уже сдвинута.", href: "/app/referral", createdAt: paidAt, readAt: new Date(paidAt.getTime() + 2 * HOUR) } });
+    }
+  }
+  if (rewarded) {
+    const c = await db.campaign.findUniqueOrThrow({ where: { id: campaignId }, select: { endsAt: true } });
+    await db.campaign.update({ where: { id: campaignId }, data: { bonusDays: { increment: rewarded }, ...(c.endsAt ? { endsAt: new Date(c.endsAt.getTime() + rewarded * DAY) } : {}) } });
+  }
+}
+
 const CV = `Aruzhan Sadykova
 Data Analyst
 Almaty, Kazakhstan · aruzhan.sadykova.data@gmail.com · +7 707 318 42 65 · linkedin.com/in/aruzhan-sadykova-data · github.com/aruzhan-sdk
@@ -109,6 +146,8 @@ const log = (...a: unknown[]) => { if (process.env.SEED_VERBOSE !== "0") console
 
 export async function seedDemo(opts: { staff: boolean; staffPassword?: string } = { staff: true }) {
   log("Resetting showcase data…");
+  // Invited friends of the showcase account go first (only rows still linked to it — a real account is never touched).
+  await db.user.deleteMany({ where: { email: { in: SHOWCASE_FRIENDS.map((f) => f.email) }, referredBy: { referrer: { email: "aruzhan@simplify.kz" } } } });
   await db.user.deleteMany({ where: { email: { in: opts.staff ? ["aruzhan@simplify.kz", "demo@simplify.kz", "admin@simplify.kz", "partner@amaskills.kz"] : ["aruzhan@simplify.kz", "demo@simplify.kz"] } } });
   await removeOrphans();
   log(`Corpus roles re-normalized: ${await renormalizeDemoJobs()}`);
@@ -175,6 +214,8 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
   // The account exists before the campaign it paid for (Settings shows «Аккаунт создан» before the campaign start).
   const signedUpAt = new Date(startedAt.getTime() - 2 * DAY - 3 * HOUR);
   await db.user.update({ where: { id: user.id }, data: { createdAt: signedUpAt } });
+  // Telegram notifications connected the day of signup (the simulated channel's chat id; a real bot needs a real /start).
+  await db.user.update({ where: { id: user.id }, data: { telegramChatId: `sim:${user.id}`, telegramLinkedAt: new Date(signedUpAt.getTime() + 40 * 60000) } });
   const started = new Date();
   await logEvent(user.id, "campaign_started", `Оплата Kaspi Pay ${invoiceId} прошла. Career Campaign «${plan.label}» запущена на ${plan.days} дней`);
   await shiftSince(user.id, campaign.id, started, startedAt.getTime());
@@ -253,6 +294,9 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
 
   // Simulated rounds whose date has passed are waiting for the employer's answer, not "upcoming".
   await db.interview.updateMany({ where: { userId: user.id, status: "upcoming", scheduledAt: { lt: new Date(realNow) } }, data: { status: "done" } });
+
+  // ——— «Приведи друга»: 3 friends invited, 1 paid → +15 days on the running campaign (endsAt and bonusDays agree) ———
+  await seedReferrals(user.id, campaign.id, startedAt.getTime(), realNow);
 
   // ——— Career history: monthly snapshots; today's row is the live Career Score (same numbers as the Career header) ———
   const live = await loadCareer(user.id);

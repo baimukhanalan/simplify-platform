@@ -6,6 +6,7 @@ import { AUTO_ANSWER_STATUS, ingestEmail, rescheduleInterview, settleSharedAnswe
 import { patchPackageAnswer } from "./approvals";
 import { marketRange } from "./market";
 import { companyDomain, seededRng } from "./seed-jobs";
+import { captureError } from "../monitoring";
 
 // Employer activity of the internal fictional-company corpus (SIMPLIFY_MODE=simulation, src/lib/mode.ts).
 //
@@ -407,7 +408,7 @@ export async function maybeSettleChores(userId: string, now = Date.now()) {
   if (!isSimulation()) return;
   const g = chores.get(userId);
   if (g && now - g.at < CHORES_EVERY_MS) { await g.run; return; }
-  const run = settleSimulationChores(userId).catch((e) => console.error("[simulation] chores failed", userId, e));
+  const run = settleSimulationChores(userId).catch((e) => { console.error("[simulation] chores failed", userId, e); return captureError(e, { userId, meta: { step: "simulation-chores" } }); });
   chores.set(userId, { at: now, run });
   await run;
 }
@@ -432,6 +433,7 @@ export async function maybeSimulateEmployers(userId: string, now = Date.now()) {
     return r.steps;
   } catch (e) {
     console.error("[simulation] employer activity failed", userId, e);
+    await captureError(e, { userId, meta: { step: "simulation-employers" } });
     return 0;
   }
 }
@@ -454,6 +456,7 @@ export async function simulateAllEmployers(userIds: string[], deadline = Infinit
       users++;
     } catch (e) {
       console.error("[simulation] employer activity failed", userId, e);
+      await captureError(e, { source: "cron", userId, meta: { step: "simulation-employers" } });
     }
   }
   return { users, steps };

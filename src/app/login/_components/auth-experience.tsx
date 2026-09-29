@@ -6,11 +6,13 @@ import { checkReferral, login, signup, type AuthState, type ReferralCheck } from
 import { Logo, Script, cx } from "@/components/ui";
 import { Atmosphere } from "./atmosphere";
 import { AgentPreview } from "./agent-preview";
-import { WHERE_OPTIONS, salaryPhrase, storeIntent, type Intent } from "../../_components/campaign-intent";
+import { storeIntent, type Intent, type WhereKey } from "../../_components/campaign-intent";
 import { RememberPlan } from "../../_components/remember-plan";
-import { LegalLinks } from "../../_components/legal-page";
+import { DocLink, LegalFooter } from "../../_components/legal-page";
 import type { PlanKey } from "../../_components/plan-pref";
-import { count } from "../../_components/ru";
+import { LocaleSwitcher } from "@/components/locale-switcher";
+import { useT } from "@/lib/i18n/client";
+import type { NsKey } from "@/lib/i18n/translator";
 
 type Mode = "login" | "signup";
 type FieldKey = "name" | "email" | "password" | "terms";
@@ -18,7 +20,7 @@ type FieldKey = "name" | "email" | "password" | "terms";
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 function strength(pw: string) {
-  if (!pw) return { score: 0, label: "" };
+  if (!pw) return { score: 0 };
   let s = 0;
   if (pw.length >= 8) s++;
   if (pw.length >= 12) s++;
@@ -26,15 +28,21 @@ function strength(pw: string) {
   if (/\d/.test(pw)) s++;
   if (/[^\w\s]/.test(pw)) s++;
   const score = pw.length < 8 ? 1 : Math.min(4, Math.max(1, s - 1));
-  return { score, label: ["", "Слабый", "Средний", "Хороший", "Сильный"][score] };
+  return { score };
 }
 
-export function AuthExperience({ initialMode, refCode, next, intent = null, plan = null }: { initialMode: Mode; refCode: string; next: string; intent?: Intent | null; plan?: PlanKey | null }) {
+const STRENGTH: NsKey<"auth">[] = ["weak", "weak", "medium", "good", "strong"];
+const WHERE_KEY: Record<WhereKey, NsKey<"auth">> = { europe: "whereEurope", us: "whereUs", remote: "whereRemote", kz: "whereKz", relocation: "whereRelocation" };
+
+/** `serverErrors`: the auth actions answer in Russian; the page passes {Russian text → current language} to show them translated. */
+export function AuthExperience({ initialMode, refCode, next, intent = null, plan = null, serverErrors = {} }: { initialMode: Mode; refCode: string; next: string; intent?: Intent | null; plan?: PlanKey | null; serverErrors?: Record<string, string> }) {
+  const t = useT();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [loginState, loginAction, loginPending] = useActionState<AuthState, FormData>(login, undefined);
   const [signupState, signupAction, signupPending] = useActionState<AuthState, FormData>(signup, undefined);
   const pending = loginPending || signupPending;
-  const serverError = (mode === "login" ? loginState : signupState)?.error;
+  const rawServerError = (mode === "login" ? loginState : signupState)?.error;
+  const serverError = rawServerError ? serverErrors[rawServerError] ?? rawServerError : undefined;
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -55,12 +63,12 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
 
   const errors = useMemo(() => {
     const e: Partial<Record<FieldKey, string>> = {};
-    if (mode === "signup" && name.trim().length < 2) e.name = "Введи имя — минимум 2 символа";
-    if (!EMAIL.test(email.trim())) e.email = email ? "Проверь формат email" : "Введи email";
-    if (mode === "signup" ? password.length < 8 : !password) e.password = mode === "signup" ? (password ? `Ещё ${count(8 - password.length, ["символ", "символа", "символов"])} — пароль слишком короткий` : "Придумай пароль") : "Введи пароль";
-    if (mode === "signup" && !terms) e.terms = "Нужно согласие, чтобы создать аккаунт";
+    if (mode === "signup" && name.trim().length < 2) e.name = t("auth.errName");
+    if (!EMAIL.test(email.trim())) e.email = email ? t("auth.errEmailFormat") : t("auth.errEmail");
+    if (mode === "signup" ? password.length < 8 : !password) e.password = mode === "signup" ? (password ? t("auth.errPwShort", { n: 8 - password.length }) : t("auth.errPwCreate")) : t("auth.errPw");
+    if (mode === "signup" && !terms) e.terms = t("auth.errTerms");
     return e;
-  }, [mode, name, email, password, terms]);
+  }, [mode, name, email, password, terms, t]);
 
   const required: FieldKey[] = mode === "signup" ? ["name", "email", "password", "terms"] : ["email", "password"];
   const done = required.filter((k) => !errors[k]).length;
@@ -72,12 +80,12 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
     const code = ref.trim();
     if (!refOpen || code.length < 2) return;
     let alive = true;
-    const t = window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       checkReferral(code)
         .then((r) => { if (alive) setRefCheck({ ...r, code }); })
         .catch(() => { if (alive) setRefCheck(null); });
     }, 400);
-    return () => { alive = false; window.clearTimeout(t); };
+    return () => { alive = false; window.clearTimeout(timer); };
   }, [ref, refOpen]);
   const refStatus = refCheck && refCheck.code === ref.trim() && ref.trim().length >= 2 ? refCheck : null;
 
@@ -123,22 +131,22 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
       <RememberPlan plan={plan} />
 
       <header className="mx-auto flex w-full max-w-[1240px] items-center justify-between gap-3 px-4 py-5 sm:px-8">
-        <Link href="/" aria-label="Simplify — на главную" className="inline-flex min-h-10 shrink-0 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
+        <Link href="/" aria-label={t("common.homeAria")} className="inline-flex min-h-10 shrink-0 items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green"><Logo /></Link>
         <Link href="/check" className="inline-flex min-h-10 items-center rounded-full px-3 text-[13px] text-ink-2 transition-colors hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
-          Бесплатная проверка CV
+          {t("auth.freeCheck")}
         </Link>
       </header>
 
       <main id="main-content" tabIndex={-1} className="mx-auto grid w-full max-w-[1240px] items-center gap-6 px-4 pb-16 pt-2 sm:px-8 lg:min-h-[calc(100dvh-84px)] lg:grid-cols-[1.05fr_minmax(0,460px)] lg:gap-16 lg:pb-10">
         {/* Story + live preview */}
-        <section className="flex min-w-0 flex-col gap-5 lg:gap-8" aria-label="О Simplify">
+        <section className="flex min-w-0 flex-col gap-5 lg:gap-8" aria-label={t("auth.aboutAria")}>
           <div className="flex flex-col gap-3 animate-rise">
-            <span className="label">Карьерный ИИ-агент</span>
-            <h1 className="h-serif text-[clamp(34px,5vw,64px)]">Задай цель. Simplify доведёт до <Script>оффера</Script>.</h1>
-            <p className="max-w-md text-[15.5px] text-ink-2">Скажи, какую работу ищешь, — остальное агент сделает сам: поиск, адаптация CV, заявки, трекинг и подготовка к интервью.</p>
+            <span className="label">{t("auth.eyebrow")}</span>
+            <h1 className="h-serif text-[clamp(34px,5vw,64px)]">{t.rich("auth.hero", {}, { s: (c) => <Script>{c}</Script> })}</h1>
+            <p className="max-w-md text-[15.5px] text-ink-2">{t("auth.heroSub")}</p>
           </div>
           <AgentPreview className="animate-rise [animation-delay:120ms] lg:max-w-[520px]" />
-          <p className="hidden max-w-md text-[12.5px] text-ink-3 lg:block">Один профиль — десятки персональных заявок. Ты подключаешься только там, где нужно твоё решение.</p>
+          <p className="hidden max-w-md text-[12.5px] text-ink-3 lg:block">{t("auth.heroNote")}</p>
         </section>
 
         {/* Form */}
@@ -152,9 +160,9 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
             <div className="mt-6">
               <div key={mode} className="flex flex-col gap-1.5 animate-rise">
                 <h2 id={`${uid}-title`} className="h-serif text-[30px] sm:text-[34px]">
-                  {mode === "signup" ? <>Начни <Script>кампанию</Script></> : <>С <Script>возвращением</Script></>}
+                  {t.rich(mode === "signup" ? "auth.signupTitle" : "auth.loginTitle", {}, { s: (c) => <Script>{c}</Script> })}
                 </h2>
-                <p className="text-[13.5px] text-ink-3">{mode === "signup" ? "2 минуты — и агент начнёт собирать твой Career Profile." : "Кампания продолжается — посмотрим, что нашёл агент."}</p>
+                <p className="text-[13.5px] text-ink-3">{mode === "signup" ? t("auth.signupSub") : t("auth.loginSub")}</p>
               </div>
             </div>
 
@@ -164,20 +172,20 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
 
               <Collapse open={mode === "signup"}>
                 <TextField
-                  id={`${uid}-name`} field="name" label="Имя" name="name" autoComplete="name" value={name} onChange={setName}
+                  id={`${uid}-name`} field="name" label={t("auth.name")} name="name" autoComplete="name" value={name} onChange={setName}
                   onBlur={() => setTouched((t) => ({ ...t, name: true }))} error={show("name")} errId={errId("name")} valid={!errors.name}
                 />
               </Collapse>
 
               <TextField
-                id={`${uid}-email`} field="email" label="Email" name="email" type="email" inputMode="email" autoComplete="email" value={email} onChange={setEmail}
+                id={`${uid}-email`} field="email" label={t("auth.email")} name="email" type="email" inputMode="email" autoComplete="email" value={email} onChange={setEmail}
                 onBlur={() => setTouched((t) => ({ ...t, email: true }))} error={show("email")} errId={errId("email")} valid={!errors.email} placeholder="name@gmail.com"
               />
 
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-baseline justify-between gap-3">
-                  <label htmlFor={`${uid}-pw`} className="label">Пароль</label>
-                  {mode === "signup" && password && <span className="label !text-[11px]" aria-live="polite">Надёжность: <span className={cx(pw.score >= 3 ? "text-green" : pw.score === 2 ? "text-amber" : "text-rose")}>{pw.label}</span></span>}
+                  <label htmlFor={`${uid}-pw`} className="label">{t("auth.password")}</label>
+                  {mode === "signup" && password && <span className="label !text-[11px]" aria-live="polite">{t("auth.strength")} <span className={cx(pw.score >= 3 ? "text-green" : pw.score === 2 ? "text-amber" : "text-rose")}>{t(`auth.${STRENGTH[pw.score]}`)}</span></span>}
                 </div>
                 <div className="relative">
                   <input
@@ -187,10 +195,10 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                     onKeyUp={(e) => setCaps(e.getModifierState?.("CapsLock") ?? false)}
                     aria-invalid={Boolean(show("password"))} aria-describedby={cx(show("password") && errId("password"), caps && `${uid}-caps`, mode === "signup" && !show("password") && `${uid}-pwhint`) || undefined}
                     className={cx("field !pr-12", show("password") && "!border-rose/60")}
-                    placeholder={mode === "signup" ? "Минимум 8 символов" : ""}
+                    placeholder={mode === "signup" ? t("auth.pwPlaceholder") : ""}
                   />
                   <button
-                    type="button" onClick={() => setShowPw((v) => !v)} aria-pressed={showPw} aria-label={showPw ? "Скрыть пароль" : "Показать пароль"}
+                    type="button" onClick={() => setShowPw((v) => !v)} aria-pressed={showPw} aria-label={showPw ? t("auth.hidePw") : t("auth.showPw")}
                     className="absolute right-1 top-1/2 grid size-10 -translate-y-1/2 place-items-center rounded-full text-ink-3 transition-colors hover:bg-mint-2 hover:text-head focus-visible:outline-2 focus-visible:outline-green"
                   >
                     {showPw ? <EyeOff className="size-4" strokeWidth={1.7} /> : <Eye className="size-4" strokeWidth={1.7} />}
@@ -198,7 +206,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                 </div>
                 {/* After the field in the DOM: Tab goes email → password → «Не помнишь пароль?». */}
                 {mode === "login" && (
-                  <Link href="/reset" className="-my-1 inline-flex min-h-10 items-center self-end rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Не помнишь пароль?</Link>
+                  <Link href="/reset" className="-my-1 inline-flex min-h-10 items-center self-end rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">{t("auth.forgot")}</Link>
                 )}
                 {mode === "signup" && (
                   <div className="grid grid-cols-4 gap-1" aria-hidden>
@@ -207,8 +215,8 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                     ))}
                   </div>
                 )}
-                {mode === "signup" && <span id={`${uid}-pwhint`} className="sr-only">Минимум 8 символов; длиннее и с цифрами — надёжнее.</span>}
-                {caps && <span id={`${uid}-caps`} className="text-[12px] text-amber">Включён Caps Lock</span>}
+                {mode === "signup" && <span id={`${uid}-pwhint`} className="sr-only">{t("auth.pwHint")}</span>}
+                {caps && <span id={`${uid}-caps`} className="text-[12px] text-amber">{t("auth.caps")}</span>}
                 {show("password") && <FieldError id={errId("password")}>{errors.password}</FieldError>}
               </div>
 
@@ -216,33 +224,37 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                 <div className="flex flex-col gap-4">
                   {refOpen ? (
                     <div className="flex flex-col gap-1.5">
-                      <label htmlFor={`${uid}-ref`} className="label">Код партнёра</label>
+                      <label htmlFor={`${uid}-ref`} className="label">{t("auth.refLabel")}</label>
                       <div className="relative">
                         <TicketPercent className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-teal" strokeWidth={1.7} aria-hidden />
                         <input id={`${uid}-ref`} name="ref" value={ref} onChange={(e) => setRef(e.target.value.toUpperCase().replace(/\s/g, ""))} maxLength={32} autoComplete="off" aria-describedby={`${uid}-ref-status`} aria-invalid={refStatus && !refStatus.valid ? true : undefined} className="field !pl-10 font-mono uppercase tracking-[.06em]" />
                       </div>
                       <p id={`${uid}-ref-status`} role="status" aria-live="polite" className="min-h-[18px] text-[12.5px]">
-                        {refStatus?.valid && <span className="inline-flex items-center gap-1 text-green"><Check className="size-3.5" strokeWidth={2.4} aria-hidden />Код применён: {refStatus.partnerName}</span>}
-                        {refStatus && !refStatus.valid && <span className="text-amber">Код не найден — проверь написание или оставь поле пустым</span>}
+                        {refStatus?.valid && <span className="inline-flex items-center gap-1 text-green"><Check className="size-3.5" strokeWidth={2.4} aria-hidden />{t("auth.refApplied", { name: refStatus.partnerName ?? "" })}</span>}
+                        {refStatus && !refStatus.valid && <span className="text-amber">{t("auth.refNotFound")}</span>}
                       </p>
                     </div>
                   ) : (
                     <>
                       <input type="hidden" name="ref" value="" />
-                      <button type="button" onClick={() => setRefOpen(true)} className="inline-flex min-h-10 w-fit items-center rounded text-[13px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Есть код партнёра?</button>
+                      <button type="button" onClick={() => setRefOpen(true)} className="inline-flex min-h-10 w-fit items-center rounded text-[13px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">{t("auth.refAsk")}</button>
                     </>
                   )}
 
                   <fieldset className="flex flex-col gap-2.5 rounded-2xl border border-line bg-white/50 p-3.5">
-                    <legend className="sr-only">Согласия</legend>
+                    <legend className="sr-only">{t("auth.consents")}</legend>
                     <Checkbox
                       name="terms" checked={terms} onChange={(v) => { setTerms(v); setTouched((t) => ({ ...t, terms: true })); }} field="terms"
                       invalid={Boolean(show("terms"))} describedBy={show("terms") ? errId("terms") : undefined}
                     >
-                      Принимаю <LegalLinks newTab />. Агент подаёт заявки от моего имени только в рамках кампании — это можно изменить в настройках.
+                      {t.rich("auth.terms", {}, {
+                        terms: (c) => <DocLink doc="terms" newTab>{c}</DocLink>,
+                        consent: (c) => <DocLink doc="consent" newTab>{c}</DocLink>,
+                        privacy: (c) => <DocLink doc="privacy" newTab>{c}</DocLink>,
+                      })}
                     </Checkbox>
                     <Checkbox name="analytics" checked={analytics} onChange={setAnalytics}>
-                      Разрешаю обезличенную аналитику для улучшения продукта <span className="text-ink-4">(необязательно)</span>
+                      {t.rich("auth.analytics", {}, { m: (c) => <span className="text-ink-4">{c}</span> })}
                     </Checkbox>
                     {show("terms") && <FieldError id={errId("terms")}>{errors.terms}</FieldError>}
                   </fieldset>
@@ -255,7 +267,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                     <AlertCircle className="mt-0.5 size-4 shrink-0" />
                     <span className="flex-1">
                       {serverError}
-                      {mode === "signup" && /уже есть/.test(serverError) && <> · <button type="button" onClick={() => switchMode("login")} className="underline underline-offset-2">Войти</button></>}
+                      {mode === "signup" && rawServerError && /уже есть/.test(rawServerError) && <> · <button type="button" onClick={() => switchMode("login")} className="underline underline-offset-2">{t("auth.login")}</button></>}
                     </span>
                   </div>
                 )}
@@ -266,24 +278,26 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                 className="group relative mt-1 inline-flex h-13 w-full items-center justify-center gap-2 overflow-hidden rounded-full bg-cta text-[15.5px] font-medium text-white shadow-(--shadow-cta) transition-all hover:bg-[#2f2c2c] active:scale-[.99] disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green"
               >
                 {pending ? (
-                  <><span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />{mode === "signup" ? "Создаём аккаунт…" : "Входим…"}</>
+                  <><span className="size-4 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden />{mode === "signup" ? t("auth.creating") : t("auth.signingIn")}</>
                 ) : (
-                  <>{mode === "signup" ? "Начать кампанию" : "Войти"}<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" /></>
+                  <>{mode === "signup" ? t("auth.submitSignup") : t("auth.login")}<ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" /></>
                 )}
               </button>
             </form>
 
             <div className="mt-5 flex flex-col items-center gap-3 text-[13px] text-ink-3">
               <p>
-                {mode === "signup" ? "Уже есть аккаунт? " : "Нет аккаунта? "}
+                {mode === "signup" ? t("auth.haveAccount") : t("auth.noAccount")}{" "}
                 <button type="button" onClick={() => switchMode(mode === "signup" ? "login" : "signup")} className="inline-flex min-h-10 items-center text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green">
-                  {mode === "signup" ? "Войти" : "Создать аккаунт"}
+                  {mode === "signup" ? t("auth.login") : t("auth.createAccount")}
                 </button>
               </p>
             </div>
           </div>
         </section>
       </main>
+      <div className="flex justify-center pb-1"><LocaleSwitcher /></div>
+      <LegalFooter />
     </div>
   );
 }
@@ -291,30 +305,33 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
 /* ——— pieces ——— */
 
 function IntentSummary({ intent }: { intent: Intent }) {
-  const where = intent.where.map((w) => WHERE_OPTIONS.find((o) => o.key === w)?.label ?? w);
+  const t = useT();
+  const where = intent.where.map((w) => (WHERE_KEY[w] ? t(`auth.${WHERE_KEY[w]}`) : w));
+  const salary = intent.salary ? t(intent.currency === "KZT" ? "auth.perMonth" : "auth.perYear", { amount: t.money(intent.salary, intent.currency) }) : "";
   return (
     <div className="mt-5 flex items-start gap-3 rounded-2xl border border-green/20 bg-green-soft/50 px-4 py-3 animate-fade">
       <Target className="mt-0.5 size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />
       <div className="min-w-0 flex-1">
-        <div className="label !text-[11px] !text-green">Твоя кампания</div>
+        <div className="label !text-[11px] !text-green">{t("auth.yourCampaign")}</div>
         <div className="mt-0.5 text-[14.5px] font-medium text-head">{intent.role}</div>
-        <div className="text-[12.5px] text-ink-3">{[where.join(", "), intent.salary ? salaryPhrase(intent.salary, intent.currency) : ""].filter(Boolean).join(" · ")}</div>
+        <div className="text-[12.5px] text-ink-3">{[where.join(", "), salary].filter(Boolean).join(" · ")}</div>
       </div>
-      <Link href="/" className="inline-flex min-h-10 shrink-0 items-center rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Изменить</Link>
+      <Link href="/" className="inline-flex min-h-10 shrink-0 items-center rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">{t("common.change")}</Link>
     </div>
   );
 }
 
 function ModeSwitch({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  const t = useT();
   return (
-    <div role="group" aria-label="Режим" className="relative grid grid-cols-2 rounded-full border border-line bg-white/55 p-1">
+    <div role="group" aria-label={t("auth.modeAria")} className="relative grid grid-cols-2 rounded-full border border-line bg-white/55 p-1">
       <span aria-hidden className={cx("absolute inset-y-1 left-1 w-[calc(50%-4px)] rounded-full bg-cta shadow-(--shadow-cta) transition-transform duration-500 ease-[cubic-bezier(.16,1,.3,1)]", mode === "signup" && "translate-x-full")} />
       {(["login", "signup"] as const).map((m) => (
         <button
           key={m} type="button" aria-pressed={mode === m} onClick={() => onChange(m)}
           className={cx("relative z-10 h-10 rounded-full text-[13.5px] transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green", mode === m ? "text-white" : "text-ink-2 hover:text-head")}
         >
-          {m === "login" ? "Войти" : "Создать аккаунт"}
+          {m === "login" ? t("auth.login") : t("auth.createAccount")}
         </button>
       ))}
     </div>

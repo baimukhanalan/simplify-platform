@@ -2,23 +2,28 @@ import Link from "next/link";
 import { Check } from "lucide-react";
 import { ONBOARDING_STEPS, LAST_STEP } from "@/lib/onboarding";
 import { cx } from "@/components/ui";
+import { getT } from "@/lib/i18n/server";
+import { STEP_KEY } from "@/lib/i18n/labels";
 
 /**
  * Vertical progress rail on desktop; compact bar + step dots on mobile.
  * `complete` (a campaign is running) marks every step done: the launch already happened.
  */
-export function StepRail({ current, done, complete = false }: { current: number; done: number[]; complete?: boolean }) {
+export async function StepRail({ current, done, complete = false }: { current: number; done: number[]; complete?: boolean }) {
   const doneSet = new Set(complete ? ONBOARDING_STEPS.map((s) => s.n) : done);
   const reachable = (n: number) => complete || n <= current || doneSet.has(n) || doneSet.has(n - 1);
   const pct = complete ? 100 : Math.round((doneSet.size / LAST_STEP) * 100);
+  const t = await getT();
+  const label = (st: (typeof ONBOARDING_STEPS)[number]) => t(`onboarding.${STEP_KEY[st.key]}Label`);
+  const title = (st: (typeof ONBOARDING_STEPS)[number]) => t(`onboarding.${STEP_KEY[st.key]}Title`);
 
   return (
-    <nav aria-label="Шаги онбординга" className="lg:sticky lg:top-6 lg:self-start">
+    <nav aria-label={t("onboarding.railAria")} className="lg:sticky lg:top-6 lg:self-start">
       {/* Mobile */}
       <div className="glass flex flex-col gap-3 p-4 lg:hidden">
         <div className="flex items-center justify-between text-[13px]">
-          <span className="text-head">{complete ? "Кампания запущена" : ONBOARDING_STEPS[current - 1].label}</span>
-          <span className="num text-ink-3">{complete ? "Готово" : `${current} / ${LAST_STEP}`}</span>
+          <span className="text-head">{complete ? t("onboarding.launched") : label(ONBOARDING_STEPS[current - 1])}</span>
+          <span className="num text-ink-3">{complete ? t("onboarding.ready") : `${current} / ${LAST_STEP}`}</span>
         </div>
         <ol className="grid grid-cols-5 gap-1.5">
           {ONBOARDING_STEPS.map((st) => {
@@ -27,9 +32,9 @@ export function StepRail({ current, done, complete = false }: { current: number;
             return (
               <li key={st.n}>
                 {reachable(st.n) ? (
-                  <Link href={`/onboarding?step=${st.n}`} aria-label={`Шаг ${st.n}: ${st.label}${isDone ? " (пройден)" : ""}`} aria-current={st.n === current ? "step" : undefined} className="block py-[17px] focus-visible:outline-2 focus-visible:outline-green"><span className={cls} /></Link>
+                  <Link href={`/onboarding?step=${st.n}`} aria-label={`${t("onboarding.stepAria", { n: String(st.n), label: label(st) })}${isDone ? ` ${t("onboarding.passed")}` : ""}`} aria-current={st.n === current ? "step" : undefined} className="block py-[17px] focus-visible:outline-2 focus-visible:outline-green"><span className={cls} /></Link>
                 ) : (
-                  <span className="block py-[17px]" aria-label={`Шаг ${st.n}: ${st.label}`}><span className={cls} /></span>
+                  <span className="block py-[17px]" aria-label={t("onboarding.stepAria", { n: String(st.n), label: label(st) })}><span className={cls} /></span>
                 )}
               </li>
             );
@@ -40,7 +45,7 @@ export function StepRail({ current, done, complete = false }: { current: number;
       {/* Desktop */}
       <div className="hidden flex-col gap-5 lg:flex">
         <div className="flex flex-col gap-2">
-          <span className="label">{complete ? "Кампания запущена" : "Запуск кампании"}</span>
+          <span className="label">{complete ? t("onboarding.launched") : t("onboarding.launch")}</span>
           <div className="flex items-center gap-2.5">
             <div className="h-1 flex-1 overflow-hidden rounded-full bg-head/10"><div className="h-full rounded-full bg-green transition-[width] duration-700" style={{ width: `${pct}%` }} /></div>
             <span className="num text-[12px] text-ink-3">{pct}%</span>
@@ -57,8 +62,8 @@ export function StepRail({ current, done, complete = false }: { current: number;
                   {isDone && !isCur ? <Check className="size-3.5" strokeWidth={2.6} aria-hidden /> : <span className="num">{st.n}</span>}
                 </span>
                 <span className="flex flex-col">
-                  <span className={cx("text-[14px]", isCur ? "font-medium text-head" : isDone ? "text-ink-2" : "text-ink-3")}>{st.label}</span>
-                  {isCur && <span className="text-[12px] text-ink-3">{st.title}</span>}
+                  <span className={cx("text-[14px]", isCur ? "font-medium text-head" : isDone ? "text-ink-2" : "text-ink-3")}>{label(st)}</span>
+                  {isCur && <span className="text-[12px] text-ink-3">{title(st)}</span>}
                 </span>
               </>
             );
@@ -67,7 +72,7 @@ export function StepRail({ current, done, complete = false }: { current: number;
                 {reachable(st.n) ? (
                   <Link href={`/onboarding?step=${st.n}`} aria-current={isCur ? "step" : undefined} className="group flex items-center gap-3 rounded-xl py-2 pr-2 transition-colors hover:bg-white/50 focus-visible:outline-2 focus-visible:outline-green">
                     {inner}
-                    {isDone && !isCur && <span className="sr-only">(пройден)</span>}
+                    {isDone && !isCur && <span className="sr-only">{t("onboarding.passed")}</span>}
                   </Link>
                 ) : (
                   <div className="flex items-center gap-3 py-2 pr-2 opacity-80">{inner}</div>

@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { z } from "zod";
+import { captureError } from "./monitoring";
 
 /**
  * Claude is optional. With ANTHROPIC_API_KEY set, generation (CV variants, cover letters,
@@ -36,6 +37,7 @@ export async function aiJSON<S extends z.ZodType>(opts: {
     return { data: res.parsed_output as z.infer<S>, by: "claude" };
   } catch (err) {
     console.error("[ai] falling back to engine:", err instanceof Error ? err.message : err);
+    await captureError(err, { level: "warning", meta: { step: "ai-fallback" } });
     return { data: await opts.fallback(), by: "engine" };
   }
 }
@@ -55,6 +57,7 @@ export async function aiText(opts: { system: string; prompt: string; fallback: (
     return { text, by: "claude" as const };
   } catch (err) {
     console.error("[ai] falling back to engine:", err instanceof Error ? err.message : err);
+    await captureError(err, { level: "warning", meta: { step: "ai-fallback" } });
     return { text: opts.fallback(), by: "engine" as const };
   }
 }

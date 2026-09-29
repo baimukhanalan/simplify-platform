@@ -11,6 +11,7 @@ import { usdToGoalAmount } from "../engine/fx";
 import { REGIONS, SENIORITY, classifyRole, cleanRoleTitle, extractSkills } from "../engine/taxonomy";
 import { buildCareerCheck, chatTurnsFor, confirmSeniority, intlAuthRegions, markStepDone, readinessForUser, syncSeniorityFromYears, syncYearsFromFacts, LAST_STEP, STEP } from "../onboarding";
 import { cleanIntent, intentToGoal } from "../../app/_components/campaign-intent";
+import { captureError } from "../monitoring";
 
 export type FormState = { error?: string; ok?: boolean; message?: string; fields?: Record<string, string> } | undefined;
 
@@ -44,6 +45,7 @@ export async function runCareerCheck(_: FormState, form: FormData): Promise<Form
     id = row.id;
   } catch (err) {
     console.error("[career-check]", err);
+    await captureError(err, { source: "action", meta: { step: "career-check" } });
     return { error: "Не удалось проанализировать CV. Попробуй ещё раз или вставь текст вручную.", fields: { target } };
   }
   redirect(`/check/${id}`);

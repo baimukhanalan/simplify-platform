@@ -295,6 +295,8 @@ model Event {
   message       String
   data          String       @default("{}")
   createdAt     DateTime     @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // Exception queue: anything the agent must not decide alone.
@@ -463,6 +465,8 @@ model PushSubscription {
   auth      String
   userAgent String   @default("")
   createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // «Bring a friend»: one row per invited user. Reward is applied once, when the invited user's first payment succeeds.
