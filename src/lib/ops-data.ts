@@ -2,7 +2,8 @@
 import "server-only";
 import { db } from "./db";
 import { agentMaySubmit, readAutonomy, type Autonomy } from "./engine/autonomy";
-import { agentQueueWhere, dailyUsage, hasOpenAnswers } from "./engine/agent";
+import { agentQueue, dailyUsage, hasOpenAnswers } from "./engine/agent";
+import { FICTIONAL_SOURCE } from "./mode";
 import { DREAM_DECISION } from "./engine/matching";
 import { reachedInterview } from "./engine/insights";
 import { APPLIED_OR_LATER, roleKey } from "./engine/taxonomy";
@@ -182,7 +183,7 @@ export const awaitingDecisionWhere = (campaignId: string, queue: Pick<NextCycle,
 });
 
 export type NextCycle = {
-  /** Opportunity ids the next agent cycle would submit on its own (demo roles; live roles become handoffs instead). */
+  /** Opportunity ids the next agent cycle would submit on its own (internal-corpus roles; live roles become handoffs instead). */
   ids: string[];
   /** "now" = the next cycle today still has room; "tomorrow" = today's daily limit is used up; null = the agent will not submit (see reason). */
   when: "now" | "tomorrow" | null;
@@ -244,15 +245,10 @@ export async function nextCycleQueue(
     const counted = when === "now" && o.updatedAt >= since;
     if (!counted && budget <= 0) { why(o.id, "daily-limit"); continue; }
     if (!counted) budget--;
-    if (o.job.source === "demo") ids.push(o.id); else why(o.id, "handoff");
+    if (o.job.source === FICTIONAL_SOURCE) ids.push(o.id); else why(o.id, "handoff");
   }
   if (autonomy.personalizeCv && budget > 0) {
-    const queue = await db.opportunity.findMany({
-      where: agentQueueWhere(campaign.id),
-      orderBy: [{ decision: "desc" }, { priority: "desc" }],
-      take: budget * 2,
-      select: { id: true, decision: true, match: true, job: { select: { company: true, title: true, source: true } } },
-    });
+    const queue = await agentQueue(campaign.id, budget);
     let prepared = 0;
     for (const o of queue) {
       if (prepared >= budget) { why(o.id, "daily-limit"); continue; }
@@ -262,7 +258,7 @@ export async function nextCycleQueue(
       prepared++;
       const denied = permission(o);
       if (denied) why(o.id, denied);
-      else if (o.job.source === "demo") ids.push(o.id);
+      else if (o.job.source === FICTIONAL_SOURCE) ids.push(o.id);
       else why(o.id, "handoff");
     }
   }

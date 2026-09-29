@@ -22,6 +22,9 @@ const dir = mkdtempSync(path.join(tmpdir(), "simplify-r10-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.ANTHROPIC_AUTH_TOKEN;
+// These cases pin the plain engine (live mode): no corpus top-up in discovery, live application forms. Simulation mode has
+// its own suite (tests/simulation.test.ts).
+process.env.SIMPLIFY_MODE = "live";
 
 /** Almaty wall-clock parts of an instant (UTC+5). */
 const almaty = (d: Date) => {
@@ -248,6 +251,8 @@ describe("3 (DB) · the agent prepares only Match ≥ 70 unless the user picked 
     assert.ok(["prepared", "submitted"].includes(rb.status), rb.status);
   });
   test("a dream-company role blocked only by level waits for the user (not prepared, counted in needsYou)", async () => {
+    // The internal corpus is created up front (discovery would add it) and switched off with everything else.
+    await (await import("../src/lib/engine/ingest")).ensureSeedJobs();
     await db.job.updateMany({ data: { active: false } });
     const { user, campaign } = await makeUser({ dream: ["Dreamco"], autonomy: { findJobs: true } });
     await makeJob({ company: "Dreamco", title: "Senior Data Analyst", seniority: "senior", minYears: 6, active: true });

@@ -56,8 +56,8 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
   ]);
 
   const now = nowMs();
-  // ?debug=1: small muted technical lines (who generated the materials, when). Hidden from users otherwise.
-  const debug = sp.debug === "1";
+  // ?debug=1 (local development only): small muted technical lines (who generated the materials, when). Never in production.
+  const debug = sp.debug === "1" && process.env.NODE_ENV !== "production";
   const job = iv.opportunity.job;
   const isAssessment = iv.round === "assessment";
   const order: TabKey[] = isAssessment ? ["assessment", "brief", "mock", "sent", "debrief"] : ["brief", "questions", "mock", "sent", "debrief"];

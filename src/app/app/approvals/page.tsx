@@ -159,7 +159,6 @@ function ApprovalItem({ a, same }: { a: Item; same: number }) {
         ) : (
           <span className="text-[14.5px] text-ink-3">Без привязки к вакансии</span>
         )}
-        {job?.source === "demo" && <span className="text-[12px] text-ink-3">демо-вакансия</span>}
         <span className="ml-auto text-[12px] text-ink-3">{agoRu(a.createdAt)}</span>
       </header>
 

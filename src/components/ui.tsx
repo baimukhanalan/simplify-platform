@@ -138,10 +138,6 @@ export function Divider({ className }: { className?: string }) {
   return <div className={cx("h-px w-full bg-line", className)} />;
 }
 
-export function DemoBadge() {
-  return <Chip tone="amber">demo</Chip>;
-}
-
 export const Logo = ({ className, white }: { className?: string; white?: boolean }) => (
   // eslint-disable-next-line @next/next/no-img-element
   <img src={white ? "/brand/nav_logo_white.svg" : "/brand/nav_logo.svg"} alt="Simplify" className={cx("h-[22px] w-auto", className)} />

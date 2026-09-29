@@ -3,12 +3,11 @@ import { ArrowRight, BadgeDollarSign, CalendarClock, ClipboardCheck, ListChecks,
 import type { Metadata } from "next";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
-import { demoToolsEnabled } from "@/lib/demo";
 import { currentCampaign, type NeedsYou } from "@/lib/ops-data";
+import { maybeSimulateEmployers } from "@/lib/engine/simulation";
 import { decisionsWaiting, needsYouCached } from "../_components/global-needs";
 import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Chip, Label, Script, cx } from "@/components/ui";
-import { RunAgentButton, SimulateButton } from "./_components/demo-tools";
 import { dayKey, greeting, hhmm, loadToday, type Today } from "./_components/today-data";
 import { KeyNumbers, NextActionCard, StageBar, StatusDot, Timeline, TodayStrip, type NextAction } from "./_components/today";
 import { assessmentDeadline, count, handoffsWaiting, plural, questionsWaiting } from "../_components/ru";
@@ -91,13 +90,13 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const campaign = await currentCampaign(user.id);
   if (!campaign) return <NoCampaign userId={user.id} firstName={firstName} hasGoal={Boolean(user.goal?.primaryRole)} hasCv={Boolean(user.profile?.cvText || user.profile?.summary)} />;
 
+  await maybeSimulateEmployers(user.id); // employer replies that became due (simulation mode; guarded, no-op in live mode)
   const [d, waiting] = await Promise.all([loadToday(user, campaign), needsYouCached(user.id)]);
   const { action, also } = pickNext(d, waiting);
   const status = campaign.status;
   const isActive = status === "active";
   const t = d.today;
   const tagline = { active: "Your agent is working.", paused: "Агент на паузе.", hired: "Работа найдена.", expired: "Кампания завершена." }[status] ?? "Your agent is working.";
-  const demo = demoToolsEnabled(user);
 
   const story = todayStory(d);
 
@@ -182,14 +181,6 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         <Timeline days={d.timeline} now={d.now} />
       </Card>
 
-      {/* Demo tools (demo account, staff, local dev): available, not advertised. */}
-      {demo && (
-        <div className="flex flex-wrap items-start gap-2 px-1 pt-2 text-[12.5px] text-ink-3">
-          <span className="label mr-1 pt-3 !text-[11px] !text-ink-3">Демо-инструменты</span>
-          {isActive && <RunAgentButton />}
-          <SimulateButton />
-        </div>
-      )}
     </div>
   );
 }

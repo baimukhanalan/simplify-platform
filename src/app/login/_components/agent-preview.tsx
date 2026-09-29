@@ -44,14 +44,13 @@ export function AgentPreview({ className }: { className?: string }) {
 
   return (
     <div className={cx("glass relative overflow-hidden p-4 sm:p-5", className)}>
-      <p className="sr-only">Иллюстрация: так агент работает в кампании — находит вакансии, адаптирует CV, подаёт заявки и получает приглашения на интервью.</p>
+      <p className="sr-only">Как работает агент: в кампании он находит вакансии, адаптирует CV, подаёт заявки и получает приглашения на интервью.</p>
       <div aria-hidden className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <span className="size-2 rounded-full bg-green animate-pulse-dot" />
-            <span className="label !text-head">Агент · пример работы</span>
+            <span className="label !text-head">Как работает агент</span>
           </div>
-          <span className="rounded-full border border-line bg-white/60 px-2 py-0.5 font-mono text-[11px] uppercase tracking-[.08em] text-ink-3">Иллюстрация</span>
         </div>
 
         <div className="grid grid-cols-3 gap-2">

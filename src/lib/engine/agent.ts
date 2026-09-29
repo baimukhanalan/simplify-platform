@@ -14,6 +14,8 @@ import { count, plural, roleLabelRu } from "../ru";
 import { toUSD } from "./fx";
 import { salaryAnswer } from "./salary";
 import { snapRoundTime, startOfToday } from "../time";
+import { FICTIONAL_SOURCE, isSimulation } from "../mode";
+import { ensureFictionalCoverage } from "./coverage";
 
 // Journal wording for employer emails (Settings → audit log shows these lines).
 const INBOX_EVENT_RU: Record<string, string> = { confirmation: "подтверждение получения заявки", rejection: "отказ", assessment: "приглашение на тест", interview: "приглашение на интервью", offer: "оффер", info: "информационное письмо" };
@@ -112,6 +114,27 @@ export const agentQueueWhere = (campaignId: string) => ({
   OR: [{ decision: { in: ["apply", "auto"] } }, { match: { gte: QUEUE_MATCH }, NOT: { softGaps: { contains: DREAM_DECISION } } }],
 });
 
+const QUEUE_SELECT = { id: true, decision: true, match: true, job: { select: { company: true, title: true, source: true } } } satisfies Prisma.OpportunitySelect;
+/** Share of a cycle's preparation slots the internal corpus goes first for, in simulation mode (the rest: by priority). */
+export const SIM_FICTIONAL_SHARE = 0.7;
+
+/**
+ * The agent's preparation queue in the order a cycle takes it (runTick; nextCycleQueue in src/lib/ops-data.ts mirrors
+ * it), over-fetched ×2 because prepare() sets duplicates aside. Roles the user picked (Apply / Auto) always go first; then,
+ * in simulation mode, up to SIM_FICTIONAL_SHARE of the slots go to internal-corpus roles; then everything by priority.
+ */
+export async function agentQueue(campaignId: string, take: number) {
+  if (take <= 0) return [];
+  const orderBy = [{ decision: "desc" as const }, { priority: "desc" as const }];
+  const all = await db.opportunity.findMany({ where: agentQueueWhere(campaignId), orderBy, take: take * 2, select: QUEUE_SELECT });
+  if (!isSimulation()) return all;
+  const lead = Math.ceil(take * SIM_FICTIONAL_SHARE);
+  const fx = await db.opportunity.findMany({ where: { ...agentQueueWhere(campaignId), job: { source: FICTIONAL_SOURCE } }, orderBy, take: lead * 2, select: QUEUE_SELECT });
+  const picked = (o: { decision: string }) => o.decision === "apply" || o.decision === "auto";
+  const seen = new Set<string>();
+  return [...all.filter(picked), ...fx.filter((o) => !picked(o)), ...all].filter((o) => (seen.has(o.id) ? false : (seen.add(o.id), true)));
+}
+
 /** A package answer still waiting for the user (its own approval card, or a standing question asked on another role). */
 export const hasOpenAnswers = (answers: string | null | undefined) => j<Answer[]>(answers ?? "[]", []).some((a) => a.status === "pending");
 
@@ -133,11 +156,13 @@ export async function duplicateOf(opp: { id: string; campaignId: string; job: { 
 const isUniqueViolation = (e: unknown) => e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002";
 
 /** Discovery + match/eligibility + ranking for every active job not yet in the campaign. */
-export async function discover(campaignId: string) {
+export async function discover(campaignId: string, opts: { coverage?: boolean } = {}) {
   const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
   await ensureSeedJobs();
   const { ctx } = await loadCandidate(campaign.userId);
   const c = ctx(j<Record<string, number>>(campaign.allocation, {}), campaign.plan);
+  // Simulation mode: the internal corpus always holds enough unseen roles that fit this goal (src/lib/engine/coverage.ts).
+  if (isSimulation() && opts.coverage !== false) await ensureFictionalCoverage(campaign.userId, c);
   const wanted = new Set([c.goal.primaryRole, ...c.goal.extraRoles].map(classifyRole));
   const known = new Set((await db.opportunity.findMany({ where: { campaignId }, select: { jobId: true } })).map((o) => o.jobId));
   // A new campaign (e.g. after HIRED) must not re-find roles the user already applied to or was rejected from before.
@@ -385,6 +410,11 @@ export async function prepare(opportunityId: string, opts: PrepareOptions = {}) 
   const pkg = await buildPackage(profile, facts, jobLite(opp.job));
   // One question, one answer: a question repeated inside the package is asked (and answered) once.
   pkg.answers = pkg.answers.filter((a, i, all) => all.findIndex((b) => b.q.trim().toLowerCase() === a.q.trim().toLowerCase()) === i);
+  // Internal-corpus employers outside the US / UK / Canada use application forms without the US-style voluntary
+  // self-identification (EEO) block, as employers there do (simulation mode only; live forms are left as they are).
+  if (isSimulation() && opp.job.source === FICTIONAL_SOURCE && !j<string[]>(opp.job.countries, []).some((c) => c === "US" || c === "CA" || c === "GB")) {
+    pkg.answers = pkg.answers.filter((a) => !(a.kind === "sensitive" && /self-identification/i.test(a.q)));
+  }
   // Agent screen: standard answers may require the user; sensitive questions may be auto-declined;
   // the salary answer follows "Change salary expectation" (floor range exactly when OFF).
   for (const a of pkg.answers) {
@@ -423,7 +453,7 @@ export async function prepare(opportunityId: string, opts: PrepareOptions = {}) 
 }
 
 /**
- * Execution layer. Demo vacancies go through the simulated ATS adapter. hh.kz vacancies go through the hh API as the
+ * Execution layer. Internal-corpus vacancies (FICTIONAL_SOURCE) go through the internal ATS adapter. hh.kz vacancies go through the hh API as the
  * user (their connected account + chosen resume, src/lib/hh/apply.ts) or become handoffs. Other live vacancies are
  * user-authorized handoffs: the package is ready and the user submits through the official form.
  */
@@ -477,7 +507,7 @@ export async function submit(opportunityId: string, via: "agent" | "user" = "age
     }
     method = "hh-api";
     hhNote = { negotiationId: r.negotiationId, already: Boolean(r.already) };
-  } else if (opp.job.source !== "demo" && via === "agent") {
+  } else if (opp.job.source !== FICTIONAL_SOURCE && via === "agent") {
     const exists = await db.approval.findFirst({ where: { opportunityId, kind: "handoff", status: "pending" } });
     if (!exists) await db.approval.create({ data: { userId: opp.campaign.userId, opportunityId, kind: "handoff", question: `Отправь заявку в ${opp.job.company} через официальную форму`, proposed: opp.job.url } });
     return { ok: false, reason: "handoff" };
@@ -504,6 +534,8 @@ export type TickOptions = {
    * inside the webhook's after() and must finish within that invocation; the cron prepares the rest.
    */
   maxPrepare?: number;
+  /** Simulation mode: top up the internal corpus for the goal before discovery (default true; the seed replays days without it). */
+  coverage?: boolean;
 };
 
 /** One agent cycle: discover → re-rank → prepare → submit, within the daily limit (the Almaty calendar day, like the UI). */
@@ -519,7 +551,7 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
   }
   if (campaign.status !== "active") return { skipped: campaign.status };
   const { autonomy } = await loadCandidate(campaign.userId);
-  const d = autonomy.findJobs ? await discover(campaignId) : { found: 0, qualified: 0, blocked: 0 };
+  const d = autonomy.findJobs ? await discover(campaignId, { coverage: opts.coverage }) : { found: 0, qualified: 0, blocked: 0 };
   await rerank(campaignId);
   await settleSharedAnswers(campaign.userId);
   const since = startOfToday();
@@ -557,7 +589,7 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
   const take = Math.min(budget, opts.maxPrepare ?? budget);
   // Over-fetch a little: a duplicate (same role, another location) is set aside by prepare() and takes no slot.
   // Only roles the user picked or that clear Match ≥ QUEUE_MATCH (and aren't a dream-company decision): agentQueueWhere.
-  const queue = take > 0 ? await db.opportunity.findMany({ where: agentQueueWhere(campaignId), orderBy: [{ decision: "desc" }, { priority: "desc" }], take: take * 2 }) : [];
+  const queue = await agentQueue(campaignId, take);
   for (const o of queue) {
     if (prepared >= take) break;
     const r = await prepare(o.id);
@@ -569,6 +601,8 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
     } else waiting++;
   }
   await db.campaign.update({ where: { id: campaignId }, data: { lastRunAt: new Date() } });
+  // New applications: the next page view re-checks employer replies (simulation mode) instead of waiting out its guard.
+  if (submitted && isSimulation()) (await import("./simulation")).resetSimulationGuard(campaign.userId);
   // What waits on the user after this cycle, named exactly (the same counts as needsYou in src/lib/ops-data.ts, which
   // every screen uses); nothing is claimed when nothing waits.
   const { needsYouFor, needsYouLine } = await import("../ops-data");
@@ -596,7 +630,7 @@ export async function pendingDecisions(campaignId: string, autoSubmit: boolean, 
 
 // ——— Inbox Intelligence → pipeline ———
 
-/** Push-moment titles, gender-neutral; the demo seed uses the same ones. */
+/** Push-moment titles, gender-neutral; the seed uses the same ones. */
 export const NOTIFY_TITLE = { interview: "Новое интервью", assessment: "Следующий этап: assessment", offer: "YOU GOT THE OFFER" } as const;
 const ROUND_STATUS: Record<string, string> = { recruiter: "recruiter", hiring_manager: "hiring_manager", technical: "technical", final: "final" };
 
@@ -685,26 +719,3 @@ function roundTime(round: string, at: Date | null, exact = false) {
 
 /** The date of a round, for every screen: Interview.scheduledAt (an assessment's deadline, an interview's time). */
 export const roundDate = (iv: { scheduledAt: Date | null } | null | undefined) => iv?.scheduledAt ?? null;
-
-// ——— Demo: simulated employer responses (only for demo vacancies; clearly labeled in UI) ———
-export async function simulateResponses(userId: string, opts: { rand?: () => number; submittedBefore?: Date; submittedAfter?: Date } = {}) {
-  const rand = opts.rand ?? Math.random;
-  const opps = await db.opportunity.findMany({
-    where: { campaign: { userId }, status: { in: ["submitted", "pending"] }, job: { source: "demo" }, ...(opts.submittedBefore || opts.submittedAfter ? { submittedAt: { ...(opts.submittedBefore ? { lt: opts.submittedBefore } : {}), ...(opts.submittedAfter ? { gte: opts.submittedAfter } : {}) } } : {}) },
-    orderBy: { submittedAt: "asc" },
-    include: { job: true },
-  });
-  let n = 0;
-  for (const o of opps) {
-    const r = rand();
-    const domain = `${o.job.company.toLowerCase().replace(/[^a-z]/g, "")}.example`;
-    const p = Math.min(0.4, o.pInterview * 0.9 + 0.03);
-    let mail: { subject: string; body: string } | null = null;
-    if (o.status === "submitted" && r < 0.35) mail = { subject: `We received your application — ${o.job.title}`, body: `Hi,\n\nThank you for applying to ${o.job.company}! We have received your application for ${o.job.title} and our team will review it shortly.\n\nBest,\n${o.job.company} Talent Team` };
-    else if (r < p * (o.job.massHiring ? 0.6 : 0.25)) mail = { subject: `${o.job.company} — online assessment`, body: `Hi,\n\nThanks for your interest in ${o.job.title}. As a next step, please complete this online assessment on TestGorilla within 5 days.\n\nGood luck!\n${o.job.company} Recruiting` };
-    else if (r < p) mail = { subject: `Interview invitation — ${o.job.title} at ${o.job.company}`, body: `Hi,\n\nWe reviewed your application and would like to invite you to a 30-minute call with our recruiter to learn more about your background. Please reply with a few time slots that work for you and we will schedule a call.\n\nBest regards,\n${o.job.company}` };
-    else if (r > 0.72) mail = { subject: `Your application to ${o.job.company}`, body: `Hi,\n\nThank you for your interest in ${o.job.title}. Unfortunately, we have decided to move forward with other candidates whose experience more closely matches our needs.\n\nWe wish you the best in your search.\n${o.job.company}` };
-    if (mail) { await ingestEmail(userId, { from: `talent@${domain}`, ...mail, simulated: true, opportunityId: o.id }); n++; }
-  }
-  return n;
-}

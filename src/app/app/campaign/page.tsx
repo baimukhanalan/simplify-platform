@@ -1,16 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { ArrowRight, Check, CircleAlert, Pause, Play, TicketPercent, Zap } from "lucide-react";
+import { ArrowRight, Check, CircleAlert, Pause, Play, TicketPercent } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
-import { demoToolsEnabled } from "@/lib/demo";
 import { isOverdue, pendingApprovalsCount, pendingHandoffsCount } from "@/lib/ops-data";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { ButtonLink, Card, Chip, Label, PageHeader, Progress, Ring, Script, cx } from "@/components/ui";
 import { PaymentHistory } from "./_components/payment-history";
 import { SubmitButton } from "@/components/client";
-import { checkout, setCampaignStatus, runAgentNow } from "@/lib/actions/campaign";
+import { checkout, setCampaignStatus } from "@/lib/actions/campaign";
 import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
 import { Disclosure } from "../profile/_components/bits";
 import { AgentStatus } from "../../_components/agent-status";
@@ -62,7 +61,6 @@ export default async function CampaignPage() {
   const past = campaigns.filter((c) => c !== active && c.status !== "draft");
   const last = past[0];
   const consents = j<{ autoSubmit?: boolean }>(user.consents, {});
-  const demo = demoToolsEnabled(user);
   const needs = active
     ? [
         ...(approvals ? [{ text: questionsWaiting(approvals), href: "/app/approvals" }] : []),
@@ -91,7 +89,7 @@ export default async function CampaignPage() {
         />
       )}
 
-      {active ? <ActiveCampaign c={active} autoSubmitConsent={consents.autoSubmit !== false} autoApply={autonomy.submitApplications} minMatch={autonomy.autoApplyMinMatch} demo={demo} /> : (
+      {active ? <ActiveCampaign c={active} autoSubmitConsent={consents.autoSubmit !== false} autoApply={autonomy.submitApplications} minMatch={autonomy.autoApplyMinMatch} /> : (
         <>
           {last && (last.status === "hired" || last.status === "expired") && (
             <div className="mb-6 flex animate-rise flex-col gap-2 rounded-2xl border border-line bg-white/70 px-4 py-3.5 text-[14px] text-ink-2 sm:flex-row sm:items-center sm:justify-between">
@@ -190,16 +188,16 @@ function Checkout({ hasGoal, partner, recommended }: { hasGoal: boolean; partner
             Партнёр <span className="font-mono text-head">{partner}</span> учтён при регистрации.
           </p>
         )}
-        <div className="flex items-start gap-2.5 rounded-2xl bg-amber-soft px-4 py-3 text-[13px] text-ink-2">
-          <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber" strokeWidth={1.8} aria-hidden />
-          <p><span className="font-medium text-head">Оплата через Kaspi Pay.</span> Сейчас подключён тестовый шлюз Kaspi: деньги не списываются, а кампания запускается сразу после подтверждения оплаты. Оплачивая, ты принимаешь <LegalLinks />.</p>
+        <div className="flex items-start gap-2.5 rounded-2xl bg-head/[.04] px-4 py-3 text-[13px] text-ink-2">
+          <CircleAlert className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.8} aria-hidden />
+          <p><span className="font-medium text-head">Оплата через Kaspi Pay.</span> Кампания запускается сразу после подтверждения оплаты. Оплачивая, ты принимаешь <LegalLinks />.</p>
         </div>
       </Card>
     </form>
   );
 }
 
-function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch, demo }: { c: { id: string; plan: string; status: string; readiness: number; dailyLimit: number; autoSubmit: boolean; startedAt: Date | null; endsAt: Date | null; lastRunAt: Date | null }; autoSubmitConsent: boolean; autoApply: boolean; minMatch: number; demo: boolean }) {
+function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch }: { c: { id: string; plan: string; status: string; readiness: number; dailyLimit: number; autoSubmit: boolean; startedAt: Date | null; endsAt: Date | null; lastRunAt: Date | null }; autoSubmitConsent: boolean; autoApply: boolean; minMatch: number }) {
   // The agent sends on its own only with the consent (campaign.autoSubmit mirrors it) — and then either for roles above
   // the auto-apply threshold (Autonomy.submitApplications) or only for roles marked Apply / Auto.
   const autoLine = !c.autoSubmit || !autoSubmitConsent
@@ -244,11 +242,6 @@ function ActiveCampaign({ c, autoSubmitConsent, autoApply, minMatch, demo }: { c
               {paused ? <><Play className="size-4" strokeWidth={1.7} aria-hidden />Возобновить</> : <><Pause className="size-4" strokeWidth={1.7} aria-hidden />Пауза</>}
             </SubmitButton>
           </form>
-          {!paused && demo && (
-            <form action={runAgentNow}>
-              <SubmitButton pendingText="Агент работает…"><Zap className="size-4" strokeWidth={1.7} aria-hidden />Запустить цикл агента</SubmitButton>
-            </form>
-          )}
         </div>
         {c.lastRunAt && <p className="-mt-3 text-[12.5px] text-ink-3">Последний цикл: {c.lastRunAt.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", dateStyle: "medium", timeStyle: "short" })}</p>}
         <Disclosure tone="ghost" summary="Что входит в кампанию">

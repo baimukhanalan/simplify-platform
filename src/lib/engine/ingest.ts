@@ -1,7 +1,8 @@
 import "server-only";
 import { db, s, noNul } from "../db";
-import { classifyRole, seniorityFromTitle, extractSkills, wordRe, MASS_HIRING_FAMILIES } from "./taxonomy";
-import { SEED_JOBS } from "./seed-jobs";
+import { classifyRole, seniorityFromTitle, extractSkills, wordRe, MASS_HIRING_FAMILIES, type Seniority } from "./taxonomy";
+import { SEED_JOBS, FX_PREFIX, fxExternalId, fxUrl, postingAgeHours, type Seed } from "./seed-jobs";
+import { FICTIONAL_SOURCE } from "../mode";
 import { hhNormalize, type HhRawSalary } from "../hh/normalize";
 import { hhSource } from "../sources/hh";
 import { openFromKazakhstan, type KzVerdict } from "./kz-eligibility";
@@ -15,7 +16,11 @@ export type RawJob = { source: string; externalId: string; company: string; titl
   /** hh only (src/lib/sources/hh.ts): structured salary and experience bucket, used instead of text guessing. */
   salary?: HhRawSalary; minYears?: number;
   /** Structured workplace from the source (ATS flags), preferred over guessing from the location text. */
-  workplace?: "remote" | "hybrid" | "onsite" };
+  workplace?: "remote" | "hybrid" | "onsite";
+  /** Structured level (internal corpus), preferred over guessing from the title / years. */
+  seniority?: Seniority;
+  /** Structured working languages (internal corpus), used instead of the text heuristics. */
+  languages?: string[] };
 
 // Unicode-aware boundaries (wordRe): `\b` does not work next to Cyrillic, so "Алматы" never matched.
 const COUNTRY_WORDS: [RegExp, string][] = ([
@@ -58,7 +63,8 @@ function normalizeWithVerdict(raw: RawJob) {
   // External feeds occasionally carry NUL bytes, which Postgres rejects in text columns.
   const r = { ...raw, company: noNul(raw.company), title: noNul(raw.title), location: noNul(raw.location ?? ""), description: noNul(raw.description ?? ""), salaryText: raw.salaryText && noNul(raw.salaryText), industry: raw.industry && noNul(raw.industry) };
   // hh hook: structured salary (KZT/month → annual USD), experience → minYears, key_skills → stack (src/lib/hh/normalize.ts).
-  const hh = r.source === "hh" ? hhNormalize(raw) : null;
+  // Any source that carries a structured salary / experience (the internal corpus does) takes the same path.
+  const hh = r.source === "hh" || raw.salary || raw.minYears != null ? hhNormalize(raw) : null;
   const text = `${r.title}\n${r.location}\n${r.description}${hh?.skillsText ? `\n${hh.skillsText}` : ""}`;
   const plain = stripHtml(r.description);
   const loc = r.location || "";
@@ -70,7 +76,7 @@ function normalizeWithVerdict(raw: RawJob) {
   const roleFamily = classifyRole(r.title);
   const years = plain.match(/(\d{1,2})\+?\s*(?:-\s*\d+\s*)?(?:years|yrs)/i);
   const minYears = hh?.minYears ?? (years ? Math.min(15, Number(years[1])) : 0);
-  const seniority = seniorityFromTitle(r.title) ?? (minYears >= 6 ? "senior" : minYears >= 3 ? "middle" : minYears >= 1 ? "junior" : "middle");
+  const seniority = raw.seniority ?? seniorityFromTitle(r.title) ?? (minYears >= 6 ? "senior" : minYears >= 3 ? "middle" : minYears >= 1 ? "junior" : "middle");
   const sponsorship = /(unable|not able|cannot|can't|won't|will not|do not|don't)\s+(to\s+)?(offer\s+|provide\s+)?(visa\s+)?sponsor/i.test(plain) ? "no" : /(visa sponsorship|sponsor(ship)? (is )?available|we (can )?sponsor|relocation (support|package))/i.test(plain) ? "yes" : "unknown";
   const workAuth: string[] = [];
   const auth = plain.match(/(?:authori[sz]ed|eligible|right) to work in (?:the )?([A-Z][\w .]+?)(?:[.,;]| without| and)/);
@@ -78,8 +84,8 @@ function normalizeWithVerdict(raw: RawJob) {
     const c = COUNTRY_WORDS.find(([re]) => re.test(auth[1]))?.[1];
     if (c && c !== "*" && c !== "EU*") workAuth.push(c);
   }
-  const languages = ["English"];
-  for (const [lang, re] of [["German", /(fluent|native|business[- ]level|c1|c2)[^.]{0,40}german|german[^.]{0,30}(fluent|native|required|c1|c2)/i], ["French", /(fluent|native)[^.]{0,40}french|french[^.]{0,30}(fluent|native|required)/i], ["Russian", /(fluent|native)[^.]{0,40}russian|russian[^.]{0,30}(fluent|native|required)/i]] as const) if (re.test(plain)) languages.push(lang);
+  const languages = raw.languages?.length ? [...raw.languages] : ["English"];
+  if (!raw.languages?.length) for (const [lang, re] of [["German", /(fluent|native|business[- ]level|c1|c2)[^.]{0,40}german|german[^.]{0,30}(fluent|native|required|c1|c2)/i], ["French", /(fluent|native)[^.]{0,40}french|french[^.]{0,30}(fluent|native|required)/i], ["Russian", /(fluent|native)[^.]{0,40}russian|russian[^.]{0,30}(fluent|native|required)/i]] as const) if (re.test(plain)) languages.push(lang);
   const [salaryMin, salaryMax] = hh?.salary ?? parseSalary(r.salaryText || plain);
   const massHiring = MASS_HIRING_FAMILIES.includes(roleFamily) && (seniority === "junior" || seniority === "intern" || /hiring multiple|high[- ]volume|several positions|cohort|graduate program|no experience/i.test(plain)) || /graduate program|internship program/i.test(r.title);
   const job = {
@@ -173,7 +179,7 @@ async function upsertBatch(raw: RawJob[], deadline = Infinity): Promise<UpsertSt
     }
   }
   // Freshness: feed postings older than 60 days are retired. Demo rows are kept fresh by reanchorDemoJobs instead.
-  await db.job.updateMany({ where: { source: { notIn: ["demo", ...LISTED_WHILE_OPEN] }, active: true, postedAt: { lt: new Date(Date.now() - 60 * DAY) } }, data: { active: false } });
+  await db.job.updateMany({ where: { source: { notIn: [FICTIONAL_SOURCE, ...LISTED_WHILE_OPEN] }, active: true, postedAt: { lt: new Date(Date.now() - 60 * DAY) } }, data: { active: false } });
   return stats;
 }
 
@@ -263,51 +269,84 @@ export async function ingestLive(query = "", opts: { budgetMs?: number; only?: s
   return report;
 }
 
-// SEED_JOBS repeats some company|title|location combos, so the corpus holds fewer rows than entries.
-const DEMO_KEYS = new Set(SEED_JOBS.map((j) => dedupeKeyOf(j.company, j.title, j.location))).size;
-const demoIndex = (externalId: string) => Number(externalId.replace(/^demo-/, ""));
+// ——— Internal corpus of fictional companies (Job.source = FICTIONAL_SOURCE) ———
 
-/** Demo corpus: always present so a campaign can run offline. Dates are re-anchored to "now". */
+const SEED_BY_ID = new Map(SEED_JOBS.map((j) => [fxExternalId(j.key), j]));
+const CORPUS_KEYS = new Set(SEED_JOBS.map((j) => dedupeKeyOf(j.company, j.title, j.location))).size;
+
+/** A corpus / generated seed as a RawJob (posting date from its stable age). */
+export function seedToRaw(j: Seed, now = Date.now()): RawJob {
+  const externalId = fxExternalId(j.key);
+  return {
+    source: FICTIONAL_SOURCE, externalId, url: fxUrl(j.key), postedAt: new Date(now - postingAgeHours(externalId) * 3600000),
+    company: j.company, title: j.title, location: j.location, description: j.description, industry: j.industry, remoteHint: j.remoteHint,
+    workplace: j.workplace, seniority: j.seniority, minYears: j.minYears, salary: j.salary, languages: j.languages,
+  };
+}
+
+/** Insert internal roles (corpus or tailored). Existing rows (same company + title + location) are only re-activated. */
+export async function upsertFictional(seeds: Seed[]) {
+  return upsertJobs(seeds.map((j) => seedToRaw(j)));
+}
+
+/**
+ * Rows of the earlier corpus generation (externalId `demo-<n>`): removed when nothing references them, otherwise kept
+ * inactive so existing applications still show their history but nothing new is found there.
+ */
+async function retireLegacyCorpus() {
+  const legacy = await db.job.findMany({ where: { source: FICTIONAL_SOURCE, externalId: { startsWith: "demo-" } }, select: { id: true, active: true, _count: { select: { opportunities: true } } } });
+  if (!legacy.length) return 0;
+  const unused = legacy.filter((j) => j._count.opportunities === 0).map((j) => j.id);
+  if (unused.length) await db.job.deleteMany({ where: { id: { in: unused } } });
+  const kept = legacy.filter((j) => j._count.opportunities > 0 && j.active).map((j) => j.id);
+  if (kept.length) await db.job.updateMany({ where: { id: { in: kept } }, data: { active: false } });
+  return legacy.length;
+}
+
+/** The internal corpus: always present so a campaign can run offline. Dates are re-anchored to "now". */
 export async function ensureSeedJobs() {
-  const count = await db.job.count({ where: { source: "demo" } });
-  const added = count >= DEMO_KEYS ? 0 : await upsertJobs(SEED_JOBS.map((j, i) => ({ ...j, source: "demo", externalId: `demo-${i}`, url: `https://jobs.example.com/demo-${i}`, postedAt: new Date(Date.now() - j.ageHours * 3600000) })));
+  const count = await db.job.count({ where: { source: FICTIONAL_SOURCE, externalId: { startsWith: FX_PREFIX } } });
+  let added = 0;
+  if (count < CORPUS_KEYS) {
+    await retireLegacyCorpus();
+    added = await upsertFictional(SEED_JOBS);
+  }
   await reanchorDemoJobs();
   return added;
 }
 
 /**
- * Demo vacancies keep their seeded relative ages (1h … ~50 days) but slide forward with the calendar;
- * otherwise after ~30 days every demo job is stale (and after 60 retired) and campaigns stop qualifying anything.
+ * Internal roles keep their relative ages (1 h … 30 days, postingAgeHours) but slide forward with the calendar, once a
+ * day; otherwise after a month every one of them is stale and campaigns stop qualifying anything.
  */
 async function reanchorDemoJobs() {
-  const newest = await db.job.findFirst({ where: { source: "demo" }, orderBy: { postedAt: "desc" }, select: { postedAt: true } });
+  const newest = await db.job.findFirst({ where: { source: FICTIONAL_SOURCE, externalId: { startsWith: FX_PREFIX } }, orderBy: { postedAt: "desc" }, select: { postedAt: true } });
   if (!newest || Date.now() - newest.postedAt.getTime() <= 86400000) return;
   const now = Date.now();
-  const rows = await db.job.findMany({ where: { source: "demo" }, select: { id: true, externalId: true } });
-  await db.$transaction(rows.map((r) => {
-    const ageHours = SEED_JOBS[demoIndex(r.externalId)]?.ageHours ?? 24;
-    return db.job.update({ where: { id: r.id }, data: { postedAt: new Date(now - ageHours * 3600000), active: true } });
-  }));
+  const rows = await db.job.findMany({ where: { source: FICTIONAL_SOURCE, externalId: { startsWith: FX_PREFIX } }, select: { id: true, externalId: true } });
+  for (let i = 0; i < rows.length; i += 200) {
+    await db.$transaction(rows.slice(i, i + 200).map((r) => db.job.update({ where: { id: r.id }, data: { postedAt: new Date(now - postingAgeHours(r.externalId) * 3600000), active: true } })));
+  }
 }
 
 /**
- * Re-derive every demo vacancy's normalized fields (role family, seniority, years, stack…) from the current normalize().
- * Used by the demo seed so a classifier change reaches rows created by an older version.
+ * Re-derive every corpus role's normalized fields (role family, seniority, years, stack…) and text from the current
+ * seed + normalize(). Used by the seed script so a corpus or classifier change reaches rows created by an older version.
  */
 export async function renormalizeDemoJobs() {
   await ensureSeedJobs();
-  const rows = await db.job.findMany({ where: { source: "demo" }, select: { id: true, externalId: true, postedAt: true } });
+  const rows = await db.job.findMany({ where: { source: FICTIONAL_SOURCE, externalId: { startsWith: FX_PREFIX } }, select: { id: true, externalId: true, postedAt: true } });
   let n = 0;
   for (const r of rows) {
-    const seed = SEED_JOBS[demoIndex(r.externalId)];
-    if (!seed) continue;
-    const x = normalize({ ...seed, source: "demo", externalId: r.externalId, url: `https://jobs.example.com/${r.externalId}`, postedAt: r.postedAt });
+    const seed = SEED_BY_ID.get(r.externalId);
+    if (!seed) continue; // tailored roles are left as generated
+    const x = normalize({ ...seedToRaw(seed), postedAt: r.postedAt });
     await db.job.update({
       where: { id: r.id },
       data: {
         roleFamily: x.roleFamily, seniority: x.seniority, minYears: x.minYears, massHiring: x.massHiring, technologies: x.technologies, requirements: x.requirements,
         countries: x.countries, remote: x.remote, sponsorship: x.sponsorship, workAuth: x.workAuth, languages: x.languages, education: x.education,
-        salaryMin: x.salaryMin, salaryMax: x.salaryMax, description: x.description, industry: x.industry, active: true,
+        salaryMin: x.salaryMin, salaryMax: x.salaryMax, description: x.description, industry: x.industry, url: x.url, active: true,
       },
     });
     n++;

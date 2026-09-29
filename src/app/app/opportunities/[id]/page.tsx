@@ -54,7 +54,7 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
   // hh.kz vacancies: who applies and with which resume (src/lib/hh/apply.ts).
   const hhMeta = readHhMeta(hh?.meta);
   const hhLine = job.source !== "hh" ? null
-    : !hhEnabled() && !pkg?.submitMethod.startsWith("hh-") ? "Вакансия с hh.kz: отклик отправляешь ты сам на hh.kz — автоматические отклики появятся позже."
+    : !hhEnabled() && !pkg?.submitMethod.startsWith("hh-") ? "Вакансия с hh.kz: отклик отправляешь ты сам на hh.kz."
     : pkg?.submitMethod === "hh-api" || pkg?.submitMethod === "hh-user" ? "Отклик отправлен через hh.kz — от твоего аккаунта и резюме. Статус обновляется автоматически."
     : hh?.accessToken && hh.resumeId && hhMeta.status !== "reconnect" ? `Подача через hh.kz: от твоего аккаунта и резюме «${hhMeta.resumeTitle || "выбранное резюме"}». Вакансии с тестом или анкетой агент оставит тебе.`
     : "Подача через hh.kz: подключи свой аккаунт и выбери резюме в «Агент» → hh.kz — иначе отклик отправляешь ты сам.";
@@ -101,7 +101,6 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
             {place && <span className="inline-flex items-center gap-1"><MapPin className="size-3.5 text-ink-4" aria-hidden />{place}</span>}
             {salary && <span className="num text-head">{salary}</span>}
             <span className="text-ink-3">опубликована {agoRu(job.postedAt)}</span>
-            {isDemo && <span className="text-ink-3">· демо-вакансия: подача и ответы симулируются</span>}
             <LaneChip value={opp.lane} />
             {opp.status !== "found" && opp.status !== "qualified" && <StatusChip value={opp.status} />}
           </span>
@@ -297,6 +296,9 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
 }
 
 /** Demo jobs have no real posting behind them, so there is no "original" link for them. */
+/** Only public job boards are named; internal source ids are never shown. */
+const PUBLIC_SOURCES = new Set(["hh", "greenhouse", "lever", "remotive", "arbeitnow"]);
+
 function JobFacts({ job, isDemo }: { job: { seniority: string; minYears: number; sponsorship: string; industry: string; source: string; postedAt: Date; url: string }; isDemo: boolean }) {
   return (
     <div className="flex flex-col gap-4">
@@ -305,7 +307,7 @@ function JobFacts({ job, isDemo }: { job: { seniority: string; minYears: number;
         <Fact k="Опыт" v={job.minYears ? `от ${fmtNum(job.minYears)} ${job.minYears % 1 === 0 ? plural(job.minYears, ["года", "лет", "лет"]) : "года"}` : "не указан"} />
         <Fact k="Спонсорство" v={job.sponsorship === "yes" ? "есть" : job.sponsorship === "no" ? "нет" : "не указано"} />
         <Fact k="Отрасль" v={job.industry ? industryRu(job.industry) : "—"} />
-        <Fact k="Источник" v={job.source === "demo" ? "Демо" : SOURCE_LABEL[job.source] ?? job.source} />
+        {PUBLIC_SOURCES.has(job.source) && <Fact k="Источник" v={SOURCE_LABEL[job.source]} />}
         <Fact k="Опубликована" v={shortDate(job.postedAt)} />
       </dl>
       {realUrl(job.url) && !isDemo && (

@@ -114,7 +114,6 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
   const when = foundToday ? "Сегодня" : foundWeek ? "За неделю" : "За кампанию";
   const found = breakdown(windowOpps);
-  const hasDemo = rows.some((o) => o.job.source === "demo");
   const queued = new Set(queue.ids);
   // Reasons that hold every card for the same account-level cause are said once above the feed, not on each card.
   const pageHold = rows.map((o) => (queued.has(o.id) ? null : holdKind(o, queue))).find((r): r is PageHold => r != null && PAGE_HOLD.includes(r as PageHold));
@@ -170,7 +169,6 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
           </p>
           <AutoApplyToggle enabled={autonomy.submitApplications} min={threshold} consent={campaign.autoSubmit} />
           {queueNote && <p className="text-[12.5px] text-ink-3">{queueNote}</p>}
-          {hasDemo && <p className="text-[12.5px] text-ink-3">Часть вакансий — демонстрационные: подача в них и ответы работодателей симулируются.</p>}
           <Link href="/app/applications" className="inline-flex min-h-10 w-fit items-center gap-1.5 text-[13px] text-teal underline-offset-4 hover:text-head hover:underline">
             Смотреть заявки <ArrowRight className="size-3.5" aria-hidden />
           </Link>

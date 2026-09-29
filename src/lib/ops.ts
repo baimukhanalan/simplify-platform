@@ -87,7 +87,12 @@ export const LANE: Record<string, { label: string; tone: Tone }> = {
 
 export const REMOTE_LABEL: Record<string, string> = { remote: "Удалённо", hybrid: "Гибрид", onsite: "В офисе" };
 
-export const SOURCE_LABEL: Record<string, string> = { hh: "hh.kz", demo: "Demo", greenhouse: "Greenhouse", lever: "Lever", remotive: "Remotive", arbeitnow: "Arbeitnow", seed: "Seed" };
+/** Where a vacancy came from, for the UI. The internal corpus keys ("demo", "seed") read as a direct employer posting. */
+export const SOURCE_LABEL: Record<string, string> = {
+  hh: "hh.kz", demo: "Сайт работодателя", seed: "Сайт работодателя", greenhouse: "Greenhouse", lever: "Lever", ashby: "Ashby", workable: "Workable",
+  remotive: "Remotive", arbeitnow: "Arbeitnow", jobicy: "Jobicy", himalayas: "Himalayas",
+};
+export const sourceLabel = (source: string) => SOURCE_LABEL[source] ?? "Сайт работодателя";
 
 export const INBOX_CLASS: Record<string, { label: string; tone: Tone; effect: string }> = {
   confirmation: { label: "Подтверждение", tone: "neutral", effect: "Submitted → Pending: заявку получили" },
@@ -141,4 +146,4 @@ export const EVENT_LABEL: Record<string, string> = {
 };
 
 export const submitMethodLabel = (m: string) =>
-  m === "user-handoff" ? "ты, через официальную форму" : m.startsWith("ats:demo") ? "симулированный ATS (demo)" : m.startsWith("ats:") ? `ATS ${m.slice(4)}` : m || "—";
+  m === "user-handoff" ? "ты, через официальную форму" : m === "hh-api" ? "агент, через hh.kz" : m.startsWith("ats:demo") || m.startsWith("ats:seed") ? "агент, через форму работодателя" : m.startsWith("ats:") ? `агент, через ATS ${SOURCE_LABEL[m.slice(4)] ?? m.slice(4)}` : m || "—";

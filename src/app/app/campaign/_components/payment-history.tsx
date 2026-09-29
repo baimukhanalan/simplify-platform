@@ -1,7 +1,7 @@
 import { ArrowRight } from "lucide-react";
 import { j } from "@/lib/db";
 import { PLANS, fmtKzt } from "@/lib/engine/taxonomy";
-import { isKaspiProvider, refundState } from "@/lib/payments/kaspi";
+import { isKaspiProvider, providerLabel, refundState } from "@/lib/payments/kaspi";
 import { ButtonLink, Card, Chip, Label } from "@/components/ui";
 
 type Payment = {
@@ -9,7 +9,6 @@ type Payment = {
   paidAt: Date | null; createdAt: Date; partnerCode: string | null; campaign: { plan: string } | null;
 };
 
-const PROVIDER: Record<string, string> = { kaspi: "Kaspi Pay", kaspi_mock: "Kaspi Pay · тестовый шлюз", test: "Тестовый платёж" };
 const STATUS: Record<string, { label: string; tone: "green" | "amber" | "rose" | "neutral" }> = {
   paid: { label: "Оплачено", tone: "green" },
   pending: { label: "Ждёт оплаты", tone: "amber" },
@@ -47,7 +46,7 @@ export function PaymentHistory({ payments }: { payments: Payment[] }) {
                   <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
                     <div className="min-w-0">
                       <div className="text-[14px] text-head">{PLANS[planKey]?.label ?? "Career Campaign"}</div>
-                      <div className="text-[12.5px] text-ink-3">{PROVIDER[p.provider] ?? p.provider} · {date(p.paidAt ?? p.createdAt)}</div>
+                      <div className="text-[12.5px] text-ink-3">{providerLabel(p.provider)} · {date(p.paidAt ?? p.createdAt)}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="num text-[16px] text-head">{p.currency === "KZT" ? fmtKzt(p.amount) : `${p.amount} ${p.currency}`}</span>

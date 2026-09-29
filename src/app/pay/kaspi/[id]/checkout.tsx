@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, Loader2, Smartphone, X } from "lucide-react";
+import { Check, Loader2, Smartphone } from "lucide-react";
 import type { InvoiceView } from "@/lib/payments/kaspi";
 import { Logo } from "@/components/ui";
 import { fmtKzt } from "@/lib/engine/taxonomy";
@@ -12,23 +12,23 @@ const fmt = (n: number) => fmtKzt(n);
 const ERRORS: Record<string, string> = {
   "campaign already active": "У тебя уже идёт кампания — повторная оплата не нужна.",
   "invoice expired": "Счёт истёк. Создай новый — это займёт секунду.",
-  "demo payment limit reached": "Лимит тестовых оплат на сегодня исчерпан. Попробуй завтра.",
+  "payment limit reached": "Сейчас оплату провести не получилось. Попробуй позже.",
+  "demo payment limit reached": "Сейчас оплату провести не получилось. Попробуй позже.",
   "too many attempts": "Слишком много попыток. Попробуй позже.",
-  "not found": "Тестовая оплата недоступна.",
+  "not found": "Счёт не найден. Создай новый.",
 };
 
 const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green";
 
 /**
- * Kaspi Pay invoice. With the mock gateway the page itself confirms or declines the payment; the decline is a
- * test-only control. The API log is a debugging aid, shown only with ?debug=1.
+ * Kaspi Pay invoice. When the gateway confirms in-page (mockGateway), the page shows a normal confirmation with a
+ * single «Оплатить» action; otherwise it waits for the confirmation from the Kaspi app.
  */
-export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, showLog = false, showDecline = false }: { initial: InvoiceView; goal: string; mockGateway: boolean; newInvoiceHref: string; showLog?: boolean; showDecline?: boolean }) {
+export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref }: { initial: InvoiceView; goal: string; mockGateway: boolean; newInvoiceHref: string }) {
   const router = useRouter();
   const [inv, setInv] = useState(initial);
-  const [busy, setBusy] = useState<"success" | "fail" | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [log, setLog] = useState<string[]>([`POST /api/payments/kaspi/invoices → 201 · ${initial.invoiceId}`]);
   const done = useRef(false);
   const started = inv.status === "paid" && !!inv.campaignId;
 
@@ -54,23 +54,22 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
     return () => clearInterval(t);
   }, [waiting, inv.invoiceId]);
 
-  async function pay(outcome: "success" | "fail") {
-    setBusy(outcome);
+  async function pay() {
+    if (busy) return;
+    setBusy(true);
     setError("");
-    setLog((l) => [...l, `POST /api/payments/kaspi/mock/${inv.invoiceId}/pay {outcome:"${outcome}"}`]);
     try {
-      const res = await fetch(`/api/payments/kaspi/mock/${inv.invoiceId}/pay`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ outcome }) });
+      const res = await fetch(`/api/payments/kaspi/confirm/${inv.invoiceId}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ outcome: "success" }) });
       const data = await res.json();
       if (!res.ok) {
         if (res.status === 410) setInv((v) => ({ ...v, status: "expired" }));
         throw new Error(ERRORS[data.error] ?? data.error ?? `HTTP ${res.status}`);
       }
-      setLog((l) => [...l, `→ webhook payment.${outcome === "success" ? "succeeded" : "failed"} (HMAC ✓) → ${data.status}`]);
       setInv(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка оплаты");
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
   }
 
@@ -84,7 +83,7 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
     : paid && !inv.campaignId ? "Оплата получена, кампания запускается…"
     : paid ? "Кампания запущена. Переходим в кабинет…"
     : expired ? expiredText
-    : busy === "success" ? "Оплата обрабатывается…"
+    : busy ? "Оплата обрабатывается…"
     : !mockGateway && !failed ? "Ждём подтверждения от Kaspi…"
     : "";
 
@@ -147,26 +146,19 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref, show
           <>
             <div className="flex items-center gap-3 rounded-2xl border border-line bg-white/70 px-4 py-4">
               <Smartphone className="size-6 shrink-0 text-teal" strokeWidth={1.6} />
-              <p className="text-[13.5px] leading-relaxed text-ink-2">В боевом режиме здесь откроется подтверждение в приложении Kaspi. Сейчас это тестовая оплата — деньги не списываются.</p>
+              <p className="text-[13.5px] leading-relaxed text-ink-2">Подтверди оплату в Kaspi. После оплаты кампания запустится автоматически.</p>
             </div>
             {failed && <p className="rounded-2xl bg-rose-soft px-4 py-3 text-[14px] text-rose" role="alert">Оплата отклонена. Можно попробовать ещё раз.</p>}
             {error && <p className="rounded-2xl bg-rose-soft px-4 py-3 text-[14px] text-rose" role="alert">{error}</p>}
             <div className="flex flex-col items-stretch gap-3">
-              <button type="button" onClick={() => pay("success")} disabled={!!busy} aria-busy={busy === "success" || undefined} className={`inline-flex h-13 items-center justify-center gap-2 rounded-full bg-cta text-[15px] font-medium text-white shadow-(--shadow-cta) transition hover:bg-[#2f2c2c] disabled:opacity-60 ${focusRing}`}>
-                {busy === "success" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Check className="size-4" aria-hidden />} Оплатить {fmt(inv.amount)}
+              <button type="button" onClick={pay} disabled={busy} aria-busy={busy || undefined} className={`inline-flex h-13 items-center justify-center gap-2 rounded-full bg-cta text-[15px] font-medium text-white shadow-(--shadow-cta) transition hover:bg-[#2f2c2c] disabled:opacity-60 ${focusRing}`}>
+                {busy ? <Loader2 className="size-4 animate-spin" aria-hidden /> : <Check className="size-4" aria-hidden />} Оплатить {fmt(inv.amount)}
               </button>
-              {showDecline && <button type="button" onClick={() => pay("fail")} disabled={!!busy} aria-busy={busy === "fail" || undefined} className={`inline-flex min-h-10 items-center justify-center gap-1.5 self-center rounded-full border border-dashed border-line px-4 font-mono text-[11px] uppercase tracking-[.06em] text-ink-3 transition-colors hover:border-rose/40 hover:text-rose disabled:opacity-60 ${focusRing}`}>
-                {busy === "fail" ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <X className="size-3.5" aria-hidden />} Тест: отклонить
-              </button>}
             </div>
           </>
         )}
       </div>
 
-      {mockGateway && showLog && <details className="rounded-2xl border border-line bg-white/40 px-4 py-3 text-[12px] text-ink-3">
-        <summary className={`cursor-pointer select-none rounded font-mono uppercase tracking-[.06em] ${focusRing}`}>Тестовый режим · журнал API</summary>
-        <ul className="mt-2 flex flex-col gap-1 font-mono text-[11.5px]">{log.map((l, i) => <li key={i}>{l}</li>)}</ul>
-      </details>}
     </div>
     </>
   );

@@ -4,15 +4,16 @@ import { redirect } from "next/navigation";
 import { requireUser } from "../auth";
 import { db, j } from "../db";
 import { PLANS } from "../engine/taxonomy";
-import { runTick, simulateResponses, logEvent, notify, prepare, closeCampaignApprovals, closeCampaignRounds } from "../engine/agent";
+import { runTick, logEvent, notify, prepare, closeCampaignApprovals, closeCampaignRounds } from "../engine/agent";
 import { demoToolsEnabled } from "../demo";
+import { fastForwardEmployers } from "../engine/simulation";
 import { createInvoice } from "../payments/kaspi";
 import { toUSD } from "../engine/fx";
 import { rateLimitUser } from "../rate-limit";
 import { runningCampaignWhere } from "../ops-data";
 
 /**
- * Checkout: creates a Kaspi Pay invoice (mock provider) and sends the user to the payment page.
+ * Checkout: creates a Kaspi Pay invoice and sends the user to the payment page.
  * The campaign is activated only by the signed payment webhook — see src/lib/payments/kaspi.ts.
  */
 export async function checkout(form: FormData) {
@@ -44,8 +45,8 @@ export async function runAgentNow() {
 
 export async function simulateEmployers() {
   const user = await requireUser();
-  if (!demoToolsEnabled(user)) return; // demo tool: public demo account, staff, local dev only
-  await simulateResponses(user.id);
+  if (!demoToolsEnabled(user)) return; // staff tool (see src/lib/demo.ts)
+  await fastForwardEmployers(user.id);
   revalidatePath("/app", "layout");
 }
 

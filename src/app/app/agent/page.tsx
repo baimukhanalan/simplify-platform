@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Pause, Play, Zap } from "lucide-react";
+import { Pause, Play } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { j } from "@/lib/db";
 import { AUTONOMY_LABELS, readAutonomy } from "@/lib/engine/autonomy";
 import { PLANS } from "@/lib/engine/taxonomy";
-import { runAgentNow, setCampaignStatus, updateCampaignSettings } from "@/lib/actions/campaign";
+import { setCampaignStatus, updateCampaignSettings } from "@/lib/actions/campaign";
 import { pendingApprovalsCount, pendingHandoffsCount, runningCampaign } from "@/lib/ops-data";
-import { demoToolsEnabled } from "@/lib/demo";
+import { hhEnabled } from "@/lib/hh/client";
 import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Field, PageHeader, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
@@ -24,7 +24,6 @@ export default async function AgentPage({ searchParams }: { searchParams: Promis
   const hhNotice = typeof hhParam === "string" ? hhParam : undefined;
   const autonomy = readAutonomy(user.autonomy);
   const [campaign, approvals, handoffs] = await Promise.all([runningCampaign(user.id), pendingApprovalsCount(user.id), pendingHandoffsCount(user.id)]);
-  const demo = demoToolsEnabled(user);
   const rows = AUTONOMY_LABELS; // Russian labels and hints live in the engine (src/lib/engine/autonomy.ts)
   // The agent submits on its own only with the auto-submit consent; a running campaign carries it as campaign.autoSubmit.
   const autoSubmitConsent = campaign ? campaign.autoSubmit : j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false;
@@ -77,11 +76,6 @@ export default async function AgentPage({ searchParams }: { searchParams: Promis
                       {paused ? <><Play className="size-4" strokeWidth={1.7} aria-hidden />Возобновить</> : <><Pause className="size-4" strokeWidth={1.7} aria-hidden />Пауза</>}
                     </SubmitButton>
                   </form>
-                  {!paused && demo && (
-                    <form action={runAgentNow}>
-                      <SubmitButton variant="glass" size="sm" pendingText="Агент работает…" className="!h-10"><Zap className="size-4" strokeWidth={1.7} aria-hidden />Запустить цикл агента</SubmitButton>
-                    </form>
-                  )}
                 </div>
                 <form action={updateCampaignSettings} className="flex flex-col gap-3 border-t border-line pt-5">
                   <Field label="Лимит заявок в день" hint={`От 1 до ${maxPerDay} — максимум тарифа ${plan?.label}. Меньше заявок — каждая сильнее.`}>
@@ -98,7 +92,8 @@ export default async function AgentPage({ searchParams }: { searchParams: Promis
             )}
           </Card>
 
-          <HhCard userId={user.id} notice={hhNotice} />
+          {/* hh.kz only when the integration is configured on the server — no «coming soon» placeholder. */}
+          {hhEnabled() && <HhCard userId={user.id} notice={hhNotice} />}
 
           <Card className="flex flex-col gap-2">
             <h2 className="label">Расширение Apply Assist</h2>

@@ -87,7 +87,6 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   const rejected = apps.filter((a) => a.status === "rejected");
   const n = (k: string) => groups.find((g) => g.key === k)?.items.length ?? 0;
   const responded = apps.length - n("waiting");
-  const hasDemo = apps.some((a) => a.job.source === "demo");
 
   // Same numbers as Today, Opportunities and Inbox (needsYou, src/lib/ops-data.ts).
   const needs: Need[] = needsList(waiting);
@@ -111,7 +110,6 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           <ViewLink href="/app/applications" active={!board} icon={<List className="size-3.5" aria-hidden />}>Списком</ViewLink>
           <ViewLink href="/app/applications?view=board" active={board} icon={<LayoutGrid className="size-3.5" aria-hidden />}>Доской</ViewLink>
         </nav>
-        {hasDemo && <p className="text-[12.5px] text-ink-3">Часть заявок — в демо-вакансии: ответы по ним симулируются.</p>}
       </div>
 
       {board ? (

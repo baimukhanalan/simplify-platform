@@ -21,8 +21,9 @@ const date = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("ru
 
 /** «hh.kz» on /app/agent: server status, connection, resume choice, disconnect. */
 export async function HhCard({ userId, notice }: { userId: string; notice?: string }) {
-  const enabled = hhEnabled();
-  const row = enabled ? await hhIntegration(userId) : null;
+  // Not configured on the server: the card is not rendered at all (no «coming soon» state).
+  if (!hhEnabled()) return null;
+  const row = await hhIntegration(userId);
   const meta = readHhMeta(row?.meta);
   const connected = Boolean(row?.accessToken);
   let resumes: HhResume[] | null = null;
@@ -33,18 +34,14 @@ export async function HhCard({ userId, notice }: { userId: string; notice?: stri
     <Card id="hh" className="flex scroll-mt-24 flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="label">hh.kz</h2>
-        <span className={cx("inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[.08em]", !enabled ? "text-ink-3" : connected && meta.status !== "reconnect" ? "text-green" : "text-amber")}>
-          <span className={cx("size-2 rounded-full", !enabled ? "bg-ink-4" : connected && meta.status !== "reconnect" ? "bg-green" : "bg-amber")} aria-hidden />
-          {!enabled ? "Скоро" : !connected ? "Не подключён" : meta.status === "reconnect" ? "Нужно переподключить" : "Подключён"}
+        <span className={cx("inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[.08em]", connected && meta.status !== "reconnect" ? "text-green" : "text-amber")}>
+          <span className={cx("size-2 rounded-full", connected && meta.status !== "reconnect" ? "bg-green" : "bg-amber")} aria-hidden />
+          {!connected ? "Не подключён" : meta.status === "reconnect" ? "Нужно переподключить" : "Подключён"}
         </span>
       </div>
       {note && <p role="status" className={cx("text-[13.5px]", TONE[note.tone])}>{note.text}</p>}
 
-      {!enabled ? (
-        <p className="text-[13.5px] leading-relaxed text-ink-2">
-          Отклики через hh.kz появятся, когда Simplify получит доступ к API hh. До этого вакансии с hh агент не ищет, а живые вакансии ты отправляешь сам через форму работодателя.
-        </p>
-      ) : !connected ? (
+      {!connected ? (
         <>
           <p className="text-[13.5px] leading-relaxed text-ink-2">
             Подключи <b className="font-medium text-head">свой</b> аккаунт hh.kz — агент будет откликаться от твоего имени и с твоим резюме, в пределах лимитов и согласий выше. Вакансии с тестом или анкетой он оставит тебе. Пароль от hh Simplify не видит: вход — на самом hh.kz.

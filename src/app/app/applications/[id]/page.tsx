@@ -1,3 +1,4 @@
+import { submitMethodLabel } from "@/lib/ops";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, ChevronDown, Download, ExternalLink } from "lucide-react";
@@ -42,9 +43,8 @@ const NEXT: Record<string, string> = {
 
 const ANSWER_LABEL: Record<string, string> = { auto: "агент", rule: "по правилу", approval: "ты" };
 
-/** How the package went out, without internal codes ("ats:demo" → "демо-ATS"). */
-const sentVia = (m: string) =>
-  m === "user-handoff" ? "ты, через официальную форму" : m.startsWith("ats:demo") ? "демо-ATS (симуляция)" : m.startsWith("ats:") ? `ATS ${m.slice(4)}` : "";
+/** How the package went out, without internal codes — one shared label (src/lib/ops.ts). */
+const sentVia = (m: string) => (m ? submitMethodLabel(m) : "");
 
 export default async function ApplicationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -55,7 +55,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
       job: true,
       pkg: true,
       events: { orderBy: { createdAt: "asc" } },
-      inbox: { orderBy: { receivedAt: "asc" }, select: { id: true, subject: true, classification: true, receivedAt: true, simulated: true } },
+      inbox: { orderBy: { receivedAt: "asc" }, select: { id: true, subject: true, classification: true, receivedAt: true } },
       interviews: { orderBy: { createdAt: "asc" }, select: { id: true, round: true, scheduledAt: true, status: true, createdAt: true } },
       offers: { select: { createdAt: true, role: true, base: true, currency: true } },
     },
@@ -71,7 +71,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
   if (pkg && preparedAt) steps.push({ at: preparedAt, kind: "prepared", title: "CV и сопроводительное письмо подготовлены", detail: cvVersionLabel(pkg.cvVersion, opp.job.company) });
   if (opp.submittedAt) steps.push({ at: opp.submittedAt, kind: "submitted", title: "Заявка отправлена", detail: pkg?.submitMethod ? sentVia(pkg.submitMethod) || undefined : undefined });
   for (const m of opp.inbox) {
-    steps.push({ at: m.receivedAt, kind: MAIL[m.classification] ? m.classification : "inbox", title: MAIL[m.classification] ?? "Письмо от работодателя", detail: m.subject, href: `/app/inbox?m=${m.id}`, tag: m.simulated ? "симуляция" : undefined });
+    steps.push({ at: m.receivedAt, kind: MAIL[m.classification] ? m.classification : "inbox", title: MAIL[m.classification] ?? "Письмо от работодателя", detail: m.subject, href: `/app/inbox?m=${m.id}` });
   }
   for (const iv of opp.interviews) {
     const result = iv.status === "passed" ? " · пройдено" : iv.status === "failed" ? " · не пройдено" : iv.status === "done" ? " · состоялось" : "";
@@ -113,7 +113,6 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
           <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <Chip tone={statusTone(opp.status)}>{statusRu(opp.status)}</Chip>
             <span>Подано <span className="num text-head">{shortDate(opp.submittedAt)}</span></span>
-            {isDemo && <span className="text-ink-3">демо-вакансия: ответы работодателя симулируются</span>}
           </span>
         }
       />

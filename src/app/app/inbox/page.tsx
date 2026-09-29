@@ -6,12 +6,9 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { roundDate } from "@/lib/engine/agent";
 import { realUrl } from "@/lib/links";
-import { demoToolsEnabled } from "@/lib/demo";
 import { INBOX_CLASS, fmtDateTime } from "@/lib/ops";
 import { agoRu } from "../opportunities/_lib/when";
 import { ButtonLink, Chip, Empty, PageHeader, cx } from "@/components/ui";
-import { SimulateButton } from "../_components/demo-tools";
-import { PasteEmail } from "./_components/paste-email";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { needsList, needsYouCached } from "../../_components/global-needs";
 import { assessmentDeadline, plural, statusRu } from "../../_components/ru";
@@ -57,19 +54,13 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
   const cls = typeof sp.c === "string" && INBOX_CLASS[sp.c] ? sp.c : "";
   const user = await requireUser();
 
-  const [messages, counts, sampleOpp, waiting] = await Promise.all([
+  const [messages, counts, waiting] = await Promise.all([
     load(user.id, cls),
     db.inboxMessage.groupBy({ by: ["classification"], where: { userId: user.id }, _count: true }),
-    db.opportunity.findFirst({
-      where: { campaign: { userId: user.id }, status: { in: ["submitted", "pending"] } },
-      orderBy: { status: "desc" },
-      select: { job: { select: { company: true, title: true } } },
-    }),
     needsYouCached(user.id),
   ]);
   const count = (k: string) => (k ? counts.find((c) => c.classification === k)?._count ?? 0 : counts.reduce((a, c) => a + c._count, 0));
   const total = count("");
-  const demo = demoToolsEnabled(user);
 
   // What still needs the user — the same numbers as Today, Opportunities and Applications (needsYou).
   const needs: Need[] = needsList(waiting);
@@ -156,29 +147,6 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
         </ul>
       )}
 
-      {/* Tools: still here, deliberately quiet. */}
-      <details className="group rounded-[var(--radius-card)] border border-dashed border-line bg-white/30">
-        <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4 text-[13.5px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
-          <span className="label !text-[11px]">Инструменты</span>
-          <span>{demo ? "Вставить письмо вручную · демо-симуляция ответов" : "Вставить письмо вручную"}</span>
-          <span className="ml-auto font-mono text-[11px] text-ink-3 group-open:hidden">Показать</span>
-          <span className="ml-auto hidden font-mono text-[11px] text-ink-3 group-open:inline">Скрыть</span>
-        </summary>
-        <div className="flex flex-col gap-6 border-t border-line px-5 pb-6 pt-5">
-          <div className="flex flex-col gap-2">
-            <p className="text-[13.5px] text-ink-2">Пока почта не подключена, перешли письмо сюда — агент разберёт его так же, как будет делать автоматически.</p>
-            <PasteEmail sample={sampleOpp ? { company: sampleOpp.job.company, title: sampleOpp.job.title } : null} />
-          </div>
-          {demo ? (
-            <div className="flex flex-wrap items-center gap-3 border-t border-line pt-5">
-              <SimulateButton className="glass !rounded-full !px-4 !text-[13px] text-head" />
-              <span className="text-[12.5px] text-ink-3">Демо-инструмент: только для демо-вакансий.</span>
-            </div>
-          ) : (
-            <p className="border-t border-line pt-5 text-[12.5px] text-ink-3">Подключение Gmail / Outlook — скоро.</p>
-          )}
-        </div>
-      </details>
     </div>
   );
 }
@@ -222,7 +190,6 @@ function ResponseCard({ m }: { m: Msg }) {
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
             <Chip tone={meta.tone} dot={big}>{meta.eyebrow}</Chip>
-            {m.simulated && <span className="font-mono text-[11px] uppercase tracking-[.06em] text-amber">демо</span>}
             <time dateTime={m.receivedAt.toISOString()} className="ml-auto shrink-0 text-[12px] text-ink-3">{agoRu(m.receivedAt)}</time>
           </div>
           <h2 id={titleId} className={cx(big ? "h-serif text-[22px] sm:text-[24px]" : "text-[15px] text-head")}>

@@ -6,6 +6,7 @@ import { runningCampaignWhere } from "../ops-data";
 import { PLANS } from "../engine/taxonomy";
 import { logEvent, notify } from "../engine/agent";
 import { assessReadinessFor } from "./readiness-snapshot";
+import { isSimulation } from "../mode";
 
 /**
  * Kaspi Pay. Mirrors a typical merchant flow:
@@ -37,6 +38,8 @@ export const LIVE_PROVIDER = "kaspi";
 export const KASPI_PROVIDERS = [MOCK_PROVIDER, LIVE_PROVIDER];
 /** True for any Kaspi invoice, mock or real — UI that offers "pay" / "open invoice" must treat both alike. */
 export const isKaspiProvider = (p: string | null | undefined) => p === MOCK_PROVIDER || p === LIVE_PROVIDER;
+/** How a payment's provider is named on screen: every Kaspi invoice (whichever gateway settled it) is «Kaspi Pay». */
+export const providerLabel = (p: string | null | undefined) => (isKaspiProvider(p) ? "Kaspi Pay" : p === "test" ? "Kaspi Pay" : p || "—");
 
 const INVOICE_TTL_MS = 30 * 60 * 1000;
 const MAX_SKEW_S = 5 * 60;
@@ -170,7 +173,9 @@ export function refundState(metaJson: string) {
  * refunded in full. A duplicate charge refunds only the extra charge, so the payment itself still counts.
  */
 export function countsAsRevenue(p: { provider: string; status: string; meta: string }) {
-  return p.status === "paid" && p.provider !== MOCK_PROVIDER && p.provider !== "test" && !activationBlocked(j<Meta>(p.meta, {}));
+  // Simulation mode (src/lib/mode.ts): built-in gateway payments are booked like any paid Kaspi payment.
+  const gatewayOk = p.provider !== MOCK_PROVIDER || isSimulation();
+  return p.status === "paid" && gatewayOk && p.provider !== "test" && !activationBlocked(j<Meta>(p.meta, {}));
 }
 
 /** Appends a refund entry (idempotent per tx+reason) and keeps the legacy `refundDue` flag set for old readers. */
@@ -222,8 +227,9 @@ export async function createInvoice(userId: string, planKey: string) {
     data: {
       userId, amount: plan.priceKzt, currency: "KZT", provider, status: "pending", plan: plan.key,
       externalId: `KSP-${randomBytes(16).toString("hex").toUpperCase()}`, // 128 bits: invoice ids are unguessable
-      // Mock (test-gateway) payments move no money: attribution is kept for analytics, but no revenue share is owed.
-      partnerCode: partner?.code ?? null, partnerCut: partner && provider !== MOCK_PROVIDER ? Math.round(plan.priceKzt * partner.revShare) : 0,
+      // Built-in gateway payments move no money in live mode: attribution is kept, no revenue share is owed. In simulation
+      // mode they are booked like any Kaspi payment, share included.
+      partnerCode: partner?.code ?? null, partnerCut: partner && (provider !== MOCK_PROVIDER || isSimulation()) ? Math.round(plan.priceKzt * partner.revShare) : 0,
       meta: s({ expiresAt: new Date(Date.now() + INVOICE_TTL_MS).toISOString() }),
     },
   });

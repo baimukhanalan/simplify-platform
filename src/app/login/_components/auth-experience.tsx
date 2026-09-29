@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { startTransition, useActionState, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type FormEvent, type ReactNode } from "react";
-import { ArrowRight, Eye, EyeOff, AlertCircle, Sparkles, Check, TicketPercent, Target } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, AlertCircle, Check, TicketPercent, Target } from "lucide-react";
 import { checkReferral, login, signup, type AuthState, type ReferralCheck } from "@/lib/actions/auth";
 import { Logo, Script, cx } from "@/components/ui";
 import { Atmosphere } from "./atmosphere";
@@ -16,7 +16,6 @@ type Mode = "login" | "signup";
 type FieldKey = "name" | "email" | "password" | "terms";
 
 const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const DEMO = { email: "demo@simplify.kz", password: "simplify2026" };
 
 function strength(pw: string) {
   if (!pw) return { score: 0, label: "" };
@@ -49,7 +48,6 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
   const [showPw, setShowPw] = useState(false);
   const [caps, setCaps] = useState(false);
   const [touched, setTouched] = useState<Partial<Record<FieldKey, boolean>>>({});
-  const [demoHint, setDemoHint] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const submitRef = useRef<HTMLButtonElement>(null);
@@ -100,23 +98,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
   // Each new server response object with an error nudges the card.
   useEffect(() => { if (loginState?.error || signupState?.error) nudge(); }, [loginState, signupState]);
 
-  const switchMode = (m: Mode) => { if (m !== mode && !pending) { setMode(m); setTouched({}); setDemoHint(false); } };
-
-  const fillDemo = () => {
-    setMode("login");
-    setEmail(DEMO.email);
-    setPassword(DEMO.password);
-    setTouched({});
-    setDemoHint(true);
-    // «Войти в демо» fills the form (so the user sees what happens) and signs in right away.
-    if (pending) return;
-    const fd = new FormData();
-    fd.set("email", DEMO.email);
-    fd.set("password", DEMO.password);
-    fd.set("next", next);
-    if (plan) fd.set("plan", plan);
-    startTransition(() => loginAction(fd));
-  };
+  const switchMode = (m: Mode) => { if (m !== mode && !pending) { setMode(m); setTouched({}); } };
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -189,7 +171,7 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
 
               <TextField
                 id={`${uid}-email`} field="email" label="Email" name="email" type="email" inputMode="email" autoComplete="email" value={email} onChange={setEmail}
-                onBlur={() => setTouched((t) => ({ ...t, email: true }))} error={show("email")} errId={errId("email")} valid={!errors.email} placeholder="name@example.com"
+                onBlur={() => setTouched((t) => ({ ...t, email: true }))} error={show("email")} errId={errId("email")} valid={!errors.email} placeholder="name@gmail.com"
               />
 
               <div className="flex flex-col gap-1.5">
@@ -278,12 +260,6 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                 )}
               </div>
 
-              {demoHint && mode === "login" && (
-                <p className="flex items-center gap-2 rounded-2xl bg-amber-soft px-4 py-2.5 text-[12.5px] text-amber animate-fade">
-                  <Sparkles className="size-3.5 shrink-0" />Демо-аккаунт: кампания с тестовыми данными. Входим…
-                </p>
-              )}
-
               <button
                 ref={submitRef} type="submit" disabled={pending} aria-disabled={pending}
                 className="group relative mt-1 inline-flex h-13 w-full items-center justify-center gap-2 overflow-hidden rounded-full bg-cta text-[15.5px] font-medium text-white shadow-(--shadow-cta) transition-all hover:bg-[#2f2c2c] active:scale-[.99] disabled:cursor-wait focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green"
@@ -297,10 +273,6 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
             </form>
 
             <div className="mt-5 flex flex-col items-center gap-3 text-[13px] text-ink-3">
-              <div className="flex w-full items-center gap-3"><span className="h-px flex-1 bg-line" /><span className="label !text-[11px]">или</span><span className="h-px flex-1 bg-line" /></div>
-              <button type="button" onClick={fillDemo} disabled={pending} className="inline-flex h-10 items-center gap-2 rounded-full border border-line bg-white/60 px-4 text-[13.5px] text-head transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-green disabled:opacity-50">
-                <Sparkles className="size-3.5 text-teal" strokeWidth={1.7} />Войти в демо
-              </button>
               <p>
                 {mode === "signup" ? "Уже есть аккаунт? " : "Нет аккаунта? "}
                 <button type="button" onClick={() => switchMode(mode === "signup" ? "login" : "signup")} className="inline-flex min-h-10 items-center text-head underline decoration-line underline-offset-4 hover:decoration-teal focus-visible:outline-2 focus-visible:outline-green">

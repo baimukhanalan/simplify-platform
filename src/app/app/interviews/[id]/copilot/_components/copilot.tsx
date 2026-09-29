@@ -68,8 +68,8 @@ function buildCard(q: string, ctx: Ctx): { intent: Intent; card: Card } {
 
 export function Copilot({ interviewId, ctx, title, round, blocked }: { interviewId: string; ctx: Ctx; title: string; round?: string; blocked: "employer" | "assessment" | "consent" | null }) {
   const router = useRouter();
-  // Latency is a developer metric: shown only with ?debug=1.
-  const debug = useSearchParams().get("debug") === "1";
+  // Latency is a developer metric: shown only with ?debug=1 in local development.
+  const debug = useSearchParams().get("debug") === "1" && process.env.NODE_ENV !== "production";
   const exitHref = `/app/interviews/${interviewId}`;
   const uid = useId();
   const [popup, setPopup] = useState(false);

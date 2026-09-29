@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ChevronLeft, ChevronRight, Download, History, KeyRound, ShieldCheck, Timer } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
+import { hhEnabled } from "@/lib/hh/client";
 import { Card, Label, PageHeader, Script, cx } from "@/components/ui";
 import { updateConsents, type Consents } from "@/lib/actions/account";
 import { ActionForm, FormSubmit } from "../profile/_components/action-form";
@@ -96,7 +97,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <li>Заявки и переписка кампании — 12 месяцев после её окончания, затем обезличиваются.</li>
               <li>Транскрипты пробных интервью и сессий Copilot — 90 дней.</li>
               <li>Платёжные записи — по требованию бухгалтерского учёта.</li>
-              <li>hh.kz (если подключён): токены доступа — только в зашифрованном виде (AES-256-GCM), id и название выбранного резюме, id и имя аккаунта hh. Пароль от hh мы не видим и не храним. Отключить — «Агент» → hh.kz → «Отключить»: токены удаляются у нас сразу, и мы просим hh отозвать выданный доступ. Отозвать его можно и в настройках самого hh.kz.</li>
+              {hhEnabled() && <li>hh.kz (если подключён): токены доступа — только в зашифрованном виде (AES-256-GCM), id и название выбранного резюме, id и имя аккаунта hh. Пароль от hh мы не видим и не храним. Отключить — «Агент» → hh.kz → «Отключить»: токены удаляются у нас сразу, и мы просим hh отозвать выданный доступ. Отозвать его можно и в настройках самого hh.kz.</li>}
               <li>После удаления аккаунта данные стираются сразу, из резервных копий — в течение 30 дней.</li>
             </ul>
           </Card>

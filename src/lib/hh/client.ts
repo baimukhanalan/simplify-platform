@@ -31,6 +31,11 @@ export function hhConfig(): HhConfig | null {
 }
 
 export const hhEnabled = () => hhConfig() !== null;
+/**
+ * Whether any hh.kz UI (the connect card, «Настроить» links) should be shown at all. Same as hhEnabled(): an
+ * unconfigured server shows no hh card instead of a «не настроено на сервере» notice.
+ */
+export const hhAvailable = () => hhEnabled();
 export const hhUserAgent = () => process.env.HH_USER_AGENT?.trim() || "Simplify/1.0 (support@simplify.kz)";
 
 function appUrl() {

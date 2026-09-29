@@ -1,19 +1,23 @@
 import { after } from "next/server";
 import { runTick } from "@/lib/engine/agent";
 import { handleWebhook, parseEvent, verifyWebhook } from "@/lib/payments/kaspi";
+import { isSimulation } from "@/lib/mode";
 
 // The first agent cycle runs in after() inside this invocation: give it room (it is also capped, see FIRST_TICK).
 export const maxDuration = 300;
 
-/** The first cycle right after payment prepares at most this many packages (AI builds); the cron picks up the rest. */
-const FIRST_TICK = { maxPrepare: 3 };
+/**
+ * The first cycle right after payment prepares at most this many packages (AI builds); the cron picks up the rest. In
+ * simulation mode a few more, so Today shows a working campaign within seconds of paying.
+ */
+const firstTick = () => ({ maxPrepare: isSimulation() ? 5 : 3 });
 
 const MAX_BODY = 16 * 1024;
 
 /**
  * Kaspi Pay → merchant webhook.
  * Headers: `X-Kaspi-Timestamp: <unix seconds>` and `X-Kaspi-Signature: sha256=<hex HMAC of "<timestamp>.<raw body>">`.
- * Real events are signed with KASPI_WEBHOOK_SECRET; mock-gateway events (KASPI_MOCK_SECRET) are accepted only when KASPI_MODE=mock.
+ * Real events are signed with KASPI_WEBHOOK_SECRET; built-in gateway events (KASPI_MOCK_SECRET) are accepted only when KASPI_MODE=mock.
  * Events older/newer than 5 minutes are rejected; replays are deduplicated on transactionId.
  */
 export async function POST(req: Request) {
@@ -29,7 +33,7 @@ export async function POST(req: Request) {
   if (started) {
     after(async () => {
       try {
-        await runTick(started, FIRST_TICK);
+        await runTick(started, firstTick());
       } catch (e) {
         console.error("[kaspi] first tick failed", e);
       }
