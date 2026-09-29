@@ -23,7 +23,7 @@ const { c } = await signupNew("jlive");
 await db.goal.update({ where: { userId: c.user.id }, data: { primaryRole: "Data Analyst", countries: JSON.stringify(["KZ"]) } });
 const inv = await c.json("POST", "/api/payments/kaspi/invoices", { plan: "local" });
 const p = inv.data?.invoiceId ? await db.payment.findUnique({ where: { externalId: inv.data.invoiceId } }) : null;
-check(inv.status === 201 && p?.provider === "kaspi" && inv.data.mock === false, "JL.invoice.live", "production without KASPI_MODE: invoices are real Kaspi invoices", { status: inv.status, provider: p?.provider, mock: inv.data?.mock });
+check(inv.status === 201 && p?.provider === "kaspi" && inv.data.instant === false, "JL.invoice.live", "production without KASPI_MODE: invoices are real Kaspi invoices", { status: inv.status, provider: p?.provider, instant: inv.data?.instant });
 
 const mockPay = await c.json("POST", `/api/payments/kaspi/mock/${inv.data?.invoiceId}/pay`, { outcome: "success" });
 check(mockPay.status === 404, "JL.mock.404", "mock gateway route -> 404", mockPay.status);

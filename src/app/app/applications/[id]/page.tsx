@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, ChevronDown, Download, ExternalLink } from "lucide-react";
 import { realUrl } from "@/lib/links";
 import { currentUserId, requireUser } from "@/lib/auth";
-import { isSimulation } from "@/lib/mode";
+import { hiddenLiveRole, isSimulation } from "@/lib/mode";
 import { db, j } from "@/lib/db";
 import type { Answer } from "@/lib/engine/personalize";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
@@ -19,8 +19,8 @@ import { SentAnswer } from "../../../_components/sent-answer";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const [{ id }, userId] = await Promise.all([params, currentUserId()]);
-  const o = userId ? await db.opportunity.findFirst({ where: { id, campaign: { userId } }, select: { job: { select: { company: true } } } }) : null;
-  return { title: o ? `Заявка · ${o.job.company}` : "Страница не найдена" };
+  const o = userId ? await db.opportunity.findFirst({ where: { id, campaign: { userId } }, select: { submittedAt: true, job: { select: { company: true, source: true } } } }) : null;
+  return { title: o && !(hiddenLiveRole(o) && !o.submittedAt) ? `Заявка · ${o.job.company}` : "Страница не найдена" };
 }
 
 const MAIL: Record<string, string> = {
@@ -61,7 +61,8 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
       offers: { select: { createdAt: true, role: true, base: true, currency: true } },
     },
   });
-  if (!opp) notFound();
+  // Simulation mode: an application page of a live-feed vacancy exists only once it was really sent (src/lib/mode.ts).
+  if (!opp || (hiddenLiveRole(opp) && !opp.submittedAt)) notFound();
   if (!APPLIED_OR_LATER.includes(opp.status)) redirect(`/app/opportunities/${opp.id}`);
   const { job, pkg } = opp;
 

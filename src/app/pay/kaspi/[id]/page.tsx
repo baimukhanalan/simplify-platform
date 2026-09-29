@@ -25,7 +25,7 @@ export default async function KaspiPayPage({ params }: { params: Promise<{ id: s
         The in-page «Оплатить» exists only when KASPI_MODE=mock; otherwise the page waits for the Kaspi confirmation.
         The header (with «Отменить») lives in the client component: it disappears once the payment has gone through.
       */}
-      <KaspiCheckout initial={initial} goal={user.goal?.primaryRole ?? ""} mockGateway={mockEnabled() && initial.mock} newInvoiceHref={back} />
+      <KaspiCheckout initial={initial} goal={user.goal?.primaryRole ?? ""} instant={mockEnabled() && initial.instant} newInvoiceHref={back} />
       <p className="mt-8 text-center text-[12px] leading-relaxed text-ink-3">
         Оплачивая, ты принимаешь <LegalLinks />. Simplify не гарантирует трудоустройство.
       </p>

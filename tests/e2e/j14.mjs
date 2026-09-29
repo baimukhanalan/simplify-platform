@@ -113,9 +113,11 @@ async function opportunityCards(c, tab = "all") {
   return cards;
 }
 /** «Подошли» as the two screens render it. */
+// Numbers ≥ 1 000 are grouped with a (narrow) no-break space («1 146 вакансий»): join the groups before parsing.
+const ungroup = (t) => t.replace(/(\d)[ \u00a0\u202f](?=\d{3}(?!\d))/g, "$1");
 async function qualifiedNumbers(c) {
-  const opp = visible((await c.get("/app/opportunities")).text);
-  const today = visible((await c.get("/app")).text);
+  const opp = ungroup(visible((await c.get("/app/opportunities")).text));
+  const today = ungroup(visible((await c.get("/app")).text));
   // Round 10 (discoverySentence): «Сегодня агент нашёл 8 вакансий: 4 подходят (Match 70+), …» / «… — она подходит» /
   // «… — все подходят (Match 70+)»; no qualified part when none fits.
   const o = opp.match(/(Сегодня|За неделю|За кампанию) агент (?:пока не нашёл новых вакансий|нашёл (\d+) [^\s:.]+(?::(?:[^.]*?(\d+) подход)?| — (?:она|обе|все) (подход))?)/);

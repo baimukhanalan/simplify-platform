@@ -1,7 +1,7 @@
 import "server-only";
 import { db, j, s } from "../db";
 import { FICTIONAL_SOURCE, isFictionalJob, isSimulation } from "../mode";
-import { APP_TZ, snapRoundTime } from "../time";
+import { APP_TZ, freeRoundSlot } from "../time";
 import { AUTO_ANSWER_STATUS, ingestEmail, rescheduleInterview, settleSharedAnswers, standingAnswer } from "./agent";
 import { patchPackageAnswer } from "./approvals";
 import { marketRange } from "./market";
@@ -229,8 +229,9 @@ async function applyStep(userId: string, o: FullOpp, step: SimStep) {
   const ru = j<string[]>(o.job.languages, []).includes("Russian") && !j<string[]>(o.job.languages, []).includes("English");
   const first = (o.campaign.user.name ?? "").trim().split(/\s+/)[0] ?? "";
   const round = ["recruiter", "hiring_manager", "technical", "final"].includes(step.kind) ? step.kind : step.kind === "assessment" ? "assessment" : null;
-  // The round's date: an interview 2–5 working days after the invite; an assessment is due in 5 days.
-  const when = round === "assessment" ? snapRoundTime("assessment", new Date(step.at.getTime() + 5 * DAY), step.at) : round ? snapRoundTime(round, new Date(step.at.getTime() + between(r, 2, 5) * DAY), step.at) : undefined;
+  // The round's date: an interview 2–5 working days after the invite; an assessment is due in 5 days. The slot never
+  // overlaps the user's other upcoming rounds (±90 min) and is spread over the day (freeRoundSlot, src/lib/time.ts).
+  const when = round ? await roundSlot(userId, o, round, round === "assessment" ? new Date(step.at.getTime() + 5 * DAY) : new Date(step.at.getTime() + between(r, 2, 5) * DAY), step.at) : undefined;
   let usd = 0, pay: string | undefined;
   if (step.kind === "offer") {
     const countries = j<string[]>(o.job.countries, []);
@@ -278,6 +279,20 @@ async function applyStep(userId: string, o: FullOpp, step: SimStep) {
 }
 
 const ROUNDS = ["assessment", "recruiter", "hiring_manager", "technical", "final"];
+
+/**
+ * When a simulated employer schedules `round`: a free slot of that day (seeded by the opportunity and round, so a replay
+ * picks the same one), away from every other upcoming round of the user — two companies never share a time, and one
+ * company never gets two rounds at once.
+ */
+async function roundSlot(userId: string, o: Pick<FullOpp, "id" | "job">, round: string, at: Date, now: Date) {
+  const rows = await db.interview.findMany({
+    where: { userId, status: "upcoming", scheduledAt: { not: null }, NOT: { opportunityId: o.id, round } },
+    select: { scheduledAt: true, round: true, opportunity: { select: { job: { select: { company: true } } } } },
+  });
+  const busy = rows.map((b) => ({ at: b.scheduledAt as Date, round: b.round, company: b.opportunity.job.company }));
+  return freeRoundSlot(round, at, { now, start: seededRng(`slot:${o.id}:${round}`)(), company: o.job.company, busy });
+}
 
 /**
  * An assessment of a fictional employer counts as taken once its deadline has passed: it shows as done («Ждём ответа»)

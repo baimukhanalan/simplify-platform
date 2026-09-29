@@ -15,7 +15,7 @@ import { EditTermsForm } from "./offer-forms";
 import { RangeBar } from "./range-bar";
 import { NegotiationTabs } from "./negotiation-tabs";
 import { ConfirmAction } from "./confirm-action";
-import { compBreakdown, kMoney } from "./comp";
+import { compBreakdown, employerMoney } from "./comp";
 import { callScript, fallbackLevers, negotiationEmail, talkingPoints } from "./negotiation-copy";
 
 export const STYLES: { level: Aggressiveness; label: string; hint: string }[] = [
@@ -45,15 +45,17 @@ export async function OfferDesk({ offer: o, level, roleFamily, seniority, region
     STYLES.map((s) => {
       // With the goal minimum the lib keeps walk-away, target and ask at or above it (and says belowMinimum).
       const plan = negotiationPlan({ company: o.company, role: o.role, base: o.base, currency: o.currency, range, strengths, name, level: s.level, minimum, posted });
-      const m = (n: number) => kMoney(n, o.currency);
+      // Employer-facing English: full amounts in the offer currency, the same figures the page shows (no «$22k»).
+      const m = (n: number) => employerMoney(n, o.currency);
       const postedRef = plan.capSource === "posted" ? m(plan.ceiling) : null;
       const signing = fmtMoney(plan.signingBonus, o.currency);
+      const signingEn = m(plan.signingBonus);
       return [s.level, {
         ...plan,
         args: talkingPoints({ role: o.role, low: m(range.low), high: m(range.high), strengths, position: o.base < range.mid ? "below" : o.base < range.high ? "upper" : "top", posted: postedRef, mode: plan.mode }),
-        callScript: callScript({ ask: m(plan.ask), walkaway: fmtMoney(plan.walkaway, o.currency), mode: plan.mode, signing }),
+        callScript: callScript({ ask: m(plan.ask), walkaway: fmtMoney(plan.walkaway, o.currency), mode: plan.mode, signing: signingEn }),
         fallback: fallbackLevers(signing),
-        email: negotiationEmail({ role: o.role, company: o.company, name, level: s.level, ask: m(plan.ask), low: m(range.low), high: m(range.high), posted: postedRef, strengths, mode: plan.mode, signing }),
+        email: negotiationEmail({ role: o.role, company: o.company, name, level: s.level, ask: m(plan.ask), low: m(range.low), high: m(range.high), posted: postedRef, strengths, mode: plan.mode, signing: signingEn }),
       }];
     }),
   ) as Record<Aggressiveness, ReturnType<typeof negotiationPlan>>;

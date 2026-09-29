@@ -45,19 +45,65 @@ function detectDeadline(text: string): Date | null {
 
 export const CLASS_TO_STATUS: Record<InboxClass, string | null> = { confirmation: "pending", rejection: "rejected", assessment: "assessment", interview: null, offer: "offer", info: null, unknown: null };
 
-/** Match an email to one of the user's applications by company name / domain. */
-export function matchCompany(from: string, subject: string, body: string, companies: { id: string; company: string }[]) {
+/** An application an email may be about. `title`, `status` and `updatedAt` break ties between several roles at one company. */
+export type MailTarget = { id: string; company: string; title?: string; status?: string; updatedAt?: Date | null };
+
+// Pipeline order (src/lib/rounds.ts OPP_ORDER): a later stage is the "more advanced" application. Closed ones rank last —
+// mail never reopens a hired / rejected application, so an open one at the same company is the better guess.
+const STAGE = ["submitted", "pending", "assessment", "recruiter", "hiring_manager", "technical", "final", "offer"];
+const stageRank = (s = "") => (s === "hired" || s === "rejected" ? -2 : STAGE.indexOf(s));
+
+// Words that say nothing about which role an email is about.
+const TITLE_STOP = new Set(["and", "the", "for", "with", "of", "in", "at", "to", "a", "an", "role", "position", "job", "vacancy", "remote", "hybrid", "onsite", "m", "f", "d", "i", "ii", "iii"]);
+const titleTokens = (s: string) => new Set(s.toLowerCase().split(/[^\p{L}\p{N}+#]+/u).filter((w) => w.length >= 2 && !TITLE_STOP.has(w)));
+
+/**
+ * How strongly the email names this role: the whole title mentioned verbatim = 4 (+0.01 per title word, so "Senior Data
+ * Analyst" beats "Data Analyst" when the email names the senior role), otherwise the share of the title's words that
+ * appear in the subject/body (token overlap, ×3). Levels count ("Senior" vs "Junior" Data Analyst).
+ */
+export function titleScore(title: string, subject: string, body: string) {
+  const t = title.trim().toLowerCase();
+  if (!t) return 0;
+  const text = `${subject}\n${body}`.toLowerCase();
+  const want = titleTokens(t);
+  if (text.includes(t)) return 4 + want.size / 100;
+  if (!want.size) return 0;
+  const have = titleTokens(text);
+  let hit = 0;
+  for (const w of want) if (have.has(w)) hit++;
+  return (3 * hit) / want.size;
+}
+
+/**
+ * Match an email to one of the user's applications: first by company (name in the text, sender domain), then — when the
+ * user applied to several roles at that company — by the role title named in the subject/body (verbatim, else token
+ * overlap). Still tied: the most advanced open application, then the most recently updated one. Deterministic.
+ */
+export function matchCompany(from: string, subject: string, body: string, companies: MailTarget[]) {
   const text = `${from} ${subject} ${body}`.toLowerCase();
   const domain = from.split("@")[1]?.split(".")[0] ?? "";
-  let best: { id: string; score: number } | null = null;
+  let best: { c: MailTarget; company: number; title: number } | null = null;
   for (const c of companies) {
     const name = c.company.toLowerCase();
     const slug = name.replace(/[^a-z0-9]/g, "");
-    let score = 0;
+    let company = 0;
     // Non-Latin names ("Каспи") slug to "" and would contain every domain: require a meaningful slug.
-    if (domain.length >= 3 && slug.length >= 3 && (domain === slug || slug.includes(domain) || domain.includes(slug))) score += 3;
-    if (text.includes(name)) score += 2;
-    if (!best || score > best.score) best = { id: c.id, score };
+    if (domain.length >= 3 && slug.length >= 3 && (domain === slug || slug.includes(domain) || domain.includes(slug))) company += 3;
+    if (name && text.includes(name)) company += 2;
+    if (!company) continue;
+    const cand = { c, company, title: c.title ? titleScore(c.title, subject, body) : 0 };
+    if (!best || better(cand, best)) best = cand;
   }
-  return best && best.score > 0 ? best.id : null;
+  return best ? best.c.id : null;
+}
+
+function better(a: { c: MailTarget; company: number; title: number }, b: { c: MailTarget; company: number; title: number }) {
+  if (a.company !== b.company) return a.company > b.company;
+  if (a.title !== b.title) return a.title > b.title;
+  const sa = stageRank(a.c.status), sb = stageRank(b.c.status);
+  if (sa !== sb) return sa > sb;
+  const ta = a.c.updatedAt?.getTime() ?? 0, tb = b.c.updatedAt?.getTime() ?? 0;
+  if (ta !== tb) return ta > tb;
+  return a.c.id < b.c.id;
 }

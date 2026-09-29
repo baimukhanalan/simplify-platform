@@ -1,12 +1,10 @@
 import type { Fact, Story } from "@prisma/client";
-import { Mic, Pencil, Plus, Trash2, TrendingUp } from "lucide-react";
-import { Card, Chip, Field } from "@/components/ui";
-import { SubmitButton } from "@/components/client";
+import { Mic, TrendingUp } from "lucide-react";
+import { Card, Chip } from "@/components/ui";
 import { j } from "@/lib/db";
-import { saveStory, deleteStory, type StoryTag } from "@/lib/actions/profile";
-import { ActionForm, FormSubmit } from "./action-form";
-import { Disclosure } from "./bits";
+import type { StoryTag } from "@/lib/actions/profile";
 import { STORY_TAGS, STORY_TAG_RU } from "@/lib/ru";
+import { AddStory, EditStory } from "./editors";
 
 /** Tags and their labels from one map (lib STORY_TAG_RU) — the Interview Room's STAR library reads the same. */
 const TAGS: { key: StoryTag; label: string }[] = STORY_TAGS.map((key) => ({ key, label: STORY_TAG_RU[key] }));
@@ -54,59 +52,14 @@ export function Stories({ stories, facts }: { stories: (Story & { fact: Fact | n
                 </div>
               )}
               <div className="mt-auto flex flex-wrap gap-2 pt-1">
-                <Disclosure tone="ghost" summary={<><Pencil className="size-3.5" strokeWidth={1.7} aria-hidden />Редактировать</>}>
-                  <div className="rounded-2xl border border-line bg-white/55 p-4">
-                    <StoryForm story={s} facts={facts} />
-                    <form action={deleteStory} className="mt-4 border-t border-line pt-4">
-                      <input type="hidden" name="id" value={s.id} />
-                      <SubmitButton size="sm" variant="ghost" className="!h-10 !text-rose" pendingText="Удаляем…"><Trash2 className="size-3.5" strokeWidth={1.7} aria-hidden />Удалить историю</SubmitButton>
-                    </form>
-                  </div>
-                </Disclosure>
+                <EditStory facts={facts} story={{ id: s.id, title: s.title, factId: s.factId, situation: s.situation, task: s.task, action: s.action, result: s.result, metric: s.metric, tags }} />
               </div>
             </Card>
           );
         })}
       </div>
 
-      <Disclosure tone="dark" summary={<><Plus className="size-4" strokeWidth={1.7} aria-hidden />Добавить STAR-историю</>}>
-        <Card strong><StoryForm facts={facts} /></Card>
-      </Disclosure>
+      <AddStory facts={facts} />
     </div>
-  );
-}
-
-function StoryForm({ story, facts }: { story?: Story; facts: Pick<Fact, "id" | "title" | "org">[] }) {
-  const tags: string[] = j(story?.tags, []);
-  return (
-    <ActionForm action={saveStory} resetOnSuccess={!story} closeDetailsOnSuccess className="flex flex-col gap-3">
-      {story && <input type="hidden" name="id" value={story.id} />}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Название *"><input name="title" required defaultValue={story?.title} className="field" placeholder="A/B-тест онбординга" /></Field>
-        <Field label="Связанный факт">
-          <select name="factId" defaultValue={story?.factId ?? ""} className="field">
-            <option value="">Без привязки</option>
-            {facts.map((f) => <option key={f.id} value={f.id}>{f.title}{f.org ? ` · ${f.org}` : ""}</option>)}
-          </select>
-        </Field>
-        <Field label="Ситуация (S) *"><textarea name="situation" required rows={2} defaultValue={story?.situation} className="field resize-y" /></Field>
-        <Field label="Задача (T) *"><textarea name="task" required rows={2} defaultValue={story?.task} className="field resize-y" /></Field>
-        <Field label="Действие (A) *" hint="Твой вклад: решения, действия, инструменты"><textarea name="action" required rows={3} defaultValue={story?.action} className="field resize-y" /></Field>
-        <Field label="Результат (R) *"><textarea name="result" required rows={3} defaultValue={story?.result} className="field resize-y" /></Field>
-        <Field label="Метрика" className="sm:col-span-2"><input name="metric" defaultValue={story?.metric} className="field" placeholder="активация 18% → 26%" /></Field>
-      </div>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="label mb-2">Темы вопросов</legend>
-        <div className="flex flex-wrap gap-2">
-          {TAGS.map((t) => (
-            <label key={t.key} className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-line bg-white/70 px-3 font-mono text-[11px] uppercase tracking-[.06em] text-ink-2 transition-colors has-[:checked]:border-teal/30 has-[:checked]:bg-teal/10 has-[:checked]:text-teal has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green">
-              <input type="checkbox" name="tags" value={t.key} defaultChecked={tags.includes(t.key)} className="sr-only" />
-              {t.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <div><FormSubmit pendingText="Сохраняем…">{story ? "Сохранить историю" : "Добавить историю"}</FormSubmit></div>
-    </ActionForm>
   );
 }

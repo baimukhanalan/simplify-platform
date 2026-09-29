@@ -76,3 +76,45 @@ export function snapRoundTime(round: string, at: Date, now: Date = new Date()) {
   }
   return businessSlot(at, at > now ? "up" : "down");
 }
+
+/** Two interview rounds closer than this overlap (a call plus travel / buffer on either side). */
+export const ROUND_GAP_MS = 90 * 60000;
+
+/**
+ * A free business-hours slot for a new round, deterministic for the same inputs. The day is the one snapRoundTime picks
+ * for `at`; within it the slots 10:00 … 17:30 are tried starting from `start` (0..1, a seeded draw — so rounds spread
+ * over the day instead of all landing on 10:00) and the first one at least ROUND_GAP_MS away from every `busy` round is
+ * taken. A full day moves on to the next working day (backwards for a time already past, never into the future).
+ * Assessments keep their 23:59 deadline; only a same-company assessment on the same day moves a day on.
+ * `busy`: the user's other upcoming rounds (their time and company).
+ */
+export function freeRoundSlot(round: string, at: Date, opts: { now?: Date; start?: number; company?: string; busy?: { at: Date; company?: string; round?: string }[] } = {}) {
+  const now = opts.now ?? new Date();
+  const busy = opts.busy ?? [];
+  const snapped = snapRoundTime(round, at, now);
+  const future = snapped > now;
+  const step = future ? 86400000 : -86400000;
+  if (round === "assessment") {
+    let t = snapped;
+    for (let i = 0; i < 14 && busy.some((b) => b.company === opts.company && Math.abs(b.at.getTime() - t.getTime()) < ROUND_GAP_MS); i++) {
+      t = endOfDayAlmaty(new Date(t.getTime() + step));
+    }
+    return t;
+  }
+  const meetings = busy.filter((b) => b.round !== "assessment").map((b) => b.at.getTime());
+  const slots = (SLOT_LAST_MIN - SLOT_FIRST_MIN) / 30 + 1;
+  const first = Math.min(slots - 1, Math.max(0, Math.floor((opts.start ?? 0) * slots)));
+  const off = tzOffsetMs(snapped);
+  let dayLocal = Math.floor((snapped.getTime() + off) / 86400000) * 86400000;
+  for (let d = 0; d < 21; d++, dayLocal += step) {
+    const dow = new Date(dayLocal).getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    for (let k = 0; k < slots; k++) {
+      const t = dayLocal + (SLOT_FIRST_MIN + ((first + k) % slots) * 30) * 60000 - off;
+      if (!future && t > now.getTime()) continue; // a past round never jumps into the future
+      if (meetings.some((m) => Math.abs(m - t) < ROUND_GAP_MS)) continue;
+      return new Date(t);
+    }
+  }
+  return snapped; // three weeks fully booked: keep the plain slot rather than none
+}

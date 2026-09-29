@@ -2,14 +2,20 @@ import type { Offer } from "@prisma/client";
 import { j } from "@/lib/db";
 import { fmtMoney } from "@/lib/engine/taxonomy";
 
-/** "$72k" for USD, compact currency for everything else ("KZT 25M"). Employer-facing English text only — the UI uses fmtMoney. */
-export function kMoney(n: number, currency: string) {
-  if (currency === "USD") {
-    const abs = Math.abs(n);
-    return `${n < 0 ? "−" : ""}$${abs >= 1000 ? `${Math.round(abs / 1000)}k` : abs}`;
-  }
-  return new Intl.NumberFormat("en-US", { style: "currency", currency, notation: "compact", maximumFractionDigits: 1 }).format(n);
+/**
+ * A money amount in employer-facing English text, written out in full in the offer's own currency — «$22,000»,
+ * «€48,000», «KZT 9,600,000». No «k» shorthand: the talking points, the email and the call script quote the same
+ * figures the rest of the Offer Desk shows (fmtMoney), just in English number format.
+ */
+export function employerMoney(n: number, currency: string) {
+  const code = (currency || "USD").toUpperCase();
+  const v = Math.round(Math.abs(Number.isFinite(n) ? n : 0));
+  const digits = v.toLocaleString("en-US");
+  const sign = n < 0 && v ? "−" : "";
+  const prefix = EMPLOYER_PREFIX[code];
+  return prefix ? `${sign}${prefix}${digits}` : `${sign}${code} ${digits}`;
 }
+const EMPLOYER_PREFIX: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
 
 
 /**

@@ -163,7 +163,8 @@ const camp = await db.campaign.findFirst({ where: { userId: c.user.id } });
   } else console.log("  (no requirement-blocked role for this user)");
 
   // 5 · graduate / intern roles below a Middle+ goal
-  const entry = opps.filter((o) => /graduate|intern|trainee|стаж/i.test(o.job.title) || o.job.seniority === "intern");
+  // Word-bounded: «Internal Tools» / «International» are not internships (the corpus has such titles).
+  const entry = opps.filter((o) => /\b(graduate|intern|internship|trainee)\b|стаж/i.test(o.job.title) || o.job.seniority === "intern");
   check(["middle", "senior", "lead"].includes(g.seniority), "J16.grad.goal", "the goal is Middle+", g.seniority);
   const notBlocked = entry.filter((o) => o.eligibility !== "blocked" || !o.blockers.includes("Уровень ниже цели") || ["prepared", "submitted"].includes(o.status));
   check(entry.length > 0 && notBlocked.length === 0, "J16.grad.blocked", "every graduate/intern role is blocked «Уровень ниже цели», none prepared/submitted", { entry: entry.length, notBlocked: notBlocked.map((o) => `${o.status}/${o.eligibility} ${o.job.title}`).slice(0, 5) });

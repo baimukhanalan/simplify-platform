@@ -292,7 +292,8 @@ for (const a of await db.approval.findMany({ where: { userId: c.user.id, status:
 // ——— C · round times, B2 · needs with offer / assessment / near interview ———
 const sent = await db.opportunity.findMany({ where: { campaignId: camp.id, status: "submitted" }, include: { job: true }, orderBy: { match: "desc" } });
 check(sent.length >= 3, "J17.sent", "the Local campaign submitted at least 3 roles", sent.length);
-if (sent.length >= 3) {
+// Live mode only: rounds and the offer come from pasted employer mail, which simulation disables (j18 covers its own).
+if (sent.length >= 3 && !isSim) {
   const [oIv, oAs, oOf] = sent;
   const before = Date.now();
   await email(c, oIv, ...INTERVIEW(oIv));

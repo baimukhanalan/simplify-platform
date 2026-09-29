@@ -38,5 +38,11 @@ export function visibleOpportunities<W extends object>(where: W): W {
   return isSimulation() ? ({ AND: [where, { job: { source: FICTIONAL_SOURCE } }] } as unknown as W) : where;
 }
 
+/**
+ * Simulation mode: a live-feed vacancy is out of sight on its detail pages too — the opportunity page 404s (a role the
+ * user already sent opens as its application instead) and an application page exists only for a submitted one.
+ */
+export const hiddenLiveRole = (o: { job: { source: string } }) => isSimulation() && !isFictionalJob(o.job);
+
 /** The same scope for a Job `where` (discovery, Career's better-paying roles, the Career Check sample vacancy). */
 export const visibleJobsWhere = (): { source?: string } => (isSimulation() ? { source: FICTIONAL_SOURCE } : {});

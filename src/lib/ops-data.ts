@@ -1,5 +1,6 @@
 // Agent C — shared read-side queries for the campaign operating screens.
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { agentMaySubmit, readAutonomy, type Autonomy } from "./engine/autonomy";
 import { agentQueue, dailyUsage, hasOpenAnswers } from "./engine/agent";
@@ -184,18 +185,62 @@ export const awaitingDecisionIds = (queue: Pick<NextCycle, "notQueued">) =>
   Object.entries(queue.notQueued).filter(([, r]) => APPLY_DECISION_REASONS.has(r)).map(([id]) => id);
 
 /**
+ * The part of nextCycleQueue's reasoning that decides «ждёт решения», as data (no id lists): which rule applied to the
+ * whole campaign, the autonomy knobs the per-role permission depends on, and the few roles of the agent's own
+ * preparation window (≤ 2 × daily limit) that the rule would call waiting but the cycle holds for another reason
+ * (daily limit, duplicate of a role already taken). awaitingDecisionWhere turns it into a relational filter.
+ */
+export type AwaitingRule =
+  | { kind: "none" }
+  | { kind: "no-consent" }
+  | { kind: "agent"; submitApplications: boolean; autoApplyMinMatch: number; personalizeCv: boolean; held: string[] };
+
+/** A package with an answer still waiting for the user (hasOpenAnswers), as a string filter on the stored JSON. */
+const OPEN_ANSWER = '"status":"pending"';
+
+/**
+ * Prisma twin of agentMaySubmit(o, autonomy) === false for a role the user did not skip, with Match at or above `min`
+ * (one `match` filter: spreading two would silently keep only the last).
+ */
+const deniedWhere = (r: { submitApplications: boolean; autoApplyMinMatch: number }, min?: number): Prisma.OpportunityWhereInput => {
+  const match = { ...(min != null ? { gte: min } : {}), ...(r.submitApplications ? { lt: r.autoApplyMinMatch } : {}) };
+  return { decision: { notIn: ["apply", "auto", "skip"] }, ...(Object.keys(match).length ? { match } : {}) };
+};
+
+/**
  * THE definition of «Ждут решения»: the Opportunities tab (its list and its counter) and needsYou.applyDecisions (Today,
  * nav, Inbox, the agent-cycle line) all use this filter, so the tab never shows a role the count leaves out.
  * `queue` = nextCycleQueue(campaign, autonomy) for the same campaign; an inactive campaign has nothing waiting (queue null).
+ *
+ * A pure relational filter — the same reasons nextCycleQueue gives (APPLY_DECISION_REASONS), expressed on status, Match,
+ * decision, eligibility, freshness-derived status and visibility — so it stays one small query for any number of roles
+ * (a list of every waiting id overflowed the bind-parameter limit: Prisma P2029 on SQLite at ~30k roles).
  */
-export const awaitingDecisionWhere = (campaignId: string, queue: Pick<NextCycle, "notQueued"> | null) => ({
-  campaignId,
+export const awaitingDecisionWhere = (campaignId: string, queue: Pick<NextCycle, "awaiting"> | null): Prisma.OpportunityWhereInput => {
+  const rule = queue?.awaiting ?? { kind: "none" as const };
   // Simulation mode: the agent decides every role itself — nothing ever waits for the user's Apply.
-  id: { in: queue && !isSimulation() ? awaitingDecisionIds(queue) : [] },
-  status: { in: [...AWAITING_DECISION_STATUSES] },
-  eligibility: { not: "blocked" },
-  decision: { not: "skip" },
-});
+  if (rule.kind === "none" || isSimulation()) return { campaignId, id: { in: [] } };
+  const scope = { campaignId, ...visibleScope(), eligibility: { not: "blocked" }, decision: { not: "skip" } };
+  // Consent off: every fitting role waits (nextCycleQueue explains them all as "no-consent").
+  if (rule.kind === "no-consent") return { ...scope, AND: [{ OR: fittingOr }] };
+  const or: Prisma.OpportunityWhereInput[] = [
+    // "stale" / "off-goal": a strong role the agent never takes on its own (older than 30 days or outside the goal).
+    { status: "found", match: { gte: STRONG_MATCH } },
+    // "dream-decision": a dream company on another level — the user's call whatever the Match.
+    { status: "qualified", softGaps: { contains: DREAM_DECISION }, decision: { notIn: ["apply", "auto", "skip"] } },
+    // "auto-apply-off" / "below-threshold" on a prepared package with nothing else open.
+    { status: "prepared", approvals: { none: { status: "pending" } }, NOT: { pkg: { answers: { contains: OPEN_ANSWER } } }, ...deniedWhere(rule) },
+    // The same for a strong qualified role (only when the agent personalizes: otherwise it is "no-personalize").
+    ...(rule.personalizeCv ? [{ status: "qualified", ...deniedWhere(rule, STRONG_MATCH) }] : []),
+  ];
+  return { ...scope, AND: [{ OR: or }, ...(rule.held.length ? [{ id: { notIn: rule.held } }] : [])] };
+};
+
+/** Prisma twin of the `fitting` set of nextCycleQueue (not blocked, open, strong or a dream-company decision). */
+const fittingOr: Prisma.OpportunityWhereInput[] = [
+  { status: { in: [...AWAITING_DECISION_STATUSES] }, match: { gte: STRONG_MATCH } },
+  { status: "qualified", softGaps: { contains: DREAM_DECISION } },
+];
 
 export type NextCycle = {
   /** Opportunity ids the next agent cycle would submit on its own (internal-corpus roles; live roles become handoffs instead). */
@@ -210,6 +255,8 @@ export type NextCycle = {
   notQueued: Record<string, NotQueuedReason>;
   /** The same as `notQueued`, as the Russian line for the card (NOT_QUEUED_LABEL). */
   reasons: Record<string, string>;
+  /** «Ждут решения» as a rule for awaitingDecisionWhere (no id lists). */
+  awaiting: AwaitingRule;
 };
 
 const STALE_DAYS = 30;
@@ -233,11 +280,11 @@ export async function nextCycleQueue(
   const explainAll = (r: NotQueuedReason) => { for (const o of fitting) notQueued[o.id] = r; };
   const base = { ids: [] as string[], dailyLimit: campaign.dailyLimit };
   const labels = () => Object.fromEntries(Object.entries(notQueued).map(([id, r]) => [id, NOT_QUEUED_LABEL[r]]));
-  if (campaign.status !== "active") { explainAll("inactive"); return { ...base, when: null, reason: "inactive", left: 0, notQueued, reasons: labels() }; }
+  if (campaign.status !== "active") { explainAll("inactive"); return { ...base, when: null, reason: "inactive", left: 0, notQueued, reasons: labels(), awaiting: { kind: "none" } }; }
   const since = startOfToday();
   const used = await dailyUsage(campaign.id, since);
   const left = Math.max(0, campaign.dailyLimit - used);
-  if (!campaign.autoSubmit) { explainAll("no-consent"); return { ...base, when: null, reason: "no-consent", left, notQueued, reasons: labels() }; }
+  if (!campaign.autoSubmit) { explainAll("no-consent"); return { ...base, when: null, reason: "no-consent", left, notQueued, reasons: labels(), awaiting: { kind: "no-consent" } }; }
   const when = left > 0 ? "now" : "tomorrow";
   let budget = left > 0 ? left : campaign.dailyLimit;
   const ids: string[] = [];
@@ -262,8 +309,12 @@ export async function nextCycleQueue(
     if (!counted) budget--;
     if (o.job.source === FICTIONAL_SOURCE) ids.push(o.id); else why(o.id, "handoff");
   }
+  // The agent's own preparation window (≤ 2 × budget roles): the only place a role the relational «ждёт решения» rule
+  // would list can be held for another reason (daily limit, duplicate) — awaitingDecisionWhere leaves these out.
+  const windowIds: string[] = [];
   if (autonomy.personalizeCv && budget > 0) {
     const queue = await agentQueue(campaign.id, budget);
+    windowIds.push(...queue.map((o) => o.id));
     let prepared = 0;
     for (const o of queue) {
       if (prepared >= budget) { why(o.id, "daily-limit"); continue; }
@@ -293,7 +344,9 @@ export async function nextCycleQueue(
   }
   for (const id of Object.keys(notQueued)) if (queued.has(id)) delete notQueued[id];
   const reason = !autonomy.personalizeCv && !ids.length ? "no-personalize" : "ok";
-  return { ids, when, reason, left, dailyLimit: campaign.dailyLimit, notQueued, reasons: labels() };
+  const held = windowIds.filter((id) => !APPLY_DECISION_REASONS.has(notQueued[id]));
+  const awaiting: AwaitingRule = { kind: "agent", submitApplications: autonomy.submitApplications, autoApplyMinMatch: autonomy.autoApplyMinMatch, personalizeCv: autonomy.personalizeCv, held };
+  return { ids, when, reason, left, dailyLimit: campaign.dailyLimit, notQueued, reasons: labels(), awaiting };
 }
 
 // ——— Interview counts: one definition for Today (stage «Интервью»), the nav badge, Applications and Interviews ———

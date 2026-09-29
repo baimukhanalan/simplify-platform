@@ -16,6 +16,11 @@
 // 12. Account deletion redirects to /?deleted=1 and the landing confirms it (only when signed out).
 import { Client, db, form, check, findings, signupNew, isSim } from "./lib.mjs";
 import { userWithApps, email, INTERVIEW, ASSESS } from "./setup.mjs";
+import { needsMode } from "./lib.mjs";
+
+// Rounds and offers are set up by pasting employer mail (setup.mjs → email()); simulation disables pasting — employers of
+// the fictional corpus write on their own there (covered by j18).
+needsMode("live", "rounds / offers are set up by pasting employer mail — pasting is disabled in simulation");
 
 const visible = (html) => html.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&nbsp;| /g, " ").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ");
 /** The whole list card around index i (cards contain nested <li>, so cut at the next card). */
@@ -303,6 +308,13 @@ Languages: English C1, Russian native
     const a1 = sec.match(/Контрпредложение \$([\d\s\u202f\u00a0]+\d)/);
     const market = m1 && [m1[0], num(m1[1]), num(m1[2])];
     const ask = a1 && [a1[0], num(a1[1])];
+    // af84f6d: an offer at / above the market top gets no counteroffer — «уже выше рынка · оклад не обсуждаем» and the ask
+    // moves to the rest of the package (signing bonus / review). Below the top a «Контрпредложение» is shown.
+    const aboveTop = !!market && k(o.base) >= +market[2];
+    if (aboveTop) {
+      check(!ask && /оклад не обсуждаем/.test(sec) && !/sits below the midpoint/.test(sec), `J15.offer.cap.${k(o.base)}k`, `${o.company}: an offer above the market top is not pushed further (no counteroffer; «оклад не обсуждаем»)`, sec.match(/Оклад \$[\d\s\u202f\u00a0]+ уже.{0,60}/)?.[0] ?? sec.slice(0, 200));
+      continue;
+    }
     if (!check(!!market && !!ask, `J15.offer.parse.${k(o.base)}k`, `${o.company}: market range and counteroffer rendered`, sec.slice(0, 200))) continue;
     const high = +market[2], a = +ask[1], base = k(o.base);
     const ok = base >= high ? a === base : a <= high && a >= base;

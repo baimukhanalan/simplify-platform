@@ -299,7 +299,7 @@ describe("1 (DB) · «Ждут решения»: the tab and the count are one f
     const ids = new Set(tab.map((x) => x.id));
     assert.ok(ids.has(stale.id) && ids.has(below.id), "stale and below-threshold are both waiting");
     assert.ok(!ids.has(autoPicked.id), "a role the agent will take is not «ждёт решения»");
-    assert.equal(ops.awaitingDecisionWhere(campaign.id, null).id.in.length, 0, "no running queue → nothing waits");
+    assert.equal(await db.opportunity.count({ where: ops.awaitingDecisionWhere(campaign.id, null) }), 0, "no running queue → nothing waits");
   });
 });
 

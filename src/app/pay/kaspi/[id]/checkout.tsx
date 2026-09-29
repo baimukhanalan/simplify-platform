@@ -21,10 +21,10 @@ const ERRORS: Record<string, string> = {
 const focusRing = "focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green";
 
 /**
- * Kaspi Pay invoice. When the gateway confirms in-page (mockGateway), the page shows a normal confirmation with a
+ * Kaspi Pay invoice. When the gateway confirms in-page (instant), the page shows a normal confirmation with a
  * single «Оплатить» action; otherwise it waits for the confirmation from the Kaspi app.
  */
-export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref }: { initial: InvoiceView; goal: string; mockGateway: boolean; newInvoiceHref: string }) {
+export function KaspiCheckout({ initial, goal, instant, newInvoiceHref }: { initial: InvoiceView; goal: string; instant: boolean; newInvoiceHref: string }) {
   const router = useRouter();
   const [inv, setInv] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -42,7 +42,7 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref }: { 
   // Real flow: the customer confirms in the Kaspi app; we poll the invoice until the webhook settles it. A declined
   // attempt ("failed") is not final — the customer can retry in the app and a later success still settles this invoice.
   // Both flows: a paid invoice whose campaign isn't attached yet is polled until it is (or it is refunded instead).
-  const waiting = (!mockGateway && (inv.status === "pending" || inv.status === "failed")) || (inv.status === "paid" && !inv.campaignId && !inv.activationBlocked);
+  const waiting = (!instant && (inv.status === "pending" || inv.status === "failed")) || (inv.status === "paid" && !inv.campaignId && !inv.activationBlocked);
   useEffect(() => {
     if (!waiting) return;
     const t = setInterval(async () => {
@@ -84,7 +84,7 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref }: { 
     : paid ? "Кампания запущена. Переходим в кабинет…"
     : expired ? expiredText
     : busy ? "Оплата обрабатывается…"
-    : !mockGateway && !failed ? "Ждём подтверждения от Kaspi…"
+    : !instant && !failed ? "Ждём подтверждения от Kaspi…"
     : "";
 
   return (
@@ -133,7 +133,7 @@ export function KaspiCheckout({ initial, goal, mockGateway, newInvoiceHref }: { 
               Создать новый счёт
             </Link>
           </div>
-        ) : !mockGateway ? (
+        ) : !instant ? (
           <>
             <div className="flex items-center gap-3 rounded-2xl border border-line bg-white/70 px-4 py-4">
               <Smartphone className="size-6 shrink-0 text-teal" strokeWidth={1.6} />

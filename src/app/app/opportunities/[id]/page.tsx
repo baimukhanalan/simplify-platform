@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { hiddenLiveRole } from "@/lib/mode";
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, ChevronDown, ExternalLink, MapPin } from "lucide-react";
 import { realUrl } from "@/lib/links";
 import { currentUserId, requireUser } from "@/lib/auth";
@@ -26,8 +27,8 @@ import { agoRu } from "../_lib/when";
 /** Tab title = the role; a missing or foreign id gets the 404 title, not «Вакансия». */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const [{ id }, userId] = await Promise.all([params, currentUserId()]);
-  const o = userId ? await db.opportunity.findFirst({ where: { id, campaign: { userId } }, select: { job: { select: { title: true, company: true } } } }) : null;
-  return { title: o ? `${o.job.title} · ${o.job.company}` : "Страница не найдена" };
+  const o = userId ? await db.opportunity.findFirst({ where: { id, campaign: { userId } }, select: { job: { select: { title: true, company: true, source: true } } } }) : null;
+  return { title: o && !hiddenLiveRole(o) ? `${o.job.title} · ${o.job.company}` : "Страница не найдена" };
 }
 
 const TONE_TEXT = { green: "text-green", teal: "text-teal", amber: "text-amber", rose: "text-rose" } as const;
@@ -44,6 +45,11 @@ export default async function OpportunityPage({ params }: { params: Promise<{ id
     },
   });
   if (!opp) notFound();
+  // Simulation mode: live-feed vacancies are never listed, so their page doesn't exist either (src/lib/mode.ts).
+  if (hiddenLiveRole(opp)) {
+    if (opp.submittedAt) redirect(`/app/applications/${opp.id}`);
+    notFound();
+  }
   const { job, pkg } = opp;
 
   const [candidate, facts, hh] = await Promise.all([

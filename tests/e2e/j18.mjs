@@ -84,6 +84,14 @@ check(seconds !== null && seconds <= 20, "J18.activity", "Today shows sent appli
 const appsV = vis((await c.get("/app/applications")).text);
 check((num(appsV, /заявок (\d+)/) ?? 0) > 0, "J18.activity.apps", "Applications lists the sent applications", appsV.match(/заявок \d+.{0,40}/)?.[0]);
 
+// Employer mail is the fictional employers' own in simulation: pasting a letter is refused and changes nothing.
+{
+  const before = await db.inboxMessage.count({ where: { userId: uid } });
+  const r = await c.action("ops.ingestPastedEmail", [{}, form({ from: "talent@northwind.example", subject: "Offer letter", body: "Hi, we are pleased to extend a job offer. Base salary $90,000 per year." })], { page: "/app/inbox" });
+  const after = await db.inboxMessage.count({ where: { userId: uid } });
+  check(!!r.result?.error && after === before, "J18.paste.disabled", "pasting an employer email is refused in simulation and stores nothing", { res: r.result, before, after });
+}
+
 // ——— B · no approvals / handoffs ———
 async function noChores(cl, label) {
   const userId = cl.user?.id ?? cl.userId;
@@ -223,7 +231,8 @@ async function countsAgree(cl, label) {
   const navResp = num(today.raw, /(\d+)<span class="sr-only"> новых<\/span>/) ?? 0;
   const dbSubmitted = await db.opportunity.count({ where: visibleOpps(userId, { submittedAt: { not: null } }) });
   const dbUpcoming = await db.interview.count({ where: { userId, status: "upcoming", round: { not: "assessment" }, scheduledAt: { gte: now } } });
-  const dbActive = (await db.interview.findMany({ where: { userId, status: "upcoming", round: { not: "assessment" }, scheduledAt: { gte: now } }, distinct: ["opportunityId"], select: { opportunityId: true } })).length;
+  // «в процессе» on Applications = its Tests + Interviews groups = applications at a test or an interview stage.
+  const dbActive = await db.opportunity.count({ where: visibleOpps(userId, { status: { in: ["assessment", ...ROUNDS] } }) });
   const dbTests = await db.interview.count({ where: { userId, status: "upcoming", round: "assessment", OR: [{ scheduledAt: null }, { scheduledAt: { gte: now } }] } });
   const dbResp = await db.inboxMessage.count({ where: { userId, receivedAt: { gte: new Date(Date.now() - 3 * DAY) }, classification: { in: ["interview", "assessment", "offer"] } } });
   const x = {
@@ -245,7 +254,8 @@ async function countsAgree(cl, label) {
   if (todayWin && oppsWin) check(JSON.stringify(todayWin) === JSON.stringify(oppsWin), `J18.counts.${label}.today`, "today's window: Today «+найдено +подошли +подано» = Opportunities «Сегодня: найдено · подходят · отправлено»", { todayWin, oppsWin });
   if (todayWin && sentence) check(sentence[0] === todayWin[0] && sentence[1] === todayWin[1], `J18.counts.${label}.sentence`, "Today's sentence «нашёл N вакансий: M подходят» = its own +найдено / +подошли", { sentence, todayWin });
   check(navIv === x.ivUpcoming && x.ivUpcoming === dbUpcoming, `J18.counts.${label}.interviews`, "upcoming rounds: nav «предстоит» = Interviews «Предстоит N интервью» = DB", { nav: navIv, page: x.ivUpcoming, db: dbUpcoming });
-  check(x.appsActive === dbActive, `J18.counts.${label}.active`, "Applications «в процессе» = applications with a round ahead (DB)", { apps: x.appsActive, db: dbActive });
+  const groups = (num(apps.v, /Тестовые (\d+) Тестовое/) ?? 0) + (num(apps.v, /Интервью (\d+) Идут раунды/) ?? 0);
+  check(x.appsActive === groups && groups === dbActive, `J18.counts.${label}.active`, "Applications «в процессе» = its Tests + Interviews groups = applications at a test / interview stage (DB)", { apps: x.appsActive, groups, db: dbActive });
   // Tests progress on their own in simulation: Interviews lists them (info), but no screen says one «ждёт выполнения».
   check(x.ivTests === dbTests && x.testsApps === 0 && x.testsInbox === 0, `J18.counts.${label}.tests`, "open tests: Interviews «Предстоит … N тестовых задания» = DB; never «ждут выполнения» on Applications / Inbox", { interviews: x.ivTests, apps: x.testsApps, inbox: x.testsInbox, db: dbTests });
   check(navResp === dbResp, `J18.counts.${label}.responses`, "nav «Ответы работодателей» badge = employer replies of the last 3 days (DB)", { nav: navResp, db: dbResp });

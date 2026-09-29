@@ -115,7 +115,7 @@ export function appBaseUrl(req: Request): string | null {
 }
 
 export type InvoiceView = {
-  invoiceId: string; status: string; amount: number; currency: string; plan: string; planLabel: string; expiresAt: string; paymentUrl: string; campaignId: string | null; mock: boolean;
+  invoiceId: string; status: string; amount: number; currency: string; plan: string; planLabel: string; expiresAt: string; paymentUrl: string; campaignId: string | null; instant: boolean;
   /** Any refund is owed on this invoice (a duplicate charge, a campaign already running, a deleted account). */
   refundDue: boolean;
   /** The payment will never start a campaign: it is refunded instead (campaign already running / account deleted). */
@@ -190,7 +190,7 @@ export function view(p: { externalId: string | null; status: string; amount: num
   const status = p.status === "pending" && isExpired(p, now) ? "expired" : p.status;
   return {
     invoiceId: p.externalId!, status, amount: p.amount, currency: p.currency, plan: p.plan, planLabel: plan?.label ?? p.plan,
-    expiresAt: meta.expiresAt ?? "", paymentUrl: `/pay/kaspi/${p.externalId}`, campaignId: p.campaignId, mock: p.provider === MOCK_PROVIDER,
+    expiresAt: meta.expiresAt ?? "", paymentUrl: `/pay/kaspi/${p.externalId}`, campaignId: p.campaignId, instant: p.provider === MOCK_PROVIDER,
     refundDue: refundsOf(meta).length > 0, activationBlocked: activationBlocked(meta), expiredReason: typeof meta.expiredReason === "string" ? meta.expiredReason : null,
   };
 }

@@ -41,7 +41,7 @@ export function H({ as: Tag = "h2", size = "m", className, children }: { as?: "h
 /** Pinyon Script accent inside serif headlines, like the landing ("your AI Career *Agent*"). */
 export const Script = ({ children }: { children: ReactNode }) => <span className="script">{children}</span>;
 
-type Tone = "neutral" | "green" | "teal" | "amber" | "rose" | "dark";
+export type Tone = "neutral" | "green" | "teal" | "amber" | "rose" | "dark";
 const tones: Record<Tone, string> = {
   neutral: "bg-white/75 text-head border-stroke",
   green: "bg-green-soft text-green border-green/15",

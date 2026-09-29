@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, MapPin, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, Search } from "lucide-react";
+import { GlyphSprite } from "@/components/glyph";
 import { requireUser } from "@/lib/auth";
 import { db, j, insensitive } from "@/lib/db";
 import { awaitingDecisionWhere, currentCampaign, nextCycleQueue, windowNumbers, type NextCycle, type NotQueuedReason } from "@/lib/ops-data";
@@ -8,15 +9,15 @@ import { startOfToday } from "@/lib/time";
 import { isSimulation, visibleOpportunities } from "@/lib/mode";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
-import { salaryLabel } from "@/lib/ops";
+import { LANE, salaryLabel, statusTone } from "@/lib/ops";
 import { DREAM_DECISION, blockerRu, fitVerdict } from "@/lib/engine/matching";
 import { ButtonLink, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { breakdown, discoverySentence } from "../_components/today-data";
 import { decisionsWaiting, needsYouCached } from "../../_components/global-needs";
-import { handoffsWaiting, placeWithFormat, questionsWaiting } from "../../_components/ru";
-import { LaneChip, StatusChip, matchTone } from "./_components/bits";
-import { DecisionBar } from "./_components/decision";
+import { handoffsWaiting, placeWithFormat, questionsWaiting, statusRu } from "../../_components/ru";
+import { matchTone } from "./_components/bits";
+import { OpportunityCard, type CardView } from "./_components/card";
 import { AutoApplyToggle } from "./_components/auto-apply";
 import { Announcer } from "./_components/announcer";
 import { fitCandidate } from "./_lib/candidate";
@@ -48,8 +49,6 @@ function href(tab: Tab, q: string, page = 1) {
   return `/app/opportunities${s ? `?${s}` : ""}`;
 }
 
-const TONE_TEXT = { green: "text-green", teal: "text-teal", amber: "text-amber", rose: "text-rose" } as const;
-const TONE_DOT = { green: "bg-green", teal: "bg-teal", amber: "bg-amber", rose: "bg-rose" } as const;
 
 export default async function OpportunitiesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
@@ -109,7 +108,9 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       orderBy: [{ priority: "desc" }, { match: "desc" }],
       skip: (page - 1) * PER_PAGE,
       take: PER_PAGE,
-      include: {
+      // Only what a card shows (Row) — never the job description or the rest of the row.
+      select: {
+        id: true, match: true, eligibility: true, pInterview: true, status: true, decision: true, lane: true, matchReasons: true, blockers: true, softGaps: true,
         job: { select: { title: true, company: true, location: true, remote: true, salaryMin: true, salaryMax: true, currency: true, postedAt: true, source: true, roleFamily: true, seniority: true, minYears: true, industry: true, sponsorship: true } },
         approvals: { where: { status: "pending", kind: { not: "handoff" } }, select: { id: true } },
       },
@@ -208,11 +209,14 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
       {rows.length === 0 ? (
         <EmptyFeed tab={tab} q={q} />
       ) : (
+        <>
+        <GlyphSprite names={["check", "map-pin", "arrow-right", "chevron-down"]} />
         <ul className="grid gap-3 lg:grid-cols-2" aria-label="Вакансии">
           {rows.map((o) => (
-            <OpportunityCard key={o.id} o={o} candidate={candidate} queued={queued.has(o.id) ? queue.when : null} hold={queued.has(o.id) ? null : holdReason(o, queue)} holdKind={queued.has(o.id) ? null : holdKind(o, queue)} dream={isDreamCompany(o.job.company, dreamCompanies)} userDecision={queue.notQueued[o.id] === "dream-decision"} />
+            <OpportunityCard key={o.id} v={cardView(o, { candidate, queued: queued.has(o.id) ? queue.when : null, hold: queued.has(o.id) ? null : holdReason(o, queue), holdKind: queued.has(o.id) ? null : holdKind(o, queue), dream: isDreamCompany(o.job.company, dreamCompanies), userDecision: queue.notQueued[o.id] === "dream-decision" })} />
           ))}
         </ul>
+        </>
       )}
 
       {pages > 1 && (
@@ -272,16 +276,13 @@ const PAGE_HOLD_NOTE: Record<PageHold, (min: number) => string> = {
   "auto-apply-off": () => "Автоподача по Match выключена — агент подаёт только на вакансии с отметкой Apply или Auto.",
 };
 
-/** One dream-company line for both engine paths (set aside as DREAM_DECISION, or blocked on a level line). */
-const DREAM_LINE = "Компания мечты, но уровень не совпадает с целью — агент сам не подаёт. Реши сам: Apply или Skip.";
-/** The mobile card shows this many "Why this fits" bullets; the rest sit behind «ещё». */
-const WHY_MOBILE = 2;
-
-function OpportunityCard({ o, candidate, queued, hold, holdKind: kind, dream, userDecision }: { o: Row; candidate: FitCandidate; queued: NextCycle["when"]; hold: string | null; holdKind: NotQueuedReason | null; dream: boolean; userDecision: boolean }) {
+/**
+ * Everything one card shows, computed here on the server: the client card (./_components/card.tsx) gets these few
+ * strings and flags instead of a pre-rendered element tree — the RSC payload of a 24-card page shrinks accordingly.
+ */
+function cardView(o: Row, { candidate, queued, hold, holdKind: kind, dream, userDecision }: { candidate: FitCandidate; queued: NextCycle["when"]; hold: string | null; holdKind: NotQueuedReason | null; dream: boolean; userDecision: boolean }): CardView {
   const fitOpp = { match: o.match, eligibility: o.eligibility, pInterview: o.pInterview, reasons: j<Reason[]>(o.matchReasons, []), blockers: j<string[]>(o.blockers, []).map(blockerRu), softGaps: j<string[]>(o.softGaps, []).map(blockerRu) };
-  const why = whyFits(fitOpp, o.job, candidate);
   const chance = interviewChance(o);
-  const salary = salaryLabel(o.job.salaryMin, o.job.salaryMax, o.job.currency);
   const applied = APPLIED_OR_LATER.includes(o.status);
   // A hard-blocked role can still score Match 100 (skills fit): the verdict and its reason go first (src/lib/engine/matching.ts).
   const verdict = fitVerdict({ eligibility: o.eligibility, match: o.match, blockers: fitOpp.blockers, pInterview: o.pInterview });
@@ -291,112 +292,19 @@ function OpportunityCard({ o, candidate, queued, hold, holdKind: kind, dream, us
   const blocked = verdict.blocked;
   // One risk line, never a repeat of what the card already says (the dream line, the stale hold).
   const risk = risks(fitOpp, o.job, candidate).find((r) => r !== DREAM_DECISION && !(kind === "stale" && /больше месяца/.test(r)));
-  const titleId = `opp-${o.id}`;
-  const place = placeWithFormat(o.job.location, o.job.remote);
-
-  return (
-    <li className={cx("glass flex flex-col gap-3 p-4 transition-shadow hover:shadow-[0_8px_28px_rgb(0_0_0/.09)] sm:gap-4 sm:p-5", o.status === "skipped" && "opacity-80")} aria-labelledby={titleId}>
-      {verdict.blocked && !dreamCall && (
-        <p className="flex items-start gap-2 rounded-xl border border-rose/15 bg-rose-soft/60 px-3 py-2 text-[13px] text-rose">
-          <b className="shrink-0 font-medium">{verdict.headline}</b>
-          <span className="min-w-0 text-ink-2">· {verdict.reason}</span>
-        </p>
-      )}
-
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 flex-col gap-1 sm:gap-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[13px] font-medium text-ink">{o.job.company}</span>
-            <LaneChip value={o.lane} />
-          </div>
-          <h2 id={titleId} className="h-serif text-[19px] !leading-[1.15] sm:text-[21px]">
-            <Link href={`/app/opportunities/${o.id}`} className="inline-flex min-h-10 items-center decoration-line underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
-              {o.job.title}
-            </Link>
-          </h2>
-        </div>
-        {verdict.blocked ? (
-          // Secondary: for a blocked role the number is the skills fit, not a chance.
-          <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-            <span className="label !text-[11px]">Совпадение навыков</span>
-            <span className="num text-[20px] leading-none text-ink-3">{o.match}%</span>
-          </div>
-        ) : (
-          <div className="flex shrink-0 flex-col items-end gap-1">
-            <span className="label !text-[11px]">Match</span>
-            <span className={cx("num text-[26px] leading-none sm:text-[30px]", TONE_TEXT[matchTone(o.match)])}>{o.match}%</span>
-          </div>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[13px] text-ink-2 sm:gap-y-2">
-        {/* No probability for a role outside the user's own filters: fitVerdict returns null there (no judgement). */}
-        {verdict.pInterview !== null && (
-          <span className="inline-flex items-center gap-1.5">
-            <span className={cx("size-1.5 rounded-full", TONE_DOT[chance.tone])} aria-hidden />
-            Interview probability: <b className={cx("num font-medium", TONE_TEXT[chance.tone])}>{chance.label}</b>
-          </span>
-        )}
-        {salary ? <span className="num text-head">{salary}</span> : <span className="hidden text-ink-3 sm:inline">зарплата не указана</span>}
-        {place && (
-          <span className="inline-flex min-w-0 items-center gap-1 text-ink-3">
-            <MapPin className="size-3.5 shrink-0 text-ink-4" aria-hidden />
-            <span className="truncate">{place}</span>
-          </span>
-        )}
-        <span className="hidden text-ink-3 sm:inline">опубликована {agoRu(o.job.postedAt)}</span>
-      </div>
-
-      {verdict.showWhyFits && why.length > 0 && !dreamCall && (
-        <div className="flex flex-col gap-1.5 sm:gap-2">
-          <span className="label !text-[11px]">Why this fits</span>
-          <ul className="grid gap-x-4 gap-y-1.5 text-[13.5px] text-ink-2 sm:grid-cols-2">
-            {why.map((w, i) => (
-              <li key={w} className={cx("min-w-0 items-start gap-2", i < WHY_MOBILE ? "flex" : "hidden sm:flex")}><Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={2.2} aria-hidden /><span>{w}</span></li>
-            ))}
-          </ul>
-          {why.length > WHY_MOBILE && (
-            <details className="group/why sm:hidden">
-              <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-1 text-[12.5px] text-teal focus-visible:rounded focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
-                <span className="group-open/why:hidden">ещё {why.length - WHY_MOBILE}</span>
-                <span className="hidden group-open/why:inline">свернуть</span>
-                <ChevronDown className="size-3.5 transition-transform group-open/why:rotate-180" aria-hidden />
-              </summary>
-              <ul className="flex flex-col gap-1.5 text-[13.5px] text-ink-2">
-                {why.slice(WHY_MOBILE).map((w) => (
-                  <li key={w} className="flex min-w-0 items-start gap-2"><Check className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={2.2} aria-hidden /><span>{w}</span></li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-      )}
-      {dreamCall && <p className="text-[12.5px] leading-snug text-amber">{DREAM_LINE}</p>}
-      {!blocked && !dreamCall && !applied && risk && <p className="text-[12.5px] text-amber">Учти: {risk}</p>}
-
-      <div className="mt-auto flex flex-wrap items-end justify-between gap-2 border-t border-line pt-3 sm:gap-3 sm:pt-4">
-        {applied ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusChip value={o.status} />
-            <Link href={`/app/applications/${o.id}`} className="inline-flex min-h-10 items-center gap-1 text-[13px] text-teal hover:text-head">Открыть заявку<ArrowRight className="size-3.5" aria-hidden /></Link>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {hold && !dreamCall && <span className="text-[12.5px] leading-snug text-ink-3">{hold}</span>}
-            {queued && (
-              <span className="inline-flex items-center gap-1.5 text-[12.5px] text-green">
-                <span className="size-1.5 rounded-full bg-green animate-pulse-dot" aria-hidden />
-                {queued === "tomorrow" ? "В очереди — агент подаст завтра" : "В очереди — агент подаст в следующем цикле"}
-              </span>
-            )}
-            <DecisionBar id={o.id} company={o.job.company} decision={o.decision} status={o.status} blocked={blocked} blockedBy={verdict.kind ?? undefined} pending={o.approvals.length} override={dreamCall ? null : override} forceEnable={dreamCall} userDecision={dreamCall} />
-          </div>
-        )}
-        {/* On a phone the title is the way in; the extra row would only make the card taller. */}
-        <Link href={`/app/opportunities/${o.id}`} className="hidden min-h-10 items-center gap-1 text-[12.5px] text-ink-3 hover:text-head sm:inline-flex" aria-label={`Подробнее: ${o.job.title}, ${o.job.company}`}>
-          Подробнее<ArrowRight className="size-3" aria-hidden />
-        </Link>
-      </div>
-    </li>
-  );
+  const lane = o.lane === "standard" ? null : LANE[o.lane] ?? null;
+  return {
+    id: o.id, company: o.job.company, title: o.job.title, lane, match: o.match, matchTone: matchTone(o.match), skipped: o.status === "skipped",
+    banner: blocked && !dreamCall ? { headline: verdict.headline, reason: verdict.reason } : null,
+    blocked, blockedBy: verdict.kind ?? undefined,
+    chance: verdict.pInterview !== null ? { label: chance.label, tone: chance.tone } : null,
+    salary: salaryLabel(o.job.salaryMin, o.job.salaryMax, o.job.currency) || null,
+    place: placeWithFormat(o.job.location, o.job.remote) || null,
+    posted: agoRu(o.job.postedAt),
+    why: verdict.showWhyFits && !dreamCall ? whyFits(fitOpp, o.job, candidate) : [],
+    dreamCall, risk: !blocked && !dreamCall && !applied && risk ? risk : null,
+    applied: applied ? { status: o.status, label: statusRu(o.status), tone: statusTone(o.status) } : null,
+    hold: hold && !dreamCall ? hold : null, queued,
+    decision: o.decision, status: o.status, pending: o.approvals.length, override: dreamCall ? null : override,
+  };
 }

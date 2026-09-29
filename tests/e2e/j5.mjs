@@ -1,6 +1,10 @@
 // Journey 5: Interview rooms.
-import { Client, db, form, check, findings, signupNew, isNotFound } from "./lib.mjs";
+import { Client, db, form, check, findings, signupNew, isNotFound, needsMode } from "./lib.mjs";
 import { userWithApps, email, INTERVIEW, ASSESS } from "./setup.mjs";
+
+// Rounds and offers are set up by pasting employer mail (setup.mjs → email()); simulation disables pasting — employers of
+// the fictional corpus write on their own there (covered by j18).
+needsMode("live", "rounds / offers are set up by pasting employer mail — pasting is disabled in simulation");
 
 const { c, apps } = await userWithApps("j5", 3);
 await email(c, apps[0], ...INTERVIEW(apps[0]));

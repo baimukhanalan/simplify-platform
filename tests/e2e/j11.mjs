@@ -1,6 +1,11 @@
 import { Client, db, form, check, findings } from "./lib.mjs";
 import { userWithApps, email, OFFER } from "./setup.mjs";
 import { crawl } from "./crawl.mjs";
+import { needsMode } from "./lib.mjs";
+
+// Rounds and offers are set up by pasting employer mail (setup.mjs → email()); simulation disables pasting — employers of
+// the fictional corpus write on their own there (covered by j18).
+needsMode("live", "rounds / offers are set up by pasting employer mail — pasting is disabled in simulation");
 // (a) after HIRED: leftovers
 {
   const { c, apps, camp } = await userWithApps("j11h", 2);

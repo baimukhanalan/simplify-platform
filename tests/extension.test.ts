@@ -241,6 +241,29 @@ describe("token auth + match + mark-submitted (DB)", () => {
     assert.equal(await find.findOpportunityForUrl(userId, "https://boards.greenhouse.io/acme/jobs/99999"), null);
   });
 
+  test("a non-ATS career site with >1000 roles: the page finds its own role by host + path, not the 50 newest of the host", async () => {
+    const camp = await db.campaign.findFirstOrThrow({ where: { userId } });
+    const N = 1200;
+    await db.job.createMany({ data: Array.from({ length: N }, (_, i) => ({ source: "remotive", externalId: `big-${i}`, dedupeKey: `big-${i}`, company: "BigCo", title: `Role ${i}`, postedAt: new Date(), url: `https://careers.bigco.com/jobs/${i}${i % 3 === 0 ? "/" : i % 3 === 1 ? "?src=feed" : ""}` })) });
+    const jobs = await db.job.findMany({ where: { company: "BigCo" }, select: { id: true, externalId: true } });
+    const old = new Date(Date.now() - 90 * 86400000);
+    await db.opportunity.createMany({ data: jobs.map((j) => ({ campaignId: camp.id, jobId: j.id, status: "qualified", match: 80 })) });
+    // The target is the OLDEST row of the host: a "50 most recent by host" lookup never reached it.
+    const idOf = async (i: number) => (await db.opportunity.findFirstOrThrow({ where: { job: { externalId: `big-${i}` } }, select: { id: true } })).id;
+    const target = await idOf(12);
+    await db.$executeRawUnsafe(`UPDATE "Opportunity" SET "updatedAt" = ? WHERE "id" = ?`, old.getTime(), target);
+    for (const u of ["https://careers.bigco.com/jobs/12", "http://www.careers.bigco.com/jobs/12/", "https://careers.bigco.com/jobs/12/apply?utm=x", "https://CAREERS.bigco.com/jobs/12#top"]) {
+      assert.equal((await find.findOpportunityForUrl(userId, u))?.id, target, u);
+    }
+    // /jobs/1, /jobs/120 and /jobs/1200 (none stored under that exact path) never stand in for each other.
+    assert.equal((await find.findOpportunityForUrl(userId, "https://careers.bigco.com/jobs/120"))?.id, await idOf(120));
+    assert.equal(await find.findOpportunityForUrl(userId, "https://careers.bigco.com/jobs/1200"), null);
+    assert.equal(await find.findOpportunityForUrl(userId, "https://careers.bigco.com/jobs"), null);
+    // The candidate query is by path, not by host: it returns the one role, whatever the host holds.
+    const where = find.urlPrefixes("careers.bigco.com/jobs/12").map((url) => ({ job: { url } }));
+    assert.equal(await db.opportunity.count({ where: { campaign: { userId }, OR: where } }), 1);
+  });
+
   test("mark-submitted: owner-scoped, needs a package, goes through submit(…, 'user'), closes the handoff, logs the event", async () => {
     assert.deepEqual(await submitted.markSubmittedByExtension(otherId, oppId), { ok: false, error: "not-found" });
     assert.deepEqual(await submitted.markSubmittedByExtension(userId, hhOppId), { ok: false, error: "no-package" });

@@ -242,7 +242,8 @@ export async function rerank(campaignId: string) {
   const skippedIds = opps.filter((o) => o.status === "skipped").map((o) => o.id);
   const manualSkips = new Set(
     skippedIds.length
-      ? (await db.event.findMany({ where: { userId: campaign.userId, opportunityId: { in: skippedIds }, type: { in: ["status_change", "approval"] } }, select: { opportunityId: true, data: true } }))
+      // Relational (the campaign's skipped roles), not an id list: tens of thousands of skips overflow the bind-parameter limit.
+      ? (await db.event.findMany({ where: { userId: campaign.userId, opportunity: { campaignId, status: "skipped" }, type: { in: ["status_change", "approval"] } }, select: { opportunityId: true, data: true } }))
           .filter((e) => { const d = j<{ to?: string; decision?: string }>(e.data, {}); return d.to === "skipped" || d.decision === "reject"; })
           .map((e) => e.opportunityId)
       : [],
@@ -689,7 +690,7 @@ export async function ingestEmail(userId: string, msg: { from: string; subject: 
   msg = { ...msg, from: noNul(msg.from), subject: noNul(msg.subject), body: noNul(msg.body) };
   const c = classifyEmail(msg.subject, msg.body);
   const opps = await db.opportunity.findMany({ where: { campaign: { userId }, status: { in: APPLIED_OR_LATER } }, include: { job: { select: { company: true, title: true } } } });
-  const oppId = msg.opportunityId ?? matchCompany(msg.from, msg.subject, msg.body, opps.map((o) => ({ id: o.id, company: o.job.company })));
+  const oppId = msg.opportunityId ?? matchCompany(msg.from, msg.subject, msg.body, opps.map((o) => ({ id: o.id, company: o.job.company, title: o.job.title, status: o.status, updatedAt: o.updatedAt })));
   const saved = await db.inboxMessage.create({ data: { userId, opportunityId: oppId, fromAddr: msg.from, subject: msg.subject, body: msg.body, classification: c.cls, confidence: c.confidence, deadline: c.deadline, simulated: Boolean(msg.simulated) } });
   const opp = oppId ? opps.find((o) => o.id === oppId) : undefined;
   if (!oppId || !opp) return { message: saved, updated: false };

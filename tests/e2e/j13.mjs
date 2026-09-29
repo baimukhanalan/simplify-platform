@@ -104,8 +104,8 @@ async function paidUser(label, opts) {
   check(!!running && b2 === runningPending, "J13.badge.newcampaign", "badge after a new campaign counts only its questions (legacy leftover ignored)", { b2, runningPending });
 }
 
-// ——— 4. /app/hired: open offer → Offer Desk; nothing → «HIRED soon»
-{
+// ——— 4. /app/hired: open offer → Offer Desk; nothing → «HIRED soon» (live: the offer comes from a pasted email)
+if (!isSim) {
   const { c, apps } = await userWithApps("j13hired", 1);
   let r = await c.get("/app/hired");
   check(r.status === 200 && /HIRED/.test(r.text), "J13.hired.none", "/app/hired without offers renders the placeholder", r.status);

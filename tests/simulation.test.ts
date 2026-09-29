@@ -304,6 +304,48 @@ describe("employer simulation (DB)", () => {
     assert.match(invite.fromAddr, /^Kumbez Pay0 Recruiting <talent@[a-z0-9]+\.[a-z.]+>$/);
   });
 
+  test("scheduled rounds never overlap (±90 min), spread over the day, one company never twice at once", async () => {
+    const { user, campaign } = await makeUser();
+    const ids: string[] = [];
+    // Twelve invites the same hour: two roles at one company among them.
+    for (let i = 0; i < 12; i++) ids.push((await submittedOpp(campaign.id, (await makeJob(FICTIONAL_SOURCE, { company: i < 2 ? "Twin Co" : `Busy Co ${i}` })).id, 3)).id);
+    const at = new Date(Date.now() - 3600000);
+    for (const id of ids) await sim.playStep(user.id, id, "recruiter", at);
+    const rounds = await db.interview.findMany({ where: { userId: user.id, status: "upcoming", round: { not: "assessment" } }, include: { opportunity: { include: { job: true } } } });
+    assert.equal(rounds.length, 12);
+    const times = rounds.map((r) => r.scheduledAt!.getTime()).sort((a, b) => a - b);
+    for (let i = 1; i < times.length; i++) assert.ok(times[i] - times[i - 1] >= 90 * 60000, `rounds ${new Date(times[i - 1]).toISOString()} and ${new Date(times[i]).toISOString()} overlap`);
+    const clock = (t: number) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Almaty", hour: "2-digit", minute: "2-digit" }).format(new Date(t));
+    assert.ok(new Set(times.map(clock)).size > 3, `spread over the day, not all at 10:00: ${times.map(clock).join(", ")}`);
+    for (const t of times) { const [h, m] = clock(t).split(":").map(Number); assert.ok(h * 60 + m >= 600 && h * 60 + m <= 1050, clock(t)); }
+    const twin = rounds.filter((r) => r.opportunity.job.company === "Twin Co").map((r) => r.scheduledAt!.getTime());
+    assert.equal(twin.length, 2);
+    assert.ok(Math.abs(twin[0] - twin[1]) >= 90 * 60000, "one company never gets two rounds at the same time");
+  });
+
+  test("freeRoundSlot: deterministic, skips busy slots, a full day moves to the next working day, past stays past", async () => {
+    const { freeRoundSlot, ROUND_GAP_MS } = await import("../src/lib/time");
+    const now = new Date("2026-09-28T03:00:00Z"); // Monday 08:00 Almaty
+    const at = new Date("2026-09-30T05:00:00Z"); // Wednesday 10:00 Almaty
+    const a = freeRoundSlot("recruiter", at, { now, start: 0.5 });
+    assert.equal(a.getTime(), freeRoundSlot("recruiter", at, { now, start: 0.5 }).getTime());
+    assert.equal(a.toISOString(), "2026-09-30T09:00:00.000Z", "start 0.5 → the middle of the day (14:00)");
+    const b = freeRoundSlot("technical", at, { now, start: 0.5, busy: [{ at: a }] });
+    assert.ok(Math.abs(b.getTime() - a.getTime()) >= ROUND_GAP_MS);
+    // Every half hour of Wednesday taken → Thursday.
+    const full = Array.from({ length: 16 }, (_, k) => ({ at: new Date(Date.UTC(2026, 8, 30, 5, 0) + k * 30 * 60000) }));
+    const c = freeRoundSlot("recruiter", at, { now, start: 0, busy: full });
+    assert.equal(c.toISOString(), "2026-10-01T05:00:00.000Z");
+    // A round already in the past never jumps into the future.
+    const past = freeRoundSlot("recruiter", new Date("2026-09-21T05:00:00Z"), { now, start: 0.9, busy: [{ at: new Date("2026-09-21T11:30:00Z") }] });
+    assert.ok(past < now && past.getTime() !== new Date("2026-09-21T11:30:00Z").getTime());
+    // Assessments keep their end-of-day deadline; the same company's second one moves a day.
+    const d1 = freeRoundSlot("assessment", at, { now, company: "X" });
+    const d2 = freeRoundSlot("assessment", at, { now, company: "X", busy: [{ at: d1, company: "X", round: "assessment" }] });
+    assert.equal(d2.getTime() - d1.getTime(), 86400000);
+    assert.equal(freeRoundSlot("assessment", at, { now, company: "Y", busy: [{ at: d1, company: "X", round: "assessment" }] }).getTime(), d1.getTime());
+  });
+
   test("concurrent runs (cron + page view in another instance) never write the same employer reply twice", async () => {
     const { user, campaign } = await makeUser();
     const ids: string[] = [];
