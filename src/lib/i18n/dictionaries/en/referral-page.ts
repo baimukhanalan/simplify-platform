@@ -1,0 +1,52 @@
+import type { referralPageRu } from "../ru/referral-page";
+
+export const referralPageEn: typeof referralPageRu = {
+  metaTitle: "Invite a friend",
+  eyebrow: "Bring a friend",
+  title: "Invite a <s>friend</s>",
+  sub: "Your friend gets −{pct}% on their first Career Campaign. You get +{days, plural, one {# day} other {# days}} on yours once they pay.",
+  shareText: "Simplify is an AI agent that job-hunts for you: it finds openings, tailors your CV and applies. Get −{pct}% on your first campaign with my link:",
+  yourLink: "Your link",
+  stats: {
+    invited: "Invited",
+    paid: "Paid",
+    daysEarned: "Days earned",
+  },
+  pending: "{n, plural, one {# more day} other {# more days}} credited — they'll be added when your next campaign starts.",
+  howTitle: "How it works",
+  steps: {
+    linkTitle: "Send your link",
+    linkText: "Share your personal link or code — in a messenger, in your stories, wherever suits you.",
+    friendTitle: "Your friend — −{pct}%",
+    friendText: "Your friend signs up with the link and gets {pct}% off their first campaign.",
+    youTitle: "You — +{days, plural, one {# day} other {# days}}",
+    youText: "Once your friend pays, {days, plural, one {# day is} other {# days are}} added to your campaign. No active one? The days wait for your next.",
+  },
+  rules: "One reward per invited friend. The discount applies only to the friend's first campaign; you can't invite yourself.",
+  friendsTitle: "Invited friends",
+  friendsCount: "{n, plural, one {# friend} other {# friends}}",
+  empty: "No one yet. Send your link — friends show up here as soon as they sign up.",
+  friendFallback: "Friend",
+  paidOn: "paid {date}",
+  since: "since {date}",
+  status: {
+    signedUp: "Awaiting payment",
+    paid: "+{days, plural, one {# day} other {# days}} for your next",
+    rewarded: "+{days, plural, one {# day} other {# days}}",
+  },
+  cta: {
+    title: "Invite a friend",
+    text: "Your friend gets −{pct}% on their first campaign, you get +{days, plural, one {# day} other {# days}} on yours.",
+  },
+  share: {
+    linkAria: "Your invite link",
+    copy: "Copy",
+    copied: "Copied",
+    copyFailedShort: "Didn't work",
+    newTab: " (opens in a new tab)",
+    share: "Share",
+    code: "Invite code: <code>{code}</code> — your friend can enter it when signing up.",
+    copyFailed: "Couldn't copy — select the link and copy it manually.",
+    shareUnavailable: "The system Share menu isn't available — copy the link instead.",
+  },
+};

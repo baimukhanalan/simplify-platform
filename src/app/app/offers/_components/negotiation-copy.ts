@@ -1,4 +1,5 @@
 import type { Aggressiveness } from "@/lib/engine/offer";
+import type { T } from "@/lib/i18n/translator";
 import { achievementGerund, achievementSentence, lcFirstWord, tidyAchievement } from "@/lib/engine/personalize";
 
 /**
@@ -57,28 +58,31 @@ export function talkingPoints(o: { role: string; low: string; high: string; stre
   return [lead, ...o.strengths.slice(0, 2).map(achievementSentence)];
 }
 
-/** Call script: Russian coaching, with the exact English phrase to say quoted. */
-export function callScript(o: { ask: string; walkaway: string; mode?: "base" | "no_push"; signing?: string }): string[] {
+/** One call-script step: coaching in the UI language, plus the exact English phrase to say (employer-facing) when there is one. */
+export type CallStep = { text: string; say?: string };
+
+/** Call script: coaching in the UI language (t), with the exact English phrase to say quoted separately. */
+export function callScript(t: T, o: { ask: string; walkaway: string; mode?: "base" | "no_push"; signing?: string }): CallStep[] {
   if (o.mode === "no_push") {
     return [
-      "Начни с благодарности и интереса к команде и задаче.",
-      `Скажи, что оклад устраивает, и назови, что обсудить: “The base works for me — could we look at a signing bonus of around ${o.signing} or a compensation review after six months?”`,
-      "Пауза. Дай им ответить первыми — не заполняй тишину.",
-      "Если бонус невозможен: спроси о дополнительных днях отпуска, бюджете на обучение или на оборудование.",
-      "Финал: договорись о следующих шагах и попроси обновлённый оффер письменно.",
+      { text: t("offersPage.call.thanks") },
+      { text: t("offersPage.call.basePackage"), say: `The base works for me — could we look at a signing bonus of around ${o.signing} or a compensation review after six months?` },
+      { text: t("offersPage.call.pause") },
+      { text: t("offersPage.call.noBonus") },
+      { text: t("offersPage.call.close") },
     ];
   }
   return [
-    "Начни с благодарности и интереса к команде и задаче.",
-    `Назови цифру: “Based on the scope and market data, I was hoping for a base closer to ${o.ask}.”`,
-    "Пауза. Дай им ответить первыми — не заполняй тишину.",
-    "Если возражают: спроси, где есть гибкость — оклад, бонус за подписание или пересмотр через 6 месяцев.",
-    `Нижняя граница: не соглашайся ниже ${o.walkaway} без компенсации в другом виде.`,
-    "Финал: договорись о следующих шагах и попроси обновлённый оффер письменно.",
+    { text: t("offersPage.call.thanks") },
+    { text: t("offersPage.call.nameFigure"), say: `Based on the scope and market data, I was hoping for a base closer to ${o.ask}.` },
+    { text: t("offersPage.call.pause") },
+    { text: t("offersPage.call.objections") },
+    { text: t("offersPage.call.floor", { walkaway: o.walkaway }) },
+    { text: t("offersPage.call.close") },
   ];
 }
 
-/** Levers when the base salary doesn't move (Russian chips). */
-export function fallbackLevers(signing: string): string[] {
-  return [`Бонус за подписание ≈ ${signing}`, "Пересмотр компенсации через 6 месяцев", "Дополнительные дни отпуска или бюджет на обучение", "Гибкая удалёнка или бюджет на оборудование"];
+/** Levers when the base salary doesn't move (chips in the UI language). */
+export function fallbackLevers(t: T, signing: string): string[] {
+  return [t("offersPage.levers.signing", { amount: signing }), t("offersPage.levers.review"), t("offersPage.levers.vacation"), t("offersPage.levers.remote")];
 }

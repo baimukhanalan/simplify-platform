@@ -3,6 +3,11 @@
 // Plurals: ru needs one/few/many, kk other (no plural after numerals), en one/other.
 // Brand words stay English in every language: the six primary nav items, Career Profile, Match, Readiness, Interview Room.
 import { globalErrorRu } from "./global-error";
+import { appErrorRu } from "./app-error";
+import { partCRu } from "./ru/part-c";
+import { partBRu } from "./ru/part-b";
+import { partARu } from "./ru/part-a";
+import { partFinalRu } from "./ru/part-final";
 
 export const ru = {
   common: {
@@ -637,16 +642,15 @@ export const ru = {
     notFoundSignedIn: "Ссылка устарела или страница переехала. Агент продолжает работать — вернись в кабинет.",
     notFoundSignedOut: "Ссылка устарела или страница переехала.",
     openToday: "Открыть Today",
-    appEyebrow: "Что-то пошло не так",
-    appTitle: "Экран не загрузился",
-    appText: "Агент при этом продолжает работать. Попробуй ещё раз — если не поможет, вернись в Today.",
-    code: "Код: {digest}",
-    retry: "Повторить",
-    toToday: "В Today",
+    ...appErrorRu,
     appNotFoundTitle: "Не нашли эту страницу",
     appNotFoundText: "Возможно, вакансия или интервью больше недоступны.",
     backToToday: "Вернуться в Today",
   },
+  ...partCRu,
+  ...partBRu,
+  ...partARu,
+  ...partFinalRu,
   globalError: globalErrorRu,
 };
 

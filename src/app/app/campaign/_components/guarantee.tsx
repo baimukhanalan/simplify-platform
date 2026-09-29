@@ -1,35 +1,37 @@
 import { ShieldCheck } from "lucide-react";
 import { Card, Chip, Label } from "@/components/ui";
 import type { GuaranteeView } from "@/lib/engine/guarantee";
+import { getT } from "@/lib/i18n/server";
 
-/** The public-offer wording of the guarantee — one sentence, reused by the plan picker. */
-export const GUARANTEE_PROMISE = "Если за 60 дней кампании не было ни одного приглашения на интервью, кампания продлевается на 30 дней бесплатно — один раз на кампанию.";
-
-const dayMonth = (d: Date | null) => (d ? d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" }) : "конца кампании");
-
-/** «Гарантия интервью» on the running campaign: the promise and where this campaign stands with it. */
-export function GuaranteeCard({ view, style }: { view: GuaranteeView; style?: React.CSSProperties }) {
+/** «Гарантия интервью» on the running campaign: the promise (campaignPage.guarantee.promise) and where this campaign stands with it. */
+export async function GuaranteeCard({ view, style }: { view: GuaranteeView; style?: React.CSSProperties }) {
+  const t = await getT();
+  const promise = t("campaignPage.guarantee.promise");
   return (
     <Card className="animate-rise" style={style}>
       <section aria-labelledby="guarantee-h" className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
           <ShieldCheck className="size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />
-          <Label><span id="guarantee-h">Гарантия интервью</span></Label>
+          <Label><span id="guarantee-h">{t("campaignPage.guarantee.title")}</span></Label>
         </div>
         {view.state === "extended" ? (
           <>
-            <Chip tone="green" dot wrap className="self-start">Кампания продлена по гарантии до {dayMonth(view.until)}</Chip>
-            <p className="text-[13.5px] text-ink-2">За 60 дней приглашений на интервью не было, поэтому агент работает ещё 30 дней бесплатно. Гарантия действует один раз на кампанию.</p>
+            <Chip tone="green" dot wrap className="self-start">
+              {view.until ? t("campaignPage.guarantee.extendedUntil", { date: t.date(view.until, "dayMonth") }) : t("campaignPage.guarantee.extendedOpen")}
+            </Chip>
+            <p className="text-[13.5px] text-ink-2">{t("campaignPage.guarantee.extendedText")}</p>
           </>
         ) : view.state === "not-needed" ? (
           <>
-            <Chip tone="teal" dot wrap className="self-start">Интервью уже есть — гарантия не понадобилась</Chip>
-            <p className="text-[13.5px] text-ink-3">{GUARANTEE_PROMISE}</p>
+            <Chip tone="teal" dot wrap className="self-start">{t("campaignPage.guarantee.notNeeded")}</Chip>
+            <p className="text-[13.5px] text-ink-3">{promise}</p>
           </>
         ) : (
           <>
-            <p className="text-[13.5px] text-ink-2">{GUARANTEE_PROMISE}</p>
-            <p className="text-[13.5px] text-head">Если интервью не будет до {dayMonth(view.until)}, продлим на 30 дней.</p>
+            <p className="text-[13.5px] text-ink-2">{promise}</p>
+            <p className="text-[13.5px] text-head">
+              {view.until ? t("campaignPage.guarantee.ifNoneUntil", { date: t.date(view.until, "dayMonth") }) : t("campaignPage.guarantee.ifNoneOpen")}
+            </p>
           </>
         )}
       </section>

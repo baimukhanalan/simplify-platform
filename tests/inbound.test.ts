@@ -20,6 +20,7 @@ import { ALIAS_RE, aliasBase, aliasOf, aliasesOf, makeAlias, translit } from "..
 import { decodeMimeWords, htmlToText, parseInbound, TEXT_MAX } from "../src/lib/inbound/parse";
 import { detectForwardingVerification } from "../src/lib/inbound/verify";
 import { isNonEmployer, senderNames } from "../src/lib/inbound/filter";
+import { authVerdict, domainNamesCompany, forwardedFrom, normMailbox, parseAuthResults } from "../src/lib/inbound/auth";
 
 const SECRET = process.env.INBOUND_EMAIL_SECRET!;
 const DAY = 86400000;
@@ -152,10 +153,19 @@ describe("forwarding confirmation letters", () => {
     assert.equal(v.requester, "aliya@gmail.com");
   });
   test("Yandex: link on yandex only; a link to another host is never offered", () => {
-    const y = detectForwardingVerification("Яндекс Почта <noreply@yandex.ru>", "Подтверждение пересылки писем", "Чтобы подтвердить пересылку, перейдите по ссылке https://mail.yandex.ru/re/confirm?id=abc. Или https://evil.com/x")!;
+    // Yandex's exact confirmation-URL shape isn't known: code only, never a link (not even on a yandex host).
+    const y = detectForwardingVerification("Яндекс Почта <noreply@yandex.ru>", "Подтверждение пересылки писем", "Код подтверждения: 4455667788. Или перейдите по ссылке https://mail.yandex.ru/re/confirm?id=abc. Или https://evil.com/x")!;
     assert.equal(y.provider, "yandex");
-    assert.equal(y.link, "https://mail.yandex.ru/re/confirm?id=abc");
+    assert.equal(y.code, "4455667788");
+    assert.equal(y.link, null);
+    assert.equal(detectForwardingVerification("noreply@yandex.ru", "Подтверждение пересылки", "https://mail.yandex.ru/re/confirm?id=abc"), null);
     assert.equal(detectForwardingVerification("noreply@yandex.ru", "Подтверждение пересылки", "https://evil.com/confirm"), null);
+    // Gmail: only the exact /mail/vf-… shape on mail-settings.google.com / mail.google.com.
+    for (const bad of ["https://accounts.google.com/x", "https://mail-settings.google.com/other/vf-abc", "https://mail-settings.google.com/mail/vf-abc?next=https://evil.com", "https://sites.google.com/mail/vf-x"]) {
+      const g = detectForwardingVerification("forwarding-noreply@google.com", "(#123456789) Gmail Forwarding Confirmation", `Confirmation code: 123456789 ${bad}`)!;
+      assert.equal(g.link, null, bad);
+      assert.equal(g.code, "123456789");
+    }
     // Spoofed sender with a phishing link: never a Google host → no link, and without a code → ignored.
     assert.equal(detectForwardingVerification("forwarding-noreply@google.com", "Gmail Forwarding Confirmation", "confirm here https://mail-settings.google.com.evil.io/x"), null);
   });
@@ -239,10 +249,11 @@ const req = (body: unknown, opts: { secret?: string | null; how?: "header" | "ba
   }
   return new Request(url, { method: "POST", headers, body: opts.raw ?? JSON.stringify(body) });
 };
+const GOOGLE_AUTH = [{ name: "Authentication-Results", value: "mx.cloudflare.net; dkim=pass header.d=google.com header.s=20230601; spf=pass smtp.mailfrom=forwarding-noreply@google.com; dmarc=pass header.from=google.com" }];
 const generic = (to: string, over: Record<string, unknown> = {}) => ({ to, from: "Acme Talent <jobs@acme.com>", subject: "Interview invitation", text: "We would love to invite you to an interview for the Data Analyst role at Acme. Please schedule a call.", messageId: `<${Math.random().toString(36).slice(2)}@acme.com>`, ...over });
 
 describe("webhook auth and limits", () => {
-  test("no secret configured → 503; wrong/missing secret → 401; header, basic (user or password) and ?token= work", async () => {
+  test("no secret configured → 503; wrong/missing secret → 401; header and basic-auth password work, basic user / ?token= don't", async () => {
     const { address } = await makeUser();
     const saved = process.env.INBOUND_EMAIL_SECRET;
     delete process.env.INBOUND_EMAIL_SECRET;
@@ -253,7 +264,8 @@ describe("webhook auth and limits", () => {
     assert.equal((await hook.handleInbound(req(generic(address), { secret: SECRET + "x" }))).status, 401);
     assert.equal((await hook.handleInbound(req(generic(address), { secret: "wrong", how: "basic" }))).status, 401);
     assert.equal((await hook.handleInbound(req(generic(address), { secret: "wrong", how: "token" }))).status, 401);
-    for (const how of ["header", "basic", "basic-user", "token"] as const) assert.equal((await hook.handleInbound(req(generic(address), { how }))).status, 200, how);
+    for (const how of ["header", "basic"] as const) assert.equal((await hook.handleInbound(req(generic(address), { how }))).status, 200, how);
+    for (const how of ["basic-user", "token"] as const) assert.equal((await hook.handleInbound(req(generic(address), { how }))).status, 401, how);
     assert.ok(hook.safeEqual("abc", "abc") && !hook.safeEqual("abc", "abd") && !hook.safeEqual("abc", "abcd"));
   });
 
@@ -278,7 +290,13 @@ describe("delivery", () => {
   test("Postmark letter to the alias moves the application exactly like the engine path; +tag/case/Delivered-To map", async () => {
     const { user, campaign, alias } = await makeUser();
     const opp = await makeOpp(campaign.id, "Acme");
-    const p = postmarkPayload({ OriginalRecipient: "", Headers: [{ Name: "Message-ID", Value: "<pm-1@acme.com>" }, { Name: "X-Original-To", Value: `${alias.toUpperCase()}+Jobs@IN.SIMPLIFY.KZ` }] });
+    const p = postmarkPayload({ OriginalRecipient: "", Headers: [
+      { Name: "Received-SPF", Value: `Pass (sender SPF authorized) identity=mailfrom; client-ip=209.85.1.1; envelope-from=${user.email.replace("@", "+caf_=x@")}; receiver=abc@inbound.postmarkapp.com` },
+      { Name: "X-Spam-Tests", Value: "DKIM_SIGNED,DKIM_VALID,DKIM_VALID_AU,SPF_PASS" },
+      { Name: "Message-ID", Value: "<pm-1@acme.com>" },
+      { Name: "Delivered-To", Value: user.email },
+      { Name: "X-Original-To", Value: `${alias.toUpperCase()}+Jobs@IN.SIMPLIFY.KZ` },
+    ] });
     const r = await hook.handleInbound(req(p, { how: "basic" }));
     assert.equal(r.status, 200);
     const msgs = await db.inboxMessage.findMany({ where: { userId: user.id } });
@@ -330,14 +348,14 @@ describe("delivery", () => {
     assert.equal(st?.state, "live");
     assert.equal(st?.address, address);
     assert.equal(st?.lastAt, null);
-    await hook.handleInbound(req({ to: address, from: GMAIL_RU.from, subject: GMAIL_RU.subject, text: GMAIL_RU.text, messageId: "<v1@google.com>" }));
+    await hook.handleInbound(req({ to: address, from: GMAIL_RU.from, subject: GMAIL_RU.subject, text: GMAIL_RU.text, messageId: "<v1@google.com>", headers: GOOGLE_AUTH }));
     assert.equal(await db.inboxMessage.count({ where: { userId: user.id } }), 0);
     st = await svc.forwardingStatus(user.id);
     assert.equal(st?.verification?.code, "987654321");
     assert.match(st?.verification?.link ?? "", /^https:\/\/mail-settings\.google\.com\//);
     await svc.dismissVerification(user.id);
     assert.equal((await svc.forwardingStatus(user.id))?.verification, null);
-    await hook.handleInbound(req({ to: address, from: GMAIL_EN.from, subject: GMAIL_EN.subject, text: GMAIL_EN.text }));
+    await hook.handleInbound(req({ to: address, from: GMAIL_EN.from, subject: GMAIL_EN.subject, text: GMAIL_EN.text, headers: GOOGLE_AUTH }));
     assert.equal((await svc.forwardingStatus(user.id))?.verification?.code, "123456789");
     await new Promise((r) => setTimeout(r, 5));
     await hook.handleInbound(req(generic(address)));
@@ -400,9 +418,172 @@ describe("delivery", () => {
       users.flatMap((u) => Array.from({ length: 100 }, (_, i) => hook.handleInbound(req(generic(u.address, { messageId: `<b-${u.alias}-${i}@acme.com>`, subject: i % 2 ? "Thank you for applying" : "Update", text: `Thank you for applying to Acme, letter ${i}.` }))))),
     );
     assert.ok(res.every((r) => r.status === 200), `statuses: ${[...new Set(res.map((r) => r.status))]}`);
-    for (const u of users) assert.equal(await db.inboxMessage.count({ where: { userId: u.user.id, source: "forward" } }), 100);
+    for (const u of users) assert.equal(await db.inboxMessage.count({ where: { userId: u.user.id, source: { in: svc.FORWARD_SOURCES } } }), 100);
     const over = await hook.handleInbound(req(generic(users[0].address)));
     assert.equal(over.status, 429);
     console.log(`  500 letters in ${Date.now() - t0} ms`);
+  });
+});
+
+// ——— Sender authentication: who may move an application ———
+const AR = (v: string) => ({ name: "Authentication-Results", value: v });
+const AAR = (v: string) => ({ name: "ARC-Authentication-Results", value: v });
+
+describe("sender authentication (pure)", () => {
+  test("parses RFC 8601 / ARC results; comments dropped", () => {
+    const p = parseAuthResults("mx.cloudflare.net; dkim=pass (2048-bit key) header.d=acme.com header.s=s1; spf=softfail smtp.mailfrom=x@y.io; dmarc=pass (p=REJECT) header.from=acme.com")!;
+    assert.equal(p.authserv, "mx.cloudflare.net");
+    assert.deepEqual(p.results.map((r) => `${r.method}=${r.result}`), ["dkim=pass", "spf=softfail", "dmarc=pass"]);
+    assert.equal(parseAuthResults("i=2; mx.cloudflare.net; arc=pass", true)?.instance, 2);
+    assert.equal(parseAuthResults("mx.cloudflare.net; arc=pass", true), null, "an ARC set needs its instance");
+  });
+
+  const H = (...xs: { name: string; value: string }[]) => xs.map((x) => [x.name.toLowerCase(), x.value] as [string, string]);
+  test("our receiver's aligned pass counts; unaligned, failed, foreign-authserv and lower (injected) verdicts don't", () => {
+    assert.ok(authVerdict("HR <hr@acme.com>", H(AR("mx.cloudflare.net; dmarc=pass header.from=acme.com")), "generic").pass);
+    assert.ok(authVerdict("hr@careers.acme.com", H(AR("mx.cloudflare.net; dkim=pass header.d=acme.com")), "generic").pass, "subdomain alignment");
+    assert.ok(authVerdict("hr@acme.com", H(AR("mx.cloudflare.net; spf=pass smtp.mailfrom=bounce@mail.acme.com")), "generic").pass);
+    assert.ok(!authVerdict("hr@acme.com", H(AR("mx.cloudflare.net; dkim=pass header.d=evil.com")), "generic").pass, "not aligned");
+    assert.ok(!authVerdict("hr@acme.com", H(AR("mx.cloudflare.net; dkim=fail header.d=acme.com; dmarc=fail header.from=acme.com")), "generic").pass);
+    assert.ok(!authVerdict("hr@acme.com", H(AR("evil-mx.example; dmarc=pass header.from=acme.com")), "generic").pass, "untrusted authserv-id");
+    assert.ok(!authVerdict("hr@acme.com", H(AR("mx.cloudflare.net; dkim=none"), AR("mx.cloudflare.net; dkim=pass header.d=acme.com")), "generic").pass, "only the topmost header");
+    assert.ok(!authVerdict("hr@acme.com", [], "generic").pass);
+    // Postmark's own headers only for Postmark payloads.
+    const pm = H({ name: "X-Spam-Tests", value: "DKIM_SIGNED,DKIM_VALID,DKIM_VALID_AU" });
+    assert.ok(authVerdict("hr@acme.com", pm, "postmark").pass);
+    assert.ok(!authVerdict("hr@acme.com", pm, "generic").pass);
+    assert.ok(!authVerdict("hr@acme.com", H({ name: "Received-SPF", value: "Pass identity=mailfrom; envelope-from=hr@acme.com; receiver=x@evil.io" }), "postmark").pass);
+  });
+
+  test("ARC: a trusted forwarder's verdict counts only behind our receiver's arc=pass", () => {
+    const chain = (arc: string) => H(AAR(`i=2; mx.cloudflare.net; arc=${arc}; spf=pass smtp.mailfrom=aliya+caf_=x@gmail.com`), AAR("i=1; mx.google.com; dkim=pass header.i=@acme.com; dmarc=pass header.from=acme.com"));
+    const v = authVerdict("hr@acme.com", chain("pass"), "generic");
+    assert.equal(v.pass, true);
+    assert.equal(v.method, "arc");
+    assert.ok(!authVerdict("hr@acme.com", chain("fail"), "generic").pass);
+    assert.ok(!authVerdict("hr@acme.com", H(AAR("i=2; mx.cloudflare.net; arc=pass"), AAR("i=1; mx.evil.io; dmarc=pass header.from=acme.com")), "generic").pass, "untrusted forwarder");
+  });
+
+  test("forwarding chain and company domain", () => {
+    assert.equal(normMailbox("A.Liya+caf_=x=in.simplify.kz@GoogleMail.com"), "aliya@gmail.com");
+    assert.ok(forwardedFrom({ "x-forwarded-for": "aliya@gmail.com alias.abcde@in.simplify.kz" }, ["aliya@gmail.com"]));
+    assert.ok(forwardedFrom({ "return-path": "<a.liya+caf_=alias=in.simplify.kz@gmail.com>" }, ["aliya@gmail.com"]));
+    assert.ok(!forwardedFrom({ "x-forwarded-for": "other@gmail.com" }, ["aliya@gmail.com"]));
+    assert.ok(!forwardedFrom({}, []));
+    assert.ok(domainNamesCompany("mail.acme.com", "Acme Inc"));
+    assert.ok(domainNamesCompany("kaspi.kz", "Kaspi.kz"));
+    assert.ok(!domainNamesCompany("evil.com", "Acme"));
+    assert.ok(!domainNamesCompany("acme-careers.io", "Acme"), "a longer lookalike label");
+    assert.ok(domainNamesCompany("kaspi.kz", "Kaspi Bank"));
+  });
+});
+
+describe("delivery: forged vs authenticated letters", () => {
+  const OFFER = { subject: "Job offer — Data Analyst", text: "We are pleased to offer you the Data Analyst position at Acme. Base salary $90,000. Please sign the offer letter by Friday." };
+  const REJECT = { subject: "Your application", text: "Unfortunately we decided to move forward with other candidates for the Data Analyst role at Acme." };
+  const INTERVIEW = { subject: "Interview invitation", text: "We would love to invite you to an interview for the Data Analyst role at Acme. Please schedule a call." };
+  const mid = () => `<${Math.random().toString(36).slice(2)}@acme.com>`;
+  /** A letter the user's Gmail auto-forwarded: ARC chain sealed by Google, verified by our receiver. */
+  const forwarded = (mailbox: string, domain = "acme.com") => [
+    AAR(`i=2; mx.cloudflare.net; arc=pass; spf=pass smtp.mailfrom=${mailbox.replace("@", "+caf_=x@")}`),
+    AR(`mx.cloudflare.net; arc=pass; spf=pass smtp.mailfrom=${mailbox.replace("@", "+caf_=x@")}`),
+    AAR(`i=1; mx.google.com; dkim=pass header.i=@${domain}; spf=pass smtp.mailfrom=bounce@${domain}; dmarc=pass header.from=${domain}`),
+    { name: "X-Forwarded-For", value: `${mailbox} alias@in.simplify.kz` },
+    { name: "Delivered-To", value: mailbox },
+  ];
+  const statusOf = async (id: string) => (await db.opportunity.findUniqueOrThrow({ where: { id } })).status;
+
+  test("a forged, unauthenticated offer is stored and shown but inert: no status move, no Offer, no Interview", async () => {
+    const { user, campaign, address } = await makeUser();
+    const opp = await makeOpp(campaign.id, "Acme", "recruiter");
+    // Claims to come through the user's own mailbox, but nothing authenticates acme.com.
+    const r = await (await hook.handleInbound(req(generic(address, { ...OFFER, from: "Acme HR <hr@acme.com>", messageId: mid(), headers: [{ name: "X-Forwarded-For", value: user.email }] })))).json();
+    assert.deepEqual(r.outcomes, ["unverified"]);
+    const m = await db.inboxMessage.findFirstOrThrow({ where: { userId: user.id } });
+    assert.equal(m.source, svc.UNVERIFIED_SOURCE);
+    assert.equal(m.classification, "offer", "classification kept for display");
+    assert.equal(m.opportunityId, opp.id);
+    assert.equal(await statusOf(opp.id), "recruiter");
+    assert.equal(await db.offer.count({ where: { userId: user.id } }), 0);
+    // A forged interview / rejection: the same.
+    await hook.handleInbound(req(generic(address, { ...INTERVIEW, messageId: mid() })));
+    await hook.handleInbound(req(generic(address, { ...REJECT, messageId: mid(), headers: [AR("mx.cloudflare.net; dkim=none; spf=fail smtp.mailfrom=x@evil.io"), AR("mx.cloudflare.net; dmarc=pass header.from=acme.com"), { name: "Delivered-To", value: user.email }] })));
+    assert.equal(await statusOf(opp.id), "recruiter");
+    assert.equal(await db.interview.count({ where: { opportunityId: opp.id } }), 0);
+    assert.equal(await db.inboxMessage.count({ where: { userId: user.id, source: svc.UNVERIFIED_SOURCE } }), 3);
+  });
+
+  test("authenticated auto-forward from the confirmed mailbox with the company's domain applies (rejection, offer)", async () => {
+    const { user, campaign, address } = await makeUser();
+    const a = await makeOpp(campaign.id, "Acme", "submitted");
+    // Authenticated Gmail confirmation names the mailbox that forwards: aliya@gmail.com.
+    await hook.handleInbound(req({ to: address, from: GMAIL_RU.from, subject: GMAIL_RU.subject, text: GMAIL_RU.text, headers: GOOGLE_AUTH }));
+    const r = await (await hook.handleInbound(req(generic(address, { ...REJECT, from: "Acme Talent <jobs@acme.com>", messageId: mid(), headers: forwarded("aliya@gmail.com") })))).json();
+    assert.deepEqual(r.outcomes, ["delivered"]);
+    assert.equal(await statusOf(a.id), "rejected");
+    const m = await db.inboxMessage.findFirstOrThrow({ where: { userId: user.id } });
+    assert.equal(m.source, "forward");
+
+    const b = await makeOpp(campaign.id, "Globex", "final");
+    await hook.handleInbound(req(generic(address, { subject: "Offer from Globex", text: "We are pleased to offer you the Data Analyst position at Globex. Base salary $90,000.", from: "Globex People <people@globex.io>", messageId: mid(), headers: forwarded("a.liya@gmail.com", "globex.io") })));
+    assert.equal(await statusOf(b.id), "offer");
+    assert.equal(await db.offer.count({ where: { opportunityId: b.id } }), 1);
+  });
+
+  test("the account e-mail counts as the forwarding mailbox; an ATS domain naming the company applies", async () => {
+    const { user, campaign, address } = await makeUser();
+    const opp = await makeOpp(campaign.id, "Acme", "submitted");
+    await hook.handleInbound(req(generic(address, { ...INTERVIEW, from: "Acme via Greenhouse <no-reply@us.greenhouse-mail.io>", messageId: mid(), headers: forwarded(user.email, "us.greenhouse-mail.io") })));
+    assert.equal(await statusOf(opp.id), "recruiter");
+  });
+
+  test("authenticated but inert: another mailbox, a sender domain that isn't the company, a display name only", async () => {
+    const { user, campaign, address } = await makeUser();
+    const opp = await makeOpp(campaign.id, "Acme", "submitted");
+    // Not through the user's mailbox (direct to the alias, or someone else's forwarding).
+    await hook.handleInbound(req(generic(address, { ...REJECT, messageId: mid(), headers: [AR("mx.cloudflare.net; dmarc=pass header.from=acme.com")] })));
+    await hook.handleInbound(req(generic(address, { ...REJECT, messageId: mid(), headers: forwarded("stranger@gmail.com") })));
+    // The attacker's own authenticated domain with the company in the display name.
+    await hook.handleInbound(req(generic(address, { ...REJECT, from: "Acme Talent <hr@acme-careers-team.io>", messageId: mid(), headers: forwarded(user.email, "acme-careers-team.io") })));
+    await hook.handleInbound(req(generic(address, { ...REJECT, from: "Acme Talent <hr@evil.io>", messageId: mid(), headers: forwarded(user.email, "evil.io") })));
+    assert.equal(await statusOf(opp.id), "submitted");
+    assert.equal(await db.inboxMessage.count({ where: { userId: user.id, source: svc.UNVERIFIED_SOURCE } }), 4);
+  });
+
+  test("a letter forwarded by hand («Fwd:» in the body) is shown with its classification but never applied", async () => {
+    const { user, campaign, address } = await makeUser();
+    const opp = await makeOpp(campaign.id, "Acme", "recruiter");
+    const text = "see below\n\n---------- Forwarded message ---------\nFrom: Acme Talent <jobs@acme.com>\nSubject: Job offer — Data Analyst\n\nWe are pleased to offer you the Data Analyst position at Acme. Base salary $90,000.";
+    // Even from the user's own authenticated mailbox.
+    await hook.handleInbound(req(generic(address, { subject: "Fwd: Job offer", text, from: `Me <${user.email}>`, messageId: mid(), headers: [AR(`mx.cloudflare.net; dmarc=pass header.from=${user.email.split("@")[1]}`), { name: "Delivered-To", value: user.email }] })));
+    const m = await db.inboxMessage.findFirstOrThrow({ where: { userId: user.id } });
+    assert.equal(m.fromAddr, "Acme Talent <jobs@acme.com>");
+    assert.equal(m.classification, "offer");
+    assert.equal(m.source, svc.UNVERIFIED_SOURCE);
+    assert.equal(await statusOf(opp.id), "recruiter");
+    assert.equal(await db.offer.count({ where: { userId: user.id } }), 0);
+  });
+
+  test("phishing confirmation: an unauthenticated letter never shows a link, never names a mailbox, never replaces a pending code", async () => {
+    const { user, address } = await makeUser();
+    // Forged «Gmail» confirmation with a well-formed Google link: code only, no link, no requester.
+    await hook.handleInbound(req({ to: address, from: GMAIL_EN.from, subject: GMAIL_EN.subject, text: GMAIL_EN.text }));
+    let st = await svc.forwardingStatus(user.id);
+    assert.equal(st?.verification?.code, "123456789");
+    assert.equal(st?.verification?.link, null);
+    assert.equal(st?.verification?.requester, null);
+    // The genuine one replaces it; a later forgery can't overwrite the genuine pending code.
+    await hook.handleInbound(req({ to: address, from: GMAIL_RU.from, subject: GMAIL_RU.subject, text: GMAIL_RU.text, headers: GOOGLE_AUTH }));
+    await hook.handleInbound(req({ to: address, from: GMAIL_EN.from, subject: GMAIL_EN.subject.replace("123456789", "111111111"), text: GMAIL_EN.text.replace("123456789", "111111111") }));
+    st = await svc.forwardingStatus(user.id);
+    assert.equal(st?.verification?.code, "987654321");
+    assert.match(st?.verification?.link ?? "", /^https:\/\/mail-settings\.google\.com\/mail\/vf-/);
+    // The forged requester (alan@gmail.com) is not a trusted mailbox: its forwards stay inert.
+    const { campaign } = { campaign: await db.campaign.findFirstOrThrow({ where: { userId: user.id } }) };
+    const opp = await makeOpp(campaign.id, "Acme", "submitted");
+    await hook.handleInbound(req(generic(address, { ...REJECT, messageId: mid(), headers: forwarded("alan@gmail.com") })));
+    assert.equal(await statusOf(opp.id), "submitted");
+    await hook.handleInbound(req(generic(address, { ...REJECT, messageId: mid(), headers: forwarded("aliya@gmail.com") })));
+    assert.equal(await statusOf(opp.id), "rejected");
   });
 });

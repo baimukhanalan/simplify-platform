@@ -12,8 +12,9 @@ const digest = (v: string) => createHash("sha256").update(v).digest();
 export const safeEqual = (a: string, b: string) => timingSafeEqual(digest(a), digest(b)) && a.length === b.length;
 
 /**
- * The shared secret, from any of: `X-Inbound-Secret` header (the Worker), HTTP basic auth — user or password (Postmark:
- * https://inbound:<secret>@host/api/inbound/email), or `?token=` (Postmark URLs without credentials).
+ * The shared secret, from the `X-Inbound-Secret` header (the Worker) or the PASSWORD of HTTP basic auth (Postmark:
+ * https://inbound:<secret>@host/api/inbound/email — Postmark supports credentials in the webhook URL). The basic-auth
+ * user name and query strings are never accepted: they end up in access logs.
  */
 export function authorized(req: Request, secret = inboundSecret()) {
   if (!secret) return false;
@@ -25,19 +26,13 @@ export function authorized(req: Request, secret = inboundSecret()) {
     try {
       const decoded = Buffer.from(auth.replace(/^basic\s+/i, "").trim(), "base64").toString("utf8");
       const i = decoded.indexOf(":");
-      if (i >= 0) candidates.push(decoded.slice(0, i), decoded.slice(i + 1));
+      if (i >= 0) candidates.push(decoded.slice(i + 1));
     } catch {
       /* malformed */
     }
   }
-  try {
-    const t = new URL(req.url).searchParams.get("token");
-    if (t) candidates.push(t);
-  } catch {
-    /* relative URL */
-  }
   let ok = false;
-  for (const c of candidates.slice(0, 4)) if (c && safeEqual(c, secret)) ok = true; // no early exit: same work either way
+  for (const c of candidates.slice(0, 2)) if (c && safeEqual(c, secret)) ok = true; // no early exit: same work either way
   return ok;
 }
 

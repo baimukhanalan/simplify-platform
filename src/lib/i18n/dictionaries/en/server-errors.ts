@@ -1,0 +1,31 @@
+import type { serverErrorsRu } from "../ru/server-errors";
+
+export const serverErrorsEn: typeof serverErrorsRu = {
+  checkLimit: "Too many checks. Try again in {n} min.",
+  checkNoCv: "Add your CV: upload a PDF or paste the text (at least a few paragraphs).",
+  checkFailed: "Couldn't analyze the CV. Try again or paste the text manually.",
+  badLink: "This doesn't look like a valid link",
+  needCv: "Upload a PDF or paste your CV text — the agent will parse it.",
+  checkFields: "Check the highlighted fields",
+  needTitle: "Enter a job title or name",
+  positionNotFound: "Position not found",
+  fixed: "Fixed",
+  turnStale: "This question is out of date — refresh the page",
+  pickOption: "Pick one of the options",
+  needRole: "What role are we looking for? For example, Data Analyst",
+  needLevel: "Pick a level",
+  needRegion: "Pick at least one region",
+  needFormat: "Pick at least one work format",
+  friendDiscount: "{name} · −{pct}% off your first campaign",
+  cvParse: {
+    tooMany: "Too many uploads — try again later",
+    badRequest: "Expected multipart/form-data with a file field",
+    noFile: "No file received",
+    tooBig: "The file is larger than 5 MB",
+    badType: "Only PDF and TXT are supported",
+    notPdf: "This file doesn't look like a PDF",
+    tooLong: "The CV is longer than 20 pages — shorten the file",
+    unreadable: "Couldn't read the file. Try another PDF or paste the text manually.",
+    noText: "The file has almost no text — it may be a scan. Paste your CV text manually.",
+  },
+};

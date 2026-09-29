@@ -6,18 +6,18 @@ import { intentFromParams, intentQuery } from "../_components/campaign-intent";
 import { cleanPlan } from "../_components/plan-pref";
 import { AuthExperience } from "./_components/auth-experience";
 import { REFERRAL_COOKIE } from "@/lib/referral";
-import { getDictionary, getT } from "@/lib/i18n/server";
+import { entryLocale, getDictionary, getT } from "@/lib/i18n/server";
 import { DICTIONARIES } from "@/lib/i18n/dictionaries";
 import { I18nScope } from "@/lib/i18n/scope";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getT();
+  const t = await getT(await entryLocale());
   return { title: t("meta.login"), description: t("meta.loginDescription") };
 }
 
 /** The sign-in/sign-up actions answer in Russian: {Russian text → current language} for the srv* messages. */
 async function serverErrorMap() {
-  const dict = await getDictionary();
+  const dict = await getDictionary(await entryLocale());
   const out: Record<string, string> = {};
   for (const [k, ru] of Object.entries(DICTIONARIES.ru.auth)) if (k.startsWith("srv")) out[ru] = dict.auth[k as keyof typeof dict.auth];
   return out;
@@ -42,9 +42,14 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const mode = one(sp.mode) === "signup" || ref || ((intent || plan) && one(sp.mode) !== "login") ? "signup" : "login";
   // A friend's invite remembered by /r/<code> prefills the field (it doesn't switch the page to signup by itself).
   const remembered = ref || (await cookies()).get(REFERRAL_COOKIE)?.value?.toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 32) || "";
+  // A first-time visitor sees this page in the browser's language (entryLocale); the rest of the site stays on the saved
+  // choice. lang on the wrapper keeps the page's language right even when it differs from <html lang>.
+  const locale = await entryLocale();
   return (
-    <I18nScope ns={["auth", "preview"]}>
-      <AuthExperience initialMode={mode} refCode={remembered} next={next} intent={intent} plan={plan} serverErrors={await serverErrorMap()} />
-    </I18nScope>
+    <div lang={locale} className="contents">
+      <I18nScope ns={["common", "switcher", "legalChrome", "auth", "preview"]} locale={locale}>
+        <AuthExperience initialMode={mode} refCode={remembered} next={next} intent={intent} plan={plan} serverErrors={await serverErrorMap()} />
+      </I18nScope>
+    </div>
   );
 }

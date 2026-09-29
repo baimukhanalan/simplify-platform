@@ -2,22 +2,25 @@ import { ArrowRight, CalendarClock } from "lucide-react";
 import { openNotification } from "@/lib/actions/notifications";
 import type { PushMoment as Moment } from "@/lib/ops-data";
 import { cx } from "@/components/ui";
-import { assessmentDeadline, count } from "../../_components/ru";
+import { getT } from "@/lib/i18n/server";
+import type { T } from "@/lib/i18n/translator";
 import { DismissButton, PushGate } from "./push-controls";
 
-/** «пятница, 3 октября, 18:00» — lowercase inside a sentence («Дедлайн: пятница…»), capitalised when it starts the line. */
-function when(d: Date | null, capitalise: boolean) {
+/** «Пт, 3 октября, 18:00» · «Fri, October 3, 18:00» — Almaty time, in the interface language. */
+function when(t: T, d: Date | null) {
   if (!d) return null;
-  const s = d.toLocaleString("ru-RU", { timeZone: "Asia/Almaty", weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" });
-  return capitalise ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  const s = t("shell.moment.when", { date: t.date(d, "weekdayDayMonth"), time: t.time(d) });
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-const KIND: Record<string, { eyebrow: string; headline: string; dark: boolean }> = {
-  interview: { eyebrow: "Новое интервью", headline: "INTERVIEW", dark: false },
-  assessment: { eyebrow: "Тестовое задание", headline: "Ты на следующем этапе", dark: false },
-  offer: { eyebrow: "Оффер", headline: "YOU GOT THE OFFER", dark: true },
-  hired: { eyebrow: "Новая работа", headline: "HIRED.", dark: true },
+type Kind = "interview" | "assessment" | "offer" | "hired";
+const KIND: Record<Kind, { dark: boolean }> = {
+  interview: { dark: false },
+  assessment: { dark: false },
+  offer: { dark: true },
+  hired: { dark: true },
 };
+const isKind = (type: string): type is Kind => Object.hasOwn(KIND, type);
 
 /** Where a moment would only repeat what the screen already shows. */
 function hiddenOn(m: Moment, todayShowsOffer: boolean) {
@@ -47,24 +50,25 @@ export function PushMoment({ m, more, todayShowsOffer = false }: { m: Moment; mo
   return <PushGate {...hiddenOn(m, todayShowsOffer)}><MomentBar m={m} more={more} /></PushGate>;
 }
 
-const moreLabel = (more: number) => `ещё ${count(more, ["уведомление", "уведомления", "уведомлений"])}`;
-
-function MomentBar({ m, more }: { m: Moment; more: number }) {
-  const k = KIND[m.type];
+async function MomentBar({ m, more }: { m: Moment; more: number }) {
+  const t = await getT();
   const titleId = `moment-${m.id}`;
+  const moreLabel = t("shell.moment.more", { n: more });
 
-  if (!k) {
+  if (!isKind(m.type)) {
     // Quiet notice for anything that isn't a milestone (rejection, info).
     return (
       <section aria-labelledby={titleId} className="glass mb-5 flex animate-rise items-center gap-3 px-4 py-2.5 sm:px-5">
         <span className="size-2 shrink-0 rounded-full bg-teal" aria-hidden />
-        <p id={titleId} className="min-w-0 flex-1 break-words text-[14px] text-ink-2"><span className="text-head">{m.title}</span>{m.body && <span className="text-ink-3"> · {m.body}</span>}{more > 0 && <span className="text-ink-3"> · {moreLabel(more)}</span>}</p>
+        <p id={titleId} className="min-w-0 flex-1 break-words text-[14px] text-ink-2"><span lang="ru" className="text-head">{m.title}</span>{m.body && <span lang="ru" className="text-ink-3"> · {m.body}</span>}{more > 0 && <span className="text-ink-3"> · {moreLabel}</span>}</p>
         <DismissButton id={m.id} light={false} />
       </section>
     );
   }
 
-  const time = when(m.when, m.type !== "assessment");
+  const kind = m.type;
+  const k = KIND[kind];
+  const time = m.when && (kind === "assessment" ? t("shell.moment.deadline", { date: t.date(m.when, "weekdayDayMonth"), time: t.time(m.when) }) : when(t, m.when));
   const who = [m.company, m.role].filter(Boolean).join(" · ") || m.body;
   return (
     <section
@@ -79,16 +83,16 @@ function MomentBar({ m, more }: { m: Moment; more: number }) {
         <div className="flex min-w-0 flex-1 basis-[260px] flex-col gap-1">
           <span className="flex flex-wrap items-center gap-x-2 font-mono text-[11px] uppercase tracking-[.1em] text-white/70">
             <span className="size-1.5 rounded-full bg-[#8fc7ad] animate-pulse-dot" aria-hidden />
-            {k.eyebrow}
-            {more > 0 && <span className="text-white/60">· {moreLabel(more)}</span>}
+            {t(`shell.moment.kind.${kind}Eyebrow`)}
+            {more > 0 && <span className="text-white/60">· {moreLabel}</span>}
           </span>
           <p className="min-w-0 break-words text-[14px] leading-snug text-white/80">
-            <span id={titleId} role="heading" aria-level={2} className="h-serif mr-2 inline !text-[20px] !leading-tight tracking-[.02em] !text-white sm:!text-[22px]">{k.headline}</span>
-            {who && <span className="text-white">{who}</span>}
+            <span id={titleId} role="heading" aria-level={2} className="h-serif mr-2 inline !text-[20px] !leading-tight tracking-[.02em] !text-white sm:!text-[22px]">{t(`shell.moment.kind.${kind}Headline`)}</span>
+            {who && <span lang="ru" className="text-white">{who}</span>}
             {time && (
               <span className="ml-0 mt-0.5 flex items-center gap-1.5 text-[13px] text-white/70 sm:ml-2 sm:mt-0 sm:inline-flex">
                 <CalendarClock className="size-3.5 shrink-0" strokeWidth={1.7} aria-hidden />
-                {m.type === "assessment" && m.when ? `Дедлайн: ${assessmentDeadline(m.when)}` : time}
+                {time}
               </span>
             )}
           </p>
@@ -97,7 +101,7 @@ function MomentBar({ m, more }: { m: Moment; more: number }) {
           <form action={openNotification}>
             <input type="hidden" name="id" value={m.id} />
             <button className="inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-[14px] font-medium text-head transition-transform hover:bg-mint-2 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-white active:scale-[.98]">
-              {m.cta}<ArrowRight className="size-4" aria-hidden />
+              {t(`shell.moment.cta.${kind}`)}<ArrowRight className="size-4" aria-hidden />
             </button>
           </form>
           <DismissButton id={m.id} light />

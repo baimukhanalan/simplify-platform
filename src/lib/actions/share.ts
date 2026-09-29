@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { db } from "../db";
 import { logEvent } from "../engine/agent";
+import { actionT } from "../i18n/action";
 
 export type ShareResult = { ok: true; path: string } | { ok: false; error: string };
 
@@ -14,7 +15,7 @@ export type ShareResult = { ok: true; path: string } | { ok: false; error: strin
 export async function createShareLink(): Promise<ShareResult> {
   const user = await requireUser();
   const campaign = await db.campaign.findFirst({ where: { userId: user.id, status: "hired" }, orderBy: { hiredAt: "desc" } });
-  if (!campaign) return { ok: false, error: "Ссылка появится после статуса HIRED." };
+  if (!campaign) return { ok: false, error: (await actionT())("actionMsg.shareAfterHired") };
   if (campaign.shareToken) return { ok: true, path: `/share/${campaign.shareToken}` };
   return issue(user.id, campaign.id);
 }
@@ -32,7 +33,7 @@ export async function revokeShareLink(): Promise<{ ok: true }> {
 export async function rotateShareLink(): Promise<ShareResult> {
   const user = await requireUser();
   const campaign = await db.campaign.findFirst({ where: { userId: user.id, status: "hired" }, orderBy: { hiredAt: "desc" } });
-  if (!campaign) return { ok: false, error: "Ссылка появится после статуса HIRED." };
+  if (!campaign) return { ok: false, error: (await actionT())("actionMsg.shareAfterHired") };
   await db.campaign.updateMany({ where: { userId: user.id, shareToken: { not: null } }, data: { shareToken: null } });
   const r = await issue(user.id, campaign.id);
   revalidatePath("/app/hired");
@@ -56,5 +57,5 @@ async function issue(userId: string, campaignId: string): Promise<ShareResult> {
       // unique collision — astronomically unlikely, retry with a new token
     }
   }
-  return { ok: false, error: "Не удалось создать ссылку. Попробуй ещё раз." };
+  return { ok: false, error: (await actionT())("actionMsg.shareFailed") };
 }

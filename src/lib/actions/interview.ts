@@ -7,12 +7,16 @@ import { aiJSON, aiText } from "../ai";
 import { buildPack } from "../engine/interview-ai";
 import { summarizeMock } from "../engine/interview";
 import { createInterview, loadCandidate, logEvent } from "../engine/agent";
-import { rateLimitUser, retryText } from "../rate-limit";
+import { rateLimitUser, retryMinutes } from "../rate-limit";
+import { actionT } from "../i18n/action";
 
 const HOUR = 60 * 60 * 1000;
 import { PERSONA_KEYS, PERSONA_LABEL, ROUND_LABEL, isAhead, nextRound } from "../rounds";
 import { BriefSchema, buildBriefHeuristic } from "@/app/app/interviews/[id]/_components/brief";
 import { DebriefAISchema, structureDebrief } from "@/app/app/interviews/[id]/_components/debrief-engine";
+
+/** Debrief outcome as the journal names it. */
+const OUTCOME_EVENT_RU: Record<"done" | "passed" | "failed", string> = { done: "ждём ответа", passed: "пройден", failed: "не пройден" };
 
 async function ownInterview(userId: string, id: string) {
   const iv = await db.interview.findFirst({ where: { id, userId }, include: { opportunity: { include: { job: true } } } });
@@ -152,10 +156,10 @@ export async function saveDebrief(_: DebriefState, form: FormData): Promise<Debr
   const iv = await ownInterview(user.id, String(form.get("id")));
   const transcript = noNul(String(form.get("transcript") ?? "")).replace(/\s+/g, " ").trim().slice(0, 6000);
   const outcome = (["done", "passed", "failed"] as const).find((o) => o === form.get("outcome"));
-  if (transcript.split(" ").length < 8) return { error: "Расскажи чуть подробнее — хотя бы 2–3 предложения: какие были вопросы и что было сложно." };
-  if (!outcome) return { error: "Выбери статус раунда." };
+  if (transcript.split(" ").length < 8) return { error: (await actionT())("actionMsg.debriefShort") };
+  if (!outcome) return { error: (await actionT())("actionMsg.debriefOutcome") };
   const rl = await rateLimitUser("debrief", user.id, 10, HOUR, { eventTypes: ["debrief"] });
-  if (!rl.ok) return { error: retryText(rl.retryAfter) };
+  if (!rl.ok) return { error: (await actionT())("actionMsg.tooOften", { n: retryMinutes(rl.retryAfter) }) };
   const job = iv.opportunity.job;
   const round = ROUND_LABEL[iv.round] ?? iv.round;
   const next = nextRound(iv.round);
@@ -217,7 +221,7 @@ export async function saveDebrief(_: DebriefState, form: FormData): Promise<Debr
   await db.interview.update({ where: { id: iv.id }, data: { debrief: s(debrief), status: outcome } });
   if (outcome === "failed" && iv.opportunity.status !== "hired") await db.opportunity.update({ where: { id: iv.opportunityId }, data: { status: "rejected" } });
   if (outcome === "passed" && !next && isAhead("offer", iv.opportunity.status)) await db.opportunity.update({ where: { id: iv.opportunityId }, data: { status: "offer" } });
-  await logEvent(user.id, "debrief", `Debrief: ${job.company} — ${round} → ${outcome} · ${performance}/100`, iv.opportunityId, { performance });
+  await logEvent(user.id, "debrief", `Разбор: ${job.company} — ${round} → ${OUTCOME_EVENT_RU[outcome]} · ${performance}/100`, iv.opportunityId, { performance });
   revalidatePath(room(iv.id));
   revalidatePath("/app/interviews");
   return { ok: true };

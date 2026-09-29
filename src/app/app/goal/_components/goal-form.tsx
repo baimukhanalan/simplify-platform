@@ -3,11 +3,13 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Compass, Crosshair, Layers } from "lucide-react";
 import { Card, Chip, Field, Label, cx } from "@/components/ui";
-import { ROLE_FAMILIES, REGIONS, SENIORITY, SENIORITY_LABEL, classifyRole, fmtMoney } from "@/lib/engine/taxonomy";
+import { ROLE_FAMILIES, REGIONS, SENIORITY, classifyRole } from "@/lib/engine/taxonomy";
+import { useT } from "@/lib/i18n/client";
+import { seniorityName } from "@/lib/i18n/labels";
+import type { T } from "@/lib/i18n/translator";
 import { saveGoal } from "@/lib/actions/profile";
 import { ActionForm, FormSubmit } from "../../profile/_components/action-form";
-import { WORK_MODE_RU, count, industryRu } from "../../../_components/ru";
-import { goalRegion } from "./region";
+import { goalRegion, industryLabel, modeLabel, sizeLabel, workModeLabel } from "./region";
 
 export type GoalValues = {
   primaryRole: string; extraRoles: string[]; seniority: string; minSalary: number; currency: string; countries: string[];
@@ -16,17 +18,17 @@ export type GoalValues = {
 };
 
 const INDUSTRIES = ["Fintech", "SaaS", "E-commerce", "EdTech", "HealthTech", "AI / ML", "Banking", "Gaming", "Telecom", "Logistics", "Media", "Retail", "Consulting", "GovTech"];
-const WORK_MODES = (["remote", "hybrid", "onsite"] as const).map((k) => [k, WORK_MODE_RU[k]] as const);
-const SIZES = [["any", "Любой"], ["startup", "Стартап"], ["scaleup", "Растущая компания"], ["corporate", "Корпорация"]] as const;
+const WORK_MODES = ["remote", "hybrid", "onsite"] as const;
+const SIZES = ["any", "startup", "scaleup", "corporate"] as const;
 const MODES = [
-  { key: "autonomous", title: "Автономный", icon: Compass, text: "Агент сам находит вакансии, проверяет требования, ранжирует и подаёт в пределах дневного лимита. Тебя спрашивает только об исключениях: юридические вопросы, зарплата, незнакомые вопросы анкет." },
-  { key: "target", title: "Точечный", icon: Crosshair, text: "Только компании мечты. Меньше заявок, но каждая глубже: CV и сопроводительное письмо под конкретную компанию, мониторинг новых позиций. Лучше всего работает при Readiness от 70." },
-  { key: "mass", title: "Массовый найм", icon: Layers, text: "Быстрый параллельный поток в ролях массового найма — поддержка, продажи, операции, разметка данных, QA. Короткие формы и быстрые ответы: первый оффер как страховка, пока основная цель в работе." },
+  { key: "autonomous", icon: Compass },
+  { key: "target", icon: Crosshair },
+  { key: "mass", icon: Layers },
 ] as const;
 
-function money(n: number, cur: string) {
+function money(t: T, n: number, cur: string) {
   if (!n) return "";
-  return `${fmtMoney(n, cur)}+`;
+  return `${t.money(n, cur)}+`;
 }
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -43,6 +45,7 @@ function readForm(form: HTMLFormElement): GoalValues {
 }
 
 export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelHref?: string }) {
+  const t = useT();
   const [v, setV] = useState(initial);
   const roleLabels = Object.entries(ROLE_FAMILIES).filter(([k]) => k !== "other").map(([, f]) => f.label);
   const extraOptions = [...new Set([...roleLabels, ...initial.extraRoles])];
@@ -54,21 +57,21 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
       <input type="hidden" name="after" value="goal" />
       <div className="flex min-w-0 flex-col gap-5">
         <Card className="flex flex-col gap-5">
-          <Label>01 · Роль и уровень</Label>
+          <Label>{t("goalPage.form.sec1")}</Label>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Основная роль *" hint={v.primaryRole ? (family !== "other" ? `Распознано: ${ROLE_FAMILIES[family].label}` : "Роль не распознана — поиск будет по ключевым словам") : undefined}>
+            <Field label={t("goalPage.form.primaryRole")} hint={v.primaryRole ? (family !== "other" ? t("goalPage.form.recognized", { family: ROLE_FAMILIES[family].label }) : t("goalPage.form.notRecognized")) : undefined}>
               <input name="primaryRole" required minLength={2} list="role-options" defaultValue={initial.primaryRole} className="field" placeholder="Data Analyst" />
               <datalist id="role-options">{roleLabels.map((r) => <option key={r} value={r} />)}</datalist>
             </Field>
             <fieldset className="flex flex-col gap-1.5">
-              <legend className="label mb-1.5">Уровень</legend>
+              <legend className="label mb-1.5">{t("goalPage.form.level")}</legend>
               <div className="flex flex-wrap gap-1.5">
-                {SENIORITY.map((s) => <Pill key={s} type="radio" name="seniority" value={s} defaultChecked={initial.seniority === s}>{SENIORITY_LABEL[s]}</Pill>)}
+                {SENIORITY.map((s) => <Pill key={s} type="radio" name="seniority" value={s} defaultChecked={initial.seniority === s}>{seniorityName(t, s)}</Pill>)}
               </div>
             </fieldset>
           </div>
           <fieldset>
-            <legend className="label mb-2">Дополнительные роли <span className="normal-case tracking-normal">(до 6)</span></legend>
+            <legend className="label mb-2">{t("goalPage.form.extraRoles")} <span className="normal-case tracking-normal">{t("goalPage.form.extraRolesMax")}</span></legend>
             <div className="flex flex-wrap gap-1.5">
               {extraOptions.map((r) => <Pill key={r} name="extraRoles" value={r} defaultChecked={initial.extraRoles.includes(r)}>{r}</Pill>)}
             </div>
@@ -76,57 +79,57 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
         </Card>
 
         <Card className="flex flex-col gap-5">
-          <Label>02 · Деньги и география</Label>
+          <Label>{t("goalPage.form.sec2")}</Label>
           <div className="grid grid-cols-[1fr_110px] gap-3 sm:max-w-md">
-            <Field label="Минимум, в год"><input name="minSalary" type="number" min={0} step={1000} inputMode="numeric" defaultValue={initial.minSalary || ""} className="field" placeholder="60000" /></Field>
-            <Field label="Валюта">
+            <Field label={t("goalPage.form.minPerYear")}><input name="minSalary" type="number" min={0} step={1000} inputMode="numeric" defaultValue={initial.minSalary || ""} className="field" placeholder="60000" /></Field>
+            <Field label={t("goalPage.form.currency")}>
               <select name="currency" defaultValue={initial.currency} className="field">
                 <option>USD</option><option>EUR</option><option>KZT</option>
               </select>
             </Field>
           </div>
           <fieldset>
-            <legend className="label mb-2">Регионы *</legend>
+            <legend className="label mb-2">{t("goalPage.form.regions")}</legend>
             <div className="flex flex-wrap gap-1.5">
-              {Object.entries(REGIONS).map(([k, r]) => <Pill key={k} name="countries" value={k} defaultChecked={initial.countries.includes(k)}>{goalRegion(k) === k ? r.label : goalRegion(k)}</Pill>)}
+              {Object.keys(REGIONS).map((k) => <Pill key={k} name="countries" value={k} defaultChecked={initial.countries.includes(k)}>{goalRegion(t, k)}</Pill>)}
             </div>
           </fieldset>
           <fieldset>
-            <legend className="label mb-2">Формат работы *</legend>
+            <legend className="label mb-2">{t("goalPage.form.workModes")}</legend>
             <div className="flex flex-wrap gap-1.5">
-              {WORK_MODES.map(([k, l]) => <Pill key={k} name="workModes" value={k} defaultChecked={initial.workModes.includes(k)}>{l}</Pill>)}
+              {WORK_MODES.map((k) => <Pill key={k} name="workModes" value={k} defaultChecked={initial.workModes.includes(k)}>{workModeLabel(t, k)}</Pill>)}
             </div>
           </fieldset>
           <div className="grid gap-2 sm:grid-cols-2">
-            <Toggle name="relocation" defaultChecked={initial.relocation} label="Переезд возможен" />
-            <Toggle name="sponsorshipNeeded" defaultChecked={initial.sponsorshipNeeded} label="Нужно визовое спонсорство" hint="Без спонсорства вакансии в офисе за рубежом будут недоступны" />
+            <Toggle name="relocation" defaultChecked={initial.relocation} label={t("goalPage.form.relocation")} />
+            <Toggle name="sponsorshipNeeded" defaultChecked={initial.sponsorshipNeeded} label={t("goalPage.form.sponsorship")} hint={t("goalPage.form.sponsorshipHint")} />
           </div>
         </Card>
 
         <Card className="flex flex-col gap-5">
-          <Label>03 · Компании</Label>
+          <Label>{t("goalPage.form.sec3")}</Label>
           <fieldset>
-            <legend className="label mb-2">Индустрии</legend>
+            <legend className="label mb-2">{t("goalPage.form.industries")}</legend>
             <div className="flex flex-wrap gap-1.5">
-              {industryOptions.map((i) => <Pill key={i} name="industries" value={i} defaultChecked={initial.industries.includes(i)}>{industryRu(i)}</Pill>)}
+              {industryOptions.map((i) => <Pill key={i} name="industries" value={i} defaultChecked={initial.industries.includes(i)}>{industryLabel(t, i)}</Pill>)}
             </div>
           </fieldset>
           <fieldset>
-            <legend className="label mb-2">Размер компании</legend>
+            <legend className="label mb-2">{t("goalPage.form.size")}</legend>
             <div className="flex flex-wrap gap-1.5">
-              {SIZES.map(([k, l]) => <Pill key={k} type="radio" name="companySize" value={k} defaultChecked={initial.companySize === k}>{l}</Pill>)}
+              {SIZES.map((k) => <Pill key={k} type="radio" name="companySize" value={k} defaultChecked={initial.companySize === k}>{sizeLabel(t, k)}</Pill>)}
             </div>
           </fieldset>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Компании мечты" hint="Через запятую. Обязательны для точечного режима."><textarea name="dreamCompanies" rows={3} defaultValue={initial.dreamCompanies.join(", ")} className="field resize-y" placeholder="Kaspi, Revolut, Wise" /></Field>
-            <Field label="Не подавать в" hint="Текущий работодатель, компании из чёрного списка"><textarea name="blockedCompanies" rows={3} defaultValue={initial.blockedCompanies.join(", ")} className="field resize-y" /></Field>
+            <Field label={t("goalPage.form.dream")} hint={t("goalPage.form.dreamHint")}><textarea name="dreamCompanies" rows={3} defaultValue={initial.dreamCompanies.join(", ")} className="field resize-y" placeholder="Kaspi, Revolut, Wise" /></Field>
+            <Field label={t("goalPage.form.blocked")} hint={t("goalPage.form.blockedHint")}><textarea name="blockedCompanies" rows={3} defaultValue={initial.blockedCompanies.join(", ")} className="field resize-y" /></Field>
           </div>
         </Card>
 
         <Card className="flex flex-col gap-4">
-          <Label>04 · Режим кампании</Label>
+          <Label>{t("goalPage.form.sec4")}</Label>
           <fieldset className="grid gap-3 md:grid-cols-3">
-            <legend className="sr-only">Режим кампании</legend>
+            <legend className="sr-only">{t("goalPage.form.modeLegend")}</legend>
             {MODES.map((m) => {
               const Icon = m.icon;
               return (
@@ -136,8 +139,8 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
                     <Icon className="size-5 text-teal" strokeWidth={1.7} aria-hidden />
                     <span className="size-4 rounded-full border border-line bg-white transition-all group-has-[:checked]/m:border-[5px] group-has-[:checked]/m:border-green" aria-hidden />
                   </span>
-                  <span className="h-serif text-[19px]">{m.title}</span>
-                  <span className="text-[13px] leading-relaxed text-ink-3">{m.text}</span>
+                  <span className="h-serif text-[19px]">{modeLabel(t, m.key)}</span>
+                  <span className="text-[13px] leading-relaxed text-ink-3">{t(`goalPage.form.modeText.${m.key}`)}</span>
                 </label>
               );
             })}
@@ -145,34 +148,34 @@ export function GoalForm({ initial, cancelHref }: { initial: GoalValues; cancelH
         </Card>
       </div>
 
-      <aside className="lg:sticky lg:top-8" aria-label="Сводка цели">
+      <aside className="lg:sticky lg:top-8" aria-label={t("goalPage.form.summaryAria")}>
         <Card strong className="flex flex-col gap-4">
-          <Label>Моя цель</Label>
+          <Label>{t("goalPage.form.myGoal")}</Label>
           <p className="h-serif text-[24px] leading-tight">
-            {v.primaryRole || <span className="text-ink-3">Роль не выбрана</span>}
+            {v.primaryRole || <span className="text-ink-3">{t("goalPage.form.roleNotChosen")}</span>}
             <span className="text-ink-4"> · </span>
-            {SENIORITY_LABEL[v.seniority] ?? cap(v.seniority)}
+            {(SENIORITY as readonly string[]).includes(v.seniority) ? seniorityName(t, v.seniority) : cap(v.seniority)}
           </p>
           <SummaryLine text={[
-            v.workModes.map((m) => WORK_MODE_RU[m] ?? cap(m)).join(" / ") || "—",
-            [...new Set(v.countries.map(goalRegion))].join(" / ") || "—",
-            money(v.minSalary, v.currency),
-            v.industries.map((x) => industryRu(x)).join(" / "),
+            v.workModes.map((m) => cap(workModeLabel(t, m))).join(" / ") || "—",
+            [...new Set(v.countries.map((k) => goalRegion(t, k)))].join(" / ") || "—",
+            money(t, v.minSalary, v.currency),
+            v.industries.map((x) => industryLabel(t, x)).join(" / "),
           ].filter(Boolean).join(" · ")} />
           <div className="flex flex-wrap gap-1.5">
-            <Chip tone="dark">{MODES.find((m) => m.key === v.mode)?.title ?? "Автономный"}</Chip>
-            {v.relocation && <Chip tone="teal">переезд</Chip>}
-            {v.sponsorshipNeeded && <Chip tone="amber">нужна виза</Chip>}
-            {v.extraRoles.length > 0 && <Chip>+{count(v.extraRoles.length, ["роль", "роли", "ролей"])}</Chip>}
+            <Chip tone="dark">{modeLabel(t, MODES.some((m) => m.key === v.mode) ? v.mode : "autonomous")}</Chip>
+            {v.relocation && <Chip tone="teal">{t("goalPage.form.chipRelocation")}</Chip>}
+            {v.sponsorshipNeeded && <Chip tone="amber">{t("goalPage.form.chipVisa")}</Chip>}
+            {v.extraRoles.length > 0 && <Chip>{t("goalPage.form.chipExtra", { n: v.extraRoles.length })}</Chip>}
           </div>
           {v.mode === "target" && (
             <p className={cx("text-[12.5px]", v.dreamCompanies.length ? "text-ink-3" : "text-amber")}>
-              {v.dreamCompanies.length ? `Компании: ${v.dreamCompanies.slice(0, 4).join(", ")}${v.dreamCompanies.length > 4 ? "…" : ""}` : "Для точечного режима добавь компании мечты."}
+              {v.dreamCompanies.length ? t("goalPage.form.dreamList", { list: `${v.dreamCompanies.slice(0, 4).join(", ")}${v.dreamCompanies.length > 4 ? "…" : ""}` }) : t("goalPage.form.dreamMissing")}
             </p>
           )}
-          <FormSubmit size="lg" pendingText="Сохраняем…" className="w-full">Сохранить цель</FormSubmit>
-          {cancelHref && <Link href={cancelHref} className="inline-flex h-10 items-center justify-center rounded-full text-[14px] text-ink-2 hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Отмена</Link>}
-          <p className="text-[12px] text-ink-3">Агент учтёт новую цель в следующем цикле поиска.</p>
+          <FormSubmit size="lg" pendingText={t("goalPage.form.saving")} className="w-full">{t("goalPage.form.save")}</FormSubmit>
+          {cancelHref && <Link href={cancelHref} className="inline-flex h-10 items-center justify-center rounded-full text-[14px] text-ink-2 hover:bg-white/60 hover:text-head focus-visible:outline-2 focus-visible:outline-green">{t("goalPage.form.cancel")}</Link>}
+          <p className="text-[12px] text-ink-3">{t("goalPage.form.nextCycle")}</p>
         </Card>
       </aside>
     </ActionForm>

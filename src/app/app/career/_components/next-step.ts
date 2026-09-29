@@ -1,31 +1,14 @@
 import { ROLE_FAMILIES, SENIORITY, SENIORITY_LABEL, type Seniority } from "@/lib/engine/taxonomy";
+import type { T } from "@/lib/i18n/translator";
 
-/** The five components shown in Career Mode (careerScore keys → UI labels). */
-export const BREAKDOWN: { key: "skillStrength" | "experience" | "marketDemand" | "compensationPosition" | "interviewReadiness"; label: string }[] = [
-  { key: "skillStrength", label: "Навыки" },
-  { key: "experience", label: "Стаж в профессии" },
-  { key: "marketDemand", label: "Спрос на рынке" },
-  { key: "compensationPosition", label: "Компенсация" },
-  { key: "interviewReadiness", label: "Готовность к интервью" },
-];
+/** The five components shown in Career Mode (careerScore keys; labels in careerPage.breakdown.*). */
+export const BREAKDOWN = ["skillStrength", "experience", "marketDemand", "compensationPosition", "interviewReadiness"] as const;
+export type BreakdownKey = (typeof BREAKDOWN)[number];
 
-/** The skill that typically unlocks the next level in each role family. */
-const UNLOCK: Record<string, string> = {
-  data_analyst: "аналитику экспериментов (A/B-тесты)",
-  product_analyst: "причинно-следственный анализ и дизайн экспериментов",
-  data_scientist: "MLOps и вывод моделей в прод",
-  data_engineer: "моделирование данных и потоковую обработку (Kafka)",
-  software_engineer: "проектирование систем",
-  qa: "автоматизацию тестирования (Playwright)",
-  product_manager: "продуктовую аналитику и ценообразование",
-  designer: "дизайн-системы и организацию исследований",
-  marketing: "удержание клиентов и маркетинговую аналитику",
-  sales: "корпоративные продажи и прогнозирование",
-  support: "работу с клиентами и метрики удержания",
-  operations: "автоматизацию процессов (SQL и инструменты без кода)",
-  annotation: "оценку качества AI-моделей",
-  other: "ключевой профессиональный навык твоей роли",
-};
+/** Role families with their own «what unlocks the next level» line (careerPage.unlock.*). */
+const UNLOCK_KEYS = ["data_analyst", "product_analyst", "data_scientist", "data_engineer", "software_engineer", "qa", "product_manager", "designer", "marketing", "sales", "support", "operations", "annotation"] as const;
+type UnlockKey = (typeof UNLOCK_KEYS)[number] | "other";
+const unlockKey = (family: string): UnlockKey => ((UNLOCK_KEYS as readonly string[]).includes(family) ? (family as UnlockKey) : "other");
 
 const SENIORITY_WORD: [RegExp, Seniority][] = [
   [/\bintern|стаж[её]р/i, "intern"],
@@ -63,37 +46,38 @@ export function nextMilestone(family: string, level: Seniority, roleTitle = ""):
   return { title: `${SENIORITY_LABEL[next]} ${base}`, level: SENIORITY_LABEL[next] };
 }
 
-/** One recommendation line from the weakest of the five components. */
-export function recommendation(opts: {
+/** One recommendation line from the weakest of the five components, in the current language. */
+export function recommendation(t: T, opts: {
   components: Record<string, number>;
   family: string;
   skills: string[];
   nextLevel: string | null;
   mockCount: number;
-}): { key: string; text: string; href: string; cta: string } {
-  const weakest = BREAKDOWN.reduce((a, b) => ((opts.components[b.key] ?? 100) < (opts.components[a.key] ?? 100) ? b : a));
+}): { key: BreakdownKey; text: string; href: string; cta: string } {
+  const key = BREAKDOWN.reduce((a, b) => ((opts.components[b] ?? 100) < (opts.components[a] ?? 100) ? b : a));
   const fam = ROLE_FAMILIES[opts.family] ?? ROLE_FAMILIES.other;
   const known = opts.family !== "other" && Boolean(ROLE_FAMILIES[opts.family]);
-  const toLevel = opts.nextLevel ? `${opts.nextLevel}-уровню` : "следующему уровню";
+  const level = opts.nextLevel;
   const have = new Set(opts.skills.map((s) => s.toLowerCase()));
   const missing = fam.skills.find((s) => !have.has(s.toLowerCase()));
-  switch (weakest.key) {
+  const profile = { href: "/app/profile", cta: "Career Profile" };
+  switch (key) {
     case "skillStrength":
-      return missing && known
-        ? { key: weakest.key, text: `Добавь ${missing} — это главный пробел для ролей «${fam.label}»${opts.nextLevel ? ` уровня ${opts.nextLevel}` : ""}.`, href: "/app/profile", cta: "Career Profile" }
-        : { key: weakest.key, text: `Освой ${UNLOCK[opts.family] ?? UNLOCK.other} — это путь к ${toLevel}.`, href: "/app/profile", cta: "Career Profile" };
+      if (missing && known) {
+        const p = { skill: missing, family: fam.label, level };
+        return { key, text: level ? t("careerPage.rec.skillGapLevel", p) : t("careerPage.rec.skillGap", p), ...profile };
+      }
+      {
+        const p = { skill: t(`careerPage.unlock.${unlockKey(opts.family)}`), level };
+        return { key, text: level ? t("careerPage.rec.unlockLevel", p) : t("careerPage.rec.unlockNext", p), ...profile };
+      }
     case "experience":
-      return { key: weakest.key, text: `Фиксируй измеримые результаты каждый квартал — опыт с цифрами быстрее всего ведёт к ${toLevel}.`, href: "/app/profile", cta: "Career Profile" };
+      return { key, text: level ? t("careerPage.rec.experienceLevel", { level }) : t("careerPage.rec.experienceNext"), ...profile };
     case "marketDemand":
-      return { key: weakest.key, text: known ? `Спрос на ${fam.label} сейчас узкий — добавь в цель смежные роли или регионы.` : "Спрос по твоей роли сейчас узкий — добавь в цель смежные роли или регионы.", href: "/app/goal", cta: "Цель" };
+      return { key, text: known ? t("careerPage.rec.demandKnown", { family: fam.label }) : t("careerPage.rec.demandUnknown"), href: "/app/goal", cta: t("careerPage.rec.ctaGoal") };
     case "compensationPosition":
-      return { key: weakest.key, text: "Твоя компенсация ниже рыночной оценки — это аргумент для пересмотра зарплаты или следующей кампании.", href: "#better-roles", cta: "Роли дороже" };
+      return { key, text: t("careerPage.rec.compensation"), href: "#better-roles", cta: t("careerPage.rec.ctaBetterRoles") };
     default:
-      return {
-        key: weakest.key,
-        text: opts.mockCount ? "Ещё пара пробных интервью подтянет готовность к интервью — сейчас это самый слабый компонент." : "Пройди первое пробное интервью — готовность к интервью сейчас самый слабый компонент.",
-        href: "/app/readiness",
-        cta: "Readiness",
-      };
+      return { key, text: opts.mockCount ? t("careerPage.rec.mockMore") : t("careerPage.rec.mockFirst"), href: "/app/readiness", cta: "Readiness" };
   }
 }

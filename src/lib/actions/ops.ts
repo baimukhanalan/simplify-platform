@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { isSimulation } from "../mode";
+import { actionT } from "../i18n/action";
 import { db, noNul } from "../db";
 import { PIPELINE, APPLIED_OR_LATER } from "../engine/taxonomy";
-import { ingestEmail, logEvent, settleSharedAnswers, submit, STANDING_KINDS } from "../engine/agent";
+import { ingestEmail, logEvent, settleSharedAnswers, statusEventRu, submit, STANDING_KINDS } from "../engine/agent";
 import { readAutonomy } from "../engine/autonomy";
 import { answerMatchingApprovals, continueIfReady, patchPackageAnswer } from "../engine/approvals";
 
@@ -32,7 +33,7 @@ export async function setOpportunityStatus(form: FormData) {
   if (status === "skipped") await db.approval.updateMany({ where: { opportunityId: id, status: "pending" }, data: { status: "rejected", resolvedAt: new Date() } });
   if (becameApplied) await db.approval.updateMany({ where: { opportunityId: id, status: "pending", kind: "handoff" }, data: { status: "approved", answer: "submitted-by-user", resolvedAt: new Date() } });
   const from = opp.status;
-  await logEvent(user.id, "status_change", `${opp.job.company}: ${from} → ${status} (вручную)`, id, { from, to: status, by: "user" });
+  await logEvent(user.id, "status_change", `${opp.job.company}: «${statusEventRu(from)}» → «${statusEventRu(status)}» (вручную)`, id, { from, to: status, by: "user" });
   refresh(id);
 }
 
@@ -115,10 +116,10 @@ export type IngestState = {
 /** Paste an employer email → Inbox Intelligence classifies it and moves the pipeline. */
 export async function ingestPastedEmail(_prev: IngestState, form: FormData): Promise<IngestState> {
   const user = await requireUser();
-  if (isSimulation()) return { error: "Сейчас недоступно." };
+  if (isSimulation()) return { error: (await actionT())("actionMsg.unavailable") };
   const fields = { from: str(form, "from").slice(0, 200), subject: str(form, "subject").slice(0, 300), body: str(form, "body").slice(0, 20000) };
-  if (!fields.subject && !fields.body) return { error: "Вставь хотя бы тему или текст письма.", fields };
-  if (fields.body.length < 20) return { error: "Текст письма слишком короткий для классификации — вставь письмо целиком.", fields };
+  if (!fields.subject && !fields.body) return { error: (await actionT())("actionMsg.pasteEmpty"), fields };
+  if (fields.body.length < 20) return { error: (await actionT())("actionMsg.pasteShort"), fields };
   const from = fields.from || "unknown@employer";
   const before = new Map(
     (await db.opportunity.findMany({ where: { campaign: { userId: user.id }, status: { in: APPLIED_OR_LATER } }, select: { id: true, status: true } })).map((o) => [o.id, o.status]),

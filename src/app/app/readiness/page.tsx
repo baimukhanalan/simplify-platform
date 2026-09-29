@@ -1,23 +1,28 @@
-import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Plus, Target } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { ButtonLink, Empty, PageHeader, Script } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { applyReadinessFix } from "@/lib/actions/profile";
-import { SENIORITY_LABEL, fmtMoney } from "@/lib/engine/taxonomy";
+import { getT } from "@/lib/i18n/server";
+import { marketLine, seniorityName } from "@/lib/i18n/labels";
+import type { T } from "@/lib/i18n/translator";
 import { marketRange } from "@/lib/engine/market";
 import { toUSD, usdToGoalAmount } from "@/lib/engine/fx";
 import { runningCampaign } from "@/lib/ops-data";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { loadReadiness } from "./_components/data";
-import { MIN_ADJACENT_SKILLS, adjacentSkills, goalMarket, goalTitle, readinessView, fmtYears } from "./_components/model";
+import { MIN_ADJACENT_SKILLS, adjacentSkills, goalTitle, readinessView, yearsText } from "./_components/model";
 import { BlockersAndPlan, ParamTable, ReadinessHero } from "./_components/readiness-view";
 
-export const metadata: Metadata = { title: "Readiness" };
+export async function generateMetadata() {
+  return { title: (await getT())("readinessPage.metaTitle") };
+}
 
 export default async function ReadinessPage() {
   const user = await requireUser();
+  const t = await getT();
+  const title = t.rich("readinessPage.title", {}, { s: (c) => <Script>{c}</Script> });
   const [data, campaign] = await Promise.all([
     loadReadiness(user.id),
     runningCampaign(user.id),
@@ -26,14 +31,14 @@ export default async function ReadinessPage() {
   if (!data) {
     return (
       <>
-        <PageHeader eyebrow="Readiness" title={<>Где ты <Script>сейчас</Script></>} />
-        <Empty title="Сначала задай цель" sub="Readiness сравнивает твой Career Profile с конкретной целью: ролью, уровнем, страной и зарплатой." action={<ButtonLink href="/app/goal">Задать цель</ButtonLink>} />
+        <PageHeader eyebrow={t("readinessPage.eyebrow")} title={title} />
+        <Empty title={t("readinessPage.emptyTitle")} sub={t("readinessPage.emptySub")} action={<ButtonLink href="/app/goal">{t("readinessPage.emptyCta")}</ButtonLink>} />
       </>
     );
   }
 
   const { readiness: r, goal, family } = data;
-  const view = readinessView(data);
+  const view = readinessView(data, t);
   const fixSeniority = r.suggestedSeniority !== goal.seniority;
   // The market model is yearly USD; the fix lowers the minimum to that median in the goal's own currency (₸ stays ₸).
   const usdMid = marketRange(family, goal.seniority, goal.countries).mid;
@@ -43,24 +48,24 @@ export default async function ReadinessPage() {
   const roles = r.suggestedRoles.filter((x) => x !== goal.primaryRole && !goal.extraRoles.includes(x)).slice(0, 2);
 
   const needs: Need[] = [];
-  if (r.verdict === "unrealistic") needs.push({ text: "Поправь цель — с текущей почти не будет интервью", href: "/app/goal" });
-  if (!data.hasLinkedin) needs.push({ text: "Добавь ссылку на LinkedIn", href: "/app/profile#basics" });
-  if (data.withMetrics === 0) needs.push({ text: "Добавь хотя бы один результат в цифрах", href: "/app/profile#experience" });
+  if (r.verdict === "unrealistic") needs.push({ text: t("readinessPage.needUnrealistic"), href: "/app/goal" });
+  if (!data.hasLinkedin) needs.push({ text: t("readinessPage.needLinkedin"), href: "/app/profile#basics" });
+  if (data.withMetrics === 0) needs.push({ text: t("readinessPage.needMetric"), href: "/app/profile#experience" });
 
   return (
     <>
       <PageHeader
-        eyebrow="Readiness"
-        title={<>Где ты <Script>сейчас</Script></>}
-        sub="Насколько твой профиль готов к цели — и что агент сделает, чтобы усилить его."
-        actions={<ButtonLink href="/app/goal" variant="glass"><Target className="size-4" strokeWidth={1.7} aria-hidden />Моя цель</ButtonLink>}
+        eyebrow={t("readinessPage.eyebrow")}
+        title={title}
+        sub={t("readinessPage.sub")}
+        actions={<ButtonLink href="/app/goal" variant="glass"><Target className="size-4" strokeWidth={1.7} aria-hidden />{t("readinessPage.myGoal")}</ButtonLink>}
       />
 
       <div className="flex flex-col gap-5">
-        <AgentStatus needs={needs} idle={!campaign} working={campaign ? "Агент использует это, чтобы выбирать вакансии и готовить заявки." : "Когда кампания запустится, агент начнёт с самых вероятных вакансий."} className="animate-rise" />
+        <AgentStatus needs={needs} idle={!campaign} working={campaign ? t("readinessPage.workingActive") : t("readinessPage.workingIdle")} className="animate-rise" />
 
         <div className="animate-rise [animation-delay:60ms]">
-          <ReadinessHero score={view.score} verdict={r.verdict} goal={<>{goalTitle(goal.primaryRole)} <span className="text-ink-3">· {SENIORITY_LABEL[goal.seniority] ?? goal.seniority}</span></>} market={goalMarket(goal.countries).line} />
+          <ReadinessHero score={view.score} verdict={r.verdict} goal={<>{goalTitle(goal.primaryRole)} <span className="text-ink-3">· {seniorityName(t, goal.seniority)}</span></>} market={marketLine(t, goal.countries)} />
         </div>
 
         <div className="animate-rise [animation-delay:120ms]"><ParamTable params={view.params} /></div>
@@ -69,14 +74,14 @@ export default async function ReadinessPage() {
         {(fixSeniority || fixSalary || roles.length > 0) && (
           <section aria-labelledby="fix-h" className="glass flex flex-col gap-3 p-5 animate-rise [animation-delay:240ms] sm:p-6">
             <div className="flex flex-col gap-1">
-              <h2 id="fix-h" className="text-[15.5px] font-medium text-head">Можно ускорить</h2>
-              <p className="text-[13px] text-ink-3">Меняется только цель. Readiness пересчитается сразу.</p>
+              <h2 id="fix-h" className="text-[15.5px] font-medium text-head">{t("readinessPage.fixTitle")}</h2>
+              <p className="text-[13px] text-ink-3">{t("readinessPage.fixSub")}</p>
             </div>
             <div className="grid gap-2 md:grid-cols-2">
-              {fixSeniority && <FixForm fix="seniority" title={`Уровень: ${SENIORITY_LABEL[goal.seniority]} → ${SENIORITY_LABEL[r.suggestedSeniority]}`} note={`Под твои ${fmtYears(data.yearsExperience)} опыта`} cta="Применить" />}
-              {fixSalary && <FixForm fix="salary" title={`Минимум: ${fmtMoney(goal.minSalary, goal.currency)} → ${fmtMoney(salaryTarget, goal.currency)} в год`} note="Медиана рынка для цели" cta="Применить" />}
+              {fixSeniority && <FixForm fix="seniority" title={t("readinessPage.fixLevel", { from: seniorityName(t, goal.seniority), to: seniorityName(t, r.suggestedSeniority) })} note={t("readinessPage.fixLevelNote", { years: yearsText(t, data.yearsExperience) })} cta={t("readinessPage.apply")} />}
+              {fixSalary && <FixForm fix="salary" title={t("readinessPage.fixSalary", { from: t.money(goal.minSalary, goal.currency), to: t.money(salaryTarget, goal.currency) })} note={t("readinessPage.fixSalaryNote")} cta={t("readinessPage.apply")} />}
               {roles.map((role) => (
-                <FixForm key={role} fix="role" role={role} title={`Добавить роль: ${role}`} note={adjacentNote(role, data.skills)} cta={<><Plus className="size-3.5" strokeWidth={1.8} aria-hidden />Добавить</>} />
+                <FixForm key={role} fix="role" role={role} title={t("readinessPage.addRole", { role })} note={adjacentNote(t, role, data.skills)} cta={<><Plus className="size-3.5" strokeWidth={1.8} aria-hidden />{t("readinessPage.add")}</>} />
               ))}
             </div>
           </section>
@@ -84,7 +89,7 @@ export default async function ReadinessPage() {
 
         {!campaign && (
           <div className="flex justify-end">
-            <ButtonLink href="/app/campaign" size="lg">Запустить кампанию</ButtonLink>
+            <ButtonLink href="/app/campaign" size="lg">{t("readinessPage.launch")}</ButtonLink>
           </div>
         )}
       </div>
@@ -93,11 +98,11 @@ export default async function ReadinessPage() {
 }
 
 /** «Твои навыки уже подходят: SQL, Python» only with evidence from the profile; otherwise a softer suggestion. */
-function adjacentNote(role: string, skills: string[]) {
+function adjacentNote(t: T, role: string, skills: string[]) {
   const matched = adjacentSkills(role, skills);
-  if (matched.length >= MIN_ADJACENT_SKILLS) return `Твои навыки уже подходят: ${matched.slice(0, 3).join(", ")}`;
-  if (matched.length === 1) return `Можно рассмотреть: совпадает ${matched[0]}`;
-  return "Можно рассмотреть: смежная роль";
+  if (matched.length >= MIN_ADJACENT_SKILLS) return t("readinessPage.adjFits", { skills: matched.slice(0, 3).join(", ") });
+  if (matched.length === 1) return t("readinessPage.adjOne", { skill: matched[0] });
+  return t("readinessPage.adjSoft");
 }
 
 function FixForm({ fix, role, title, note, cta }: { fix: string; role?: string; title: string; note: string; cta: ReactNode }) {

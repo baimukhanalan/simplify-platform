@@ -20,7 +20,13 @@ import { ensureFictionalCoverage } from "./coverage";
 
 // Journal wording for employer emails (Settings → audit log shows these lines).
 const INBOX_EVENT_RU: Record<string, string> = { confirmation: "подтверждение получения заявки", rejection: "отказ", assessment: "приглашение на тест", interview: "приглашение на интервью", offer: "оффер", info: "информационное письмо" };
-const STATUS_RU_EVENT: Record<string, string> = { pending: "ждём ответа", rejected: "отказ", assessment: "тест", recruiter: "рекрутер", hiring_manager: "нанимающий менеджер", technical: "техническое интервью", final: "финал", offer: "оффер" };
+const STATUS_RU_EVENT: Record<string, string> = {
+  found: "найдена", qualified: "подходит", prepared: "пакет готов", submitted: "отправлено", pending: "ждём ответа", rejected: "отказ",
+  assessment: "тест", recruiter: "рекрутер", hiring_manager: "нанимающий менеджер", technical: "техническое интервью", final: "финал", offer: "оффер",
+  hired: "работа найдена", skipped: "пропущено", blocked: "недоступно",
+};
+/** A pipeline status as the journal names it (never the raw key). */
+export const statusEventRu = (status: string) => STATUS_RU_EVENT[status] ?? status;
 
 /** The journal line for an employer email that moved a role: «Kaspi: оффер → статус «оффер»». One wording for the engine and the seed. */
 export const inboxEventText = (company: string, cls: string, status: string) =>
@@ -688,7 +694,7 @@ export async function pendingDecisions(campaignId: string, autoSubmit: boolean, 
 // ——— Inbox Intelligence → pipeline ———
 
 /** Push-moment titles, gender-neutral; the seed uses the same ones. */
-export const NOTIFY_TITLE = { interview: "Новое интервью", assessment: "Следующий этап: assessment", offer: "YOU GOT THE OFFER" } as const;
+export const NOTIFY_TITLE = { interview: "Новое интервью", assessment: "Новое тестовое задание", offer: "YOU GOT THE OFFER" } as const;
 const ROUND_STATUS: Record<string, string> = { recruiter: "recruiter", hiring_manager: "hiring_manager", technical: "technical", final: "final" };
 
 const CLOSED = new Set(["hired", "rejected"]);
@@ -708,12 +714,12 @@ export async function ingestEmail(userId: string, msg: { from: string; subject: 
   if (next && (closed || (next !== "rejected" && !isAhead(next, opp.status)))) next = null;
   if (next) {
     await db.opportunity.update({ where: { id: oppId }, data: { status: next } });
-    await logEvent(userId, "inbox", inboxEventText(opp.job.company, c.cls, next), oppId, { confidence: c.confidence });
+    await logEvent(userId, "inbox", inboxEventText(opp.job.company, c.cls, next), oppId, { confidence: c.confidence, from: opp.status, to: next });
   }
   if (closed) return { message: saved, updated: false };
   const NOTE: Record<string, { title: string; body: string }> = {
     interview: { title: NOTIFY_TITLE.interview, body: `${opp.job.company} · ${opp.job.title}` },
-    assessment: { title: NOTIFY_TITLE.assessment, body: `Assessment от ${opp.job.company}` },
+    assessment: { title: NOTIFY_TITLE.assessment, body: `${opp.job.company} · ${opp.job.title}` },
     offer: { title: NOTIFY_TITLE.offer, body: `${opp.job.company} · ${opp.job.title}` },
   };
   if (NOTE[c.cls] && !closed) await notify(userId, c.cls, NOTE[c.cls].title, NOTE[c.cls].body, c.cls === "offer" ? "/app/offers" : "/app/interviews");

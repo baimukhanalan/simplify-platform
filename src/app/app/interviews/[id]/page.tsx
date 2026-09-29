@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Play } from "lucide-react";
 import { currentUserId, requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Chip, Script, cx } from "@/components/ui";
-import { ROUND_LABEL, ROUND_TONE, IV_STATUS_LABEL, IV_STATUS_TONE } from "@/lib/rounds";
+import { ROUND_TONE, IV_STATUS_TONE } from "@/lib/rounds";
 import { marketRange } from "@/lib/engine/market";
 import { roomReadiness } from "@/lib/engine/interview-readiness";
 import { regionsFor } from "@/lib/regions";
@@ -13,7 +13,9 @@ import { readAutonomy } from "@/lib/engine/autonomy";
 import { salaryTarget, userFloorUsd } from "@/lib/engine/salary";
 import type { Debrief } from "@/lib/actions/interview";
 import { isFictionalJob } from "@/lib/mode";
-import { deadlineText, fmtDate, nowMs, relDays } from "../_components/format";
+import { getT } from "@/lib/i18n/server";
+import { I18nScope } from "@/lib/i18n/scope";
+import { deadlineTextT, fmtDateT, ivStatusName, nowMs, relDaysT, roundName } from "../_components/format";
 import { buildBriefHeuristic, type StoredBrief } from "./_components/brief";
 import { BriefTab } from "./_components/brief-tab";
 import { QuestionsTab } from "./_components/questions-tab";
@@ -23,25 +25,17 @@ import { MockTab } from "./_components/mock-tab";
 import { DebriefTab } from "./_components/debrief-tab";
 import { RoomAside } from "./_components/room-aside";
 
-const TABS = {
-  assessment: "Тестовое задание",
-  brief: "Компания и роль",
-  questions: "Вопросы и STAR",
-  mock: "Пробное интервью",
-  sent: "Что отправили",
-  debrief: "Как прошло?",
-} as const;
-type TabKey = keyof typeof TABS;
+type TabKey = "assessment" | "brief" | "questions" | "mock" | "sent" | "debrief";
 const LEGACY: Record<string, TabKey> = { overview: "brief", pack: "questions" };
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
-  const [{ id }, userId] = await Promise.all([params, currentUserId()]);
+  const [{ id }, userId, t] = await Promise.all([params, currentUserId(), getT()]);
   const iv = userId ? await db.interview.findFirst({ where: { id, userId }, select: { opportunity: { select: { job: { select: { company: true } } } } } }) : null;
-  return { title: iv ? `Interview Room · ${iv.opportunity.job.company}` : "Страница не найдена" };
+  return { title: iv ? t("interviewsPage.roomMetaTitle", { company: iv.opportunity.job.company }) : t("interviewsPage.notFound") };
 }
 
 export default async function InterviewRoom({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; debug?: string }> }) {
-  const [{ id }, sp] = await Promise.all([params, searchParams]);
+  const [{ id }, sp, t] = await Promise.all([params, searchParams, getT()]);
   const user = await requireUser();
   const iv = await db.interview.findFirst({
     where: { id, userId: user.id },
@@ -96,31 +90,35 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
   // Debrief is secondary until the call has actually happened.
   const beforeCall = upcoming && (iv.scheduledAt?.getTime() ?? Infinity) > now;
 
+  const roundLabel = roundName(t, iv.round);
+
   return (
-    <>
+    <I18nScope ns={["interviewsPage", "interviewPractice"]}>
       <Link href="/app/interviews" className="mb-5 inline-flex min-h-10 items-center gap-1.5 rounded-full text-[13px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
-        <ArrowLeft className="size-3.5" strokeWidth={1.7} aria-hidden />Все интервью
+        <ArrowLeft className="size-3.5" strokeWidth={1.7} aria-hidden />{t("interviewsPage.room.back")}
       </Link>
 
       <header className="mb-7 flex flex-col gap-5 animate-rise lg:flex-row lg:items-end lg:justify-between">
         <div className="flex min-w-0 flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{isAssessment ? "Тестовое задание" : `Interview Room · ${ROUND_LABEL[iv.round] ?? iv.round}`}</Chip>
-            <Chip tone={IV_STATUS_TONE[iv.status] ?? "neutral"} dot={upcoming}>{IV_STATUS_LABEL[iv.status] ?? iv.status}</Chip>
+            <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{isAssessment ? t("interviewsPage.room.chipAssessment") : t("interviewsPage.room.chipRoom", { round: roundLabel })}</Chip>
+            <Chip tone={IV_STATUS_TONE[iv.status] ?? "neutral"} dot={upcoming}>{ivStatusName(t, iv.status)}</Chip>
           </div>
           <h1 className="h-serif text-[clamp(34px,4.6vw,58px)]">
-            {isAssessment ? <>Тест <Script>{job.company}</Script></> : <>{job.company} · <Script>{ROUND_LABEL[iv.round]?.toLowerCase() ?? iv.round}</Script></>}
+            {isAssessment
+              ? t.rich("interviewsPage.room.titleAssessment", { company: job.company }, { s: (c) => <Script>{c}</Script> })
+              : t.rich("interviewsPage.room.titleRound", { company: job.company, round: roundLabel.toLowerCase() }, { s: (c) => <Script>{c}</Script> })}
           </h1>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-ink-2">
             <span>{job.title}</span>
             <span aria-hidden className="text-ink-4">·</span>
-            <span className="num">{isAssessment ? `Дедлайн: ${deadlineText(iv.scheduledAt)}` : fmtDate(iv.scheduledAt)}</span>
-            {iv.scheduledAt && upcoming && <span className="text-green">{relDays(iv.scheduledAt, now)}</span>}
+            <span className="num">{isAssessment ? t("interviewsPage.room.deadline", { date: deadlineTextT(t, iv.scheduledAt) }) : fmtDateT(t, iv.scheduledAt)}</span>
+            {iv.scheduledAt && upcoming && <span className="text-green">{relDaysT(t, iv.scheduledAt, now)}</span>}
           </p>
         </div>
         {upcoming && tab !== "mock" && (
           <div className="flex flex-wrap gap-2">
-            <ButtonLink href={`/app/interviews/${iv.id}?tab=mock`} scroll={false}><Play className="size-4" strokeWidth={1.7} aria-hidden />{isAssessment ? "Начать тренировку" : "Start Mock Interview"}</ButtonLink>
+            <ButtonLink href={`/app/interviews/${iv.id}?tab=mock`} scroll={false}><Play className="size-4" strokeWidth={1.7} aria-hidden />{isAssessment ? t("interviewsPage.room.startPractice") : t("interviewsPage.room.startMock")}</ButtonLink>
           </div>
         )}
       </header>
@@ -128,14 +126,14 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
       {justHappened && tab !== "debrief" && (
         <Link href={`/app/interviews/${iv.id}?tab=debrief`} className="mb-6 flex items-center justify-between gap-4 rounded-[22px] bg-cta px-5 py-4 text-white shadow-(--shadow-cta) transition hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green sm:px-6">
           <span className="flex flex-col gap-0.5">
-            <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/55">Интервью закончилось</span>
-            <span className="h-serif text-[22px] !text-white">Как прошло? Расскажи за минуту</span>
+            <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/55">{t("interviewsPage.room.endedEyebrow")}</span>
+            <span className="h-serif text-[22px] !text-white">{t("interviewsPage.room.endedTitle")}</span>
           </span>
           <ArrowRight className="size-5 shrink-0" strokeWidth={1.7} aria-hidden />
         </Link>
       )}
 
-      <nav aria-label="Разделы Interview Room" className="scroll-thin -mx-4 mb-6 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <nav aria-label={t("interviewsPage.room.navAria")} className="scroll-thin -mx-4 mb-6 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <ul className="glass inline-flex min-w-max gap-1 !rounded-full p-1">
           {order.map((k) => (
             <li key={k}>
@@ -148,9 +146,9 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
                   tab === k ? "bg-cta text-white shadow-(--shadow-cta)" : k === "debrief" && beforeCall ? "text-ink-3 hover:bg-white/70 hover:text-ink-2" : "text-ink-2 hover:bg-white/70 hover:text-head",
                 )}
               >
-                {isAssessment && k === "mock" ? "Тренировка" : k === "debrief" && beforeCall ? (isAssessment ? "После теста" : "После звонка") : TABS[k]}
+                {isAssessment && k === "mock" ? t("interviewsPage.room.tabs.practice") : k === "debrief" && beforeCall ? (isAssessment ? t("interviewsPage.room.tabs.afterTest") : t("interviewsPage.room.tabs.afterCall")) : t(`interviewsPage.room.tabs.${k}`)}
                 {k === "mock" && iv.mocks.length > 0 && <span className="num text-[11px] opacity-70">{iv.mocks.length}</span>}
-                {k === "debrief" && justHappened && <><span aria-hidden className="size-1.5 rounded-full bg-green" /><span className="sr-only">(нужно заполнить)</span></>}
+                {k === "debrief" && justHappened && <><span aria-hidden className="size-1.5 rounded-full bg-green" /><span className="sr-only">{t("interviewsPage.room.needsFilling")}</span></>}
               </Link>
             </li>
           ))}
@@ -175,6 +173,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
             <RoomAside
               iv={{ id: iv.id, round: iv.round, status: iv.status, scheduledAt: iv.scheduledAt, copilotAllowed: iv.copilotAllowed, opportunityId: iv.opportunityId }}
               readiness={readiness}
+              stories={stories.length}
               pkg={iv.opportunity.pkg ? { cvVersion: iv.opportunity.pkg.cvVersion, cover: Boolean(iv.opportunity.pkg.coverLetter), answers: j<unknown[]>(iv.opportunity.pkg.answers, []).length } : null}
               now={now}
             />
@@ -211,6 +210,6 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
           />
         )}
       </div>
-    </>
+    </I18nScope>
   );
 }

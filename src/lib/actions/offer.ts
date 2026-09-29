@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { db, j, s, noNul } from "../db";
 import { logEvent } from "../engine/agent";
+import { actionT } from "../i18n/action";
 
 const PATH = "/app/offers";
 const int = (v: FormDataEntryValue | null, max = 100_000_000) => Math.max(0, Math.min(max, Math.round(Number(String(v ?? "").replace(/[\s,]/g, "")) || 0)));
@@ -33,9 +34,10 @@ export async function addOffer(_: OfferFormState, form: FormData): Promise<Offer
   const company = str(form.get("company"), 120);
   const role = str(form.get("role"), 160);
   const t = terms(form);
-  if (!company) return { error: "Укажи компанию." };
-  if (!role) return { error: "Укажи должность." };
-  if (t.base < 1000) return { error: "Укажи годовую базовую зарплату (например, 68000)." };
+  if (!company || !role || t.base < 1000) {
+    const tr = await actionT();
+    return { error: tr(!company ? "actionMsg.needCompany" : !role ? "actionMsg.needRole" : "actionMsg.needBase") };
+  }
   const oppId = str(form.get("opportunityId"), 40);
   const opp = oppId ? await db.opportunity.findFirst({ where: { id: oppId, campaign: { userId: user.id } } }) : null;
   await db.offer.create({ data: { userId: user.id, opportunityId: opp?.id ?? null, company, role, ...t } });
@@ -52,9 +54,9 @@ async function ownOffer(userId: string, id: string) {
 export async function updateOffer(_: OfferFormState, form: FormData): Promise<OfferFormState> {
   const user = await requireUser();
   const offer = await ownOffer(user.id, str(form.get("offerId"), 40));
-  if (!offer) return { error: "Оффер не найден." };
+  if (!offer) return { error: (await actionT())("actionMsg.offerNotFound") };
   const t = terms(form);
-  if (t.base < 1000) return { error: "Базовая зарплата должна быть годовой суммой." };
+  if (t.base < 1000) return { error: (await actionT())("actionMsg.baseYearly") };
   await db.offer.update({ where: { id: offer.id }, data: t });
   revalidatePath(PATH);
   return { ok: true };

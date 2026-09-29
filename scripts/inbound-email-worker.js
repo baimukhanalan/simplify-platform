@@ -29,8 +29,15 @@
 // (`npx wrangler tail`). Unknown aliases are ignored by the app with 200. Letters above MAX_RAW are skipped. A 429/5xx
 // from the app is retried a few times with backoff within the Worker's time budget.
 //
-// Postmark alternative: point a Postmark Inbound stream at https://inbound:<secret>@<app>/api/inbound/email (or
-// ...?token=<secret>) — the endpoint accepts Postmark's JSON as is; no Worker needed.
+// Postmark alternative: point a Postmark Inbound stream at https://inbound:<secret>@<app>/api/inbound/email — the secret
+// goes as the basic-auth PASSWORD (the user name is ignored; ?token= is not accepted). The endpoint takes Postmark's JSON
+// as is; no Worker needed.
+//
+// Sender authentication: the app lets a letter move an application only when it is authenticated for its From domain.
+// It reads the verdict headers the receiving side adds (Authentication-Results / ARC-Authentication-Results of
+// mx.cloudflare.net, or Postmark's Received-SPF / X-Spam-Tests) plus the forwarding chain (X-Forwarded-For,
+// Delivered-To, Return-Path). This Worker passes them through in their original order (topmost first): the app trusts
+// only the topmost verdict. A receiver with another authserv-id → INBOUND_AUTHSERV_IDS in the app's environment.
 
 import PostalMime from "postal-mime";
 
@@ -40,6 +47,8 @@ const HTML_MAX = 2_000_000;
 const KEEP_HEADERS = new Set([
   "message-id", "date", "from", "to", "cc", "subject", "delivered-to", "x-original-to", "x-forwarded-to", "x-forwarded-for",
   "list-id", "list-unsubscribe", "precedence", "auto-submitted", "x-spam-flag", "x-spam-status", "reply-to",
+  // Sender authentication and the forwarding chain (order matters: the topmost verdict is the receiver's own).
+  "authentication-results", "arc-authentication-results", "received-spf", "return-path", "resent-from", "resent-sender",
 ]);
 
 const worker = {
@@ -56,8 +65,11 @@ const worker = {
       console.error("inbound: MIME parse failed", e);
       return;
     }
+    // postal-mime keeps every header in its original order and repeated headers separately (the Headers object of the
+    // message would merge and sort them); fall back to it only if the parser gave none.
     const headers = [];
-    for (const [name, value] of message.headers) if (KEEP_HEADERS.has(name.toLowerCase())) headers.push({ name, value: String(value).slice(0, 5000) });
+    const source = Array.isArray(parsed.headers) && parsed.headers.length ? parsed.headers.map((h) => [h.key, h.value]) : [...message.headers];
+    for (const [name, value] of source) if (KEEP_HEADERS.has(String(name).toLowerCase()) && headers.length < 200) headers.push({ name, value: String(value).slice(0, 5000) });
     const fromHeader = parsed.from ? (parsed.from.name ? `${parsed.from.name} <${parsed.from.address}>` : parsed.from.address) : message.from;
     const payload = {
       to: message.to, // the envelope recipient: <alias>@in.simplify.kz even when To: says the user's own mailbox

@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { dismissNotification } from "@/lib/actions/notifications";
 import { isPushHiddenOn } from "@/lib/push";
 import { cx } from "@/components/ui";
+import { useT } from "@/lib/i18n/client";
 
 /**
  * Live Copilot is a focused screen: no push moment on top of it (routes: src/lib/push.ts). `hideExact` / `hidePrefix`
@@ -28,6 +29,7 @@ function focusMainHeading() {
 }
 
 export function DismissButton({ id, light }: { id: string; light: boolean }) {
+  const t = useT();
   const [pending, start] = useTransition();
   return (
     <form
@@ -44,8 +46,8 @@ export function DismissButton({ id, light }: { id: string; light: boolean }) {
     >
       <input type="hidden" name="id" value={id} />
       <button
-        aria-label="Скрыть уведомление"
-        title="Скрыть"
+        aria-label={t("shell.moment.dismissAria")}
+        title={t("shell.moment.dismiss")}
         disabled={pending}
         aria-busy={pending || undefined}
         className={cx(

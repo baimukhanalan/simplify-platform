@@ -1,6 +1,11 @@
 // English. Typed as Dictionary: every key of ru.ts must be here (and nothing else). Plurals: one/other.
 import type { Dictionary } from "./ru";
 import { globalErrorEn } from "./global-error";
+import { appErrorEn } from "./app-error";
+import { partCEn } from "./en/part-c";
+import { partBEn } from "./en/part-b";
+import { partAEn } from "./en/part-a";
+import { partFinalEn } from "./en/part-final";
 
 export const en: Dictionary = {
   common: {
@@ -620,15 +625,14 @@ export const en: Dictionary = {
     notFoundSignedIn: "The link is outdated or the page has moved. The agent keeps working — head back to your dashboard.",
     notFoundSignedOut: "The link is outdated or the page has moved.",
     openToday: "Open Today",
-    appEyebrow: "Something went wrong",
-    appTitle: "This screen didn't load",
-    appText: "The agent keeps working meanwhile. Try again — if that doesn't help, go back to Today.",
-    code: "Code: {digest}",
-    retry: "Try again",
-    toToday: "To Today",
+    ...appErrorEn,
     appNotFoundTitle: "We couldn't find this page",
     appNotFoundText: "The job or interview may no longer be available.",
     backToToday: "Back to Today",
   },
+  ...partCEn,
+  ...partBEn,
+  ...partAEn,
+  ...partFinalEn,
   globalError: globalErrorEn,
 };

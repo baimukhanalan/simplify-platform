@@ -1,7 +1,6 @@
 import { applyAdjustment } from "@/lib/actions/onboarding";
 import { getT } from "@/lib/i18n/server";
-import { seniorityName } from "@/lib/i18n/labels";
-import { SENIORITY_LABEL, goalMarket } from "@/lib/engine/taxonomy";
+import { marketLine, seniorityName } from "@/lib/i18n/labels";
 import { SubmitButton } from "@/components/client";
 import { goalTitle, readinessView, type ReadinessData } from "../../app/readiness/_components/model";
 import { BlockersAndPlan, ParamTable, ReadinessHero } from "../../app/readiness/_components/readiness-view";
@@ -10,7 +9,7 @@ import { ContinueBar } from "./shared";
 export async function StepReadiness({ data }: { data: ReadinessData }) {
   const t = await getT();
   const { readiness: r, goal, range } = data;
-  const view = readinessView(data);
+  const view = readinessView(data, t);
   const bad = (key: string) => r.checks.some((c) => c.key === key && c.status === "bad");
   const fixes: { kind: string; label: string; extra?: Record<string, string> }[] = [];
   if (r.suggestedSeniority !== goal.seniority && bad("seniority")) fixes.push({ kind: "seniority", label: t("onboarding.fixLevel", { level: seniorityName(t, r.suggestedSeniority) }) });
@@ -20,12 +19,9 @@ export async function StepReadiness({ data }: { data: ReadinessData }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* The Readiness widget is still Russian-only (src/app/app/readiness, phase 2): kept whole and marked lang="ru" in other languages. */}
-      <div lang={t.locale === "ru" ? undefined : "ru"} className="contents">
-        <ReadinessHero score={view.score} verdict={r.verdict} goal={<>{goalTitle(goal.primaryRole)} <span className="text-ink-3">· {SENIORITY_LABEL[goal.seniority] ?? goal.seniority}</span></>} market={goalMarket(goal.countries).line} />
-        <ParamTable params={view.params} />
-        <BlockersAndPlan blockers={view.blockers} actions={view.actions} />
-      </div>
+      <ReadinessHero score={view.score} verdict={r.verdict} goal={<>{goalTitle(goal.primaryRole)} <span className="text-ink-3">· {seniorityName(t, goal.seniority)}</span></>} market={marketLine(t, goal.countries)} />
+      <ParamTable params={view.params} />
+      <BlockersAndPlan blockers={view.blockers} actions={view.actions} />
 
       {fixes.length > 0 && (
         <section aria-labelledby="fixes-h" className="glass flex flex-col gap-3 p-5 sm:p-6">

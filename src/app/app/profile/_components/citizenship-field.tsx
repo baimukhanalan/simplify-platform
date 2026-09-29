@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
 import { Field } from "@/components/ui";
+import { useT } from "@/lib/i18n/client";
 
 const OTHER = "__other";
 
@@ -10,6 +11,7 @@ const OTHER = "__other";
  * and accepts only a two-letter ISO code, so the free-text field asks for exactly that.
  */
 export function CitizenshipField({ defaultValue, options }: { defaultValue: string; options: [string, string][] }) {
+  const t = useT();
   const initial = (defaultValue || "KZ").toUpperCase();
   const known = options.some(([k]) => k === initial);
   const [other, setOther] = useState(!known);
@@ -17,7 +19,7 @@ export function CitizenshipField({ defaultValue, options }: { defaultValue: stri
 
   return (
     <div className="flex flex-col gap-3">
-      <Field label="Гражданство">
+      <Field label={t("profilePage.constraints.citizenship")}>
         <select
           name={other ? undefined : "citizenship"}
           defaultValue={known ? initial : OTHER}
@@ -29,11 +31,11 @@ export function CitizenshipField({ defaultValue, options }: { defaultValue: stri
           className="field"
         >
           {options.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          <option value={OTHER}>Другое</option>
+          <option value={OTHER}>{t("profilePage.constraints.other")}</option>
         </select>
       </Field>
       {other && (
-        <Field label="Код страны *" hint="Две латинские буквы, например DE — Германия, PL — Польша.">
+        <Field label={t("profilePage.constraints.codeLabel")} hint={t("profilePage.constraints.codeHint")}>
           <input
             ref={input}
             name="citizenship"
@@ -41,7 +43,7 @@ export function CitizenshipField({ defaultValue, options }: { defaultValue: stri
             minLength={2}
             maxLength={2}
             pattern="[A-Za-z]{2}"
-            title="Две латинские буквы, например DE"
+            title={t("profilePage.constraints.codeTitle")}
             autoComplete="country"
             defaultValue={known ? "" : initial}
             className="field uppercase"

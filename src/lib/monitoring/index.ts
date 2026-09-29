@@ -234,3 +234,31 @@ export function resetMonitoringState() {
 
 /** onRequestError context → source. */
 export const sourceOfRouteType = (t: string | undefined): ErrorSource => (t === "action" ? "action" : "server");
+
+// ——— Retention ———
+
+/** Resolved errors and client-sourced rows not seen for this long are deleted. */
+export const RETENTION_DAYS = 30;
+let lastPrune = 0;
+
+/**
+ * Delete resolved rows resolved > RETENTION_DAYS ago and client rows last seen > RETENTION_DAYS ago. Idempotent (several
+ * instances may run it); never throws. Returns the number of rows deleted.
+ */
+export async function pruneErrorLog(now = new Date()): Promise<number> {
+  try {
+    const cutoff = new Date(now.getTime() - RETENTION_DAYS * 86400_000);
+    const r = await prisma.errorLog.deleteMany({ where: { OR: [{ resolvedAt: { lt: cutoff } }, { source: "client", lastSeenAt: { lt: cutoff } }] } });
+    return r.count;
+  } catch {
+    return 0;
+  }
+}
+
+/** pruneErrorLog at most once a day per instance (the cron tick and, rarely, client captures call it). */
+export async function maybePruneErrorLog(now = Date.now()): Promise<number> {
+  if (now - lastPrune < 86400_000) return 0;
+  lastPrune = now;
+  return pruneErrorLog(new Date(now));
+}
+export const resetPruneClock = () => { lastPrune = 0; };

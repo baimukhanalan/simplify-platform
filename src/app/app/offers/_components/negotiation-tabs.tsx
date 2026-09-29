@@ -9,7 +9,7 @@ export type StyleTab = { key: string; label: string; hint: string; panel: ReactN
  * arrows move + select, Home/End jump). All panels are server-rendered; inactive ones are `hidden`.
  * The selection is mirrored into ?level= so a reload / shared link keeps the chosen style.
  */
-export function NegotiationTabs({ tabs, initial }: { tabs: StyleTab[]; initial: string }) {
+export function NegotiationTabs({ tabs, initial, ariaLabel }: { tabs: StyleTab[]; initial: string; ariaLabel: string }) {
   const [active, setActive] = useState(tabs.some((t) => t.key === initial) ? initial : tabs[0].key);
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const base = useId();
@@ -36,7 +36,7 @@ export function NegotiationTabs({ tabs, initial }: { tabs: StyleTab[]; initial: 
 
   return (
     <div>
-      <div role="tablist" aria-label="Стиль переговоров" className="grid grid-cols-3 gap-1 rounded-2xl border border-line bg-white/55 p-1 sm:inline-grid sm:rounded-full">
+      <div role="tablist" aria-label={ariaLabel} className="grid grid-cols-3 gap-1 rounded-2xl border border-line bg-white/55 p-1 sm:inline-grid sm:rounded-full">
         {tabs.map((t, i) => {
           const on = t.key === active;
           return (

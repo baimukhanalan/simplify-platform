@@ -2,6 +2,7 @@
 import { useState, useSyncExternalStore } from "react";
 import { Check, Copy, Link2, Send, Share2 } from "lucide-react";
 import { cx } from "@/components/ui";
+import { useT } from "@/lib/i18n/client";
 
 const noop = () => () => {};
 const ring = "focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green";
@@ -17,6 +18,7 @@ function WhatsAppIcon({ className }: { className?: string }) {
 
 /** Personal invite link: copy, Telegram, WhatsApp and the system share sheet (where the browser has one). */
 export function ShareInvite({ url, code, text }: { url: string; code: string; text: string }) {
+  const t = useT();
   const [copied, setCopied] = useState<"idle" | "ok" | "fail">("idle");
   const [error, setError] = useState<string | null>(null);
   const canShare = useSyncExternalStore(noop, () => typeof navigator.share === "function", () => false);
@@ -36,7 +38,7 @@ export function ShareInvite({ url, code, text }: { url: string; code: string; te
     try {
       await navigator.share({ title: "Simplify", text, url });
     } catch (e) {
-      if ((e as Error)?.name !== "AbortError") setError("Системное меню «Поделиться» недоступно — скопируй ссылку.");
+      if ((e as Error)?.name !== "AbortError") setError(t("referralPage.share.shareUnavailable"));
     }
   };
 
@@ -48,29 +50,29 @@ export function ShareInvite({ url, code, text }: { url: string; code: string; te
       <div className="flex min-w-0 items-center gap-2 rounded-full border border-line bg-white/80 py-1.5 pl-4 pr-1.5">
         <Link2 className="size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
         <input
-          readOnly value={url.replace(/^https?:\/\//, "")} aria-label="Твоя ссылка-приглашение" onFocus={(e) => e.currentTarget.select()}
+          readOnly value={url.replace(/^https?:\/\//, "")} aria-label={t("referralPage.share.linkAria")} onFocus={(e) => e.currentTarget.select()}
           className="min-w-0 flex-1 truncate bg-transparent font-mono text-[13px] text-head outline-none focus-visible:underline"
         />
         <button type="button" onClick={copy} className={cx("inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-cta px-4 text-[13px] font-medium text-white shadow-(--shadow-cta) transition hover:bg-[#2f2c2c]", ring)}>
           {copied === "ok" ? <Check className="size-3.5" strokeWidth={2} aria-hidden /> : <Copy className="size-3.5" strokeWidth={1.8} aria-hidden />}
-          <span aria-live="polite">{copied === "ok" ? "Скопировано" : copied === "fail" ? "Не вышло" : "Копировать"}</span>
+          <span aria-live="polite">{copied === "ok" ? t("referralPage.share.copied") : copied === "fail" ? t("referralPage.share.copyFailedShort") : t("referralPage.share.copy")}</span>
         </button>
       </div>
       <div className="flex flex-wrap gap-2">
         <a href={tg} target="_blank" rel="noopener noreferrer" className={cx(pill, "bg-[#229ED9] text-white hover:brightness-105")}>
-          <Send className="size-4" strokeWidth={1.8} aria-hidden />Telegram<span className="sr-only"> (в новой вкладке)</span>
+          <Send className="size-4" strokeWidth={1.8} aria-hidden />Telegram<span className="sr-only">{t("referralPage.share.newTab")}</span>
         </a>
         <a href={wa} target="_blank" rel="noopener noreferrer" className={cx(pill, "bg-[#25D366] text-[#0b2e1a] hover:brightness-105")}>
-          <WhatsAppIcon className="size-4" />WhatsApp<span className="sr-only"> (в новой вкладке)</span>
+          <WhatsAppIcon className="size-4" />WhatsApp<span className="sr-only">{t("referralPage.share.newTab")}</span>
         </a>
         {canShare && (
           <button type="button" onClick={share} className={cx(pill, "glass !rounded-full text-head hover:bg-white")}>
-            <Share2 className="size-4" strokeWidth={1.7} aria-hidden />Поделиться
+            <Share2 className="size-4" strokeWidth={1.7} aria-hidden />{t("referralPage.share.share")}
           </button>
         )}
       </div>
-      <p className="text-[12.5px] text-ink-3">Код приглашения: <span className="font-mono tracking-[.06em] text-head">{code}</span> — друг может ввести его при регистрации.</p>
-      {copied === "fail" && <p role="alert" className="text-[13px] text-rose">Не удалось скопировать — выдели ссылку и скопируй вручную.</p>}
+      <p className="break-words text-[12.5px] text-ink-3">{t.rich("referralPage.share.code", { code }, { code: (c) => <span className="font-mono tracking-[.06em] text-head">{c}</span> })}</p>
+      {copied === "fail" && <p role="alert" className="text-[13px] text-rose">{t("referralPage.share.copyFailed")}</p>}
       {error && <p role="alert" className="text-[13px] text-rose">{error}</p>}
     </div>
   );

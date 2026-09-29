@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -5,14 +6,17 @@ import { ShieldCheck, Users, Info } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card, Chip, Empty, Label, PageHeader, Script, Stat, cx } from "@/components/ui";
-import { fmtKzt } from "@/lib/engine/taxonomy";
 import { activationBlocked, countsAsRevenue, type PaymentMeta } from "@/lib/payments/kaspi";
 import { j } from "@/lib/db";
 import { CopyButton } from "../app/interviews/_components/copy-button";
 import { SUPPORT_EMAIL } from "../_components/legal-page";
-import { count } from "../_components/ru";
+import { getT } from "@/lib/i18n/server";
+import { INTL_TAG, TIME_ZONE, type Locale } from "@/lib/i18n/config";
 
-export const metadata = { title: "Партнёрский кабинет" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT();
+  return { title: t("partnersPage.meta") };
+}
 
 /** Outcomes are only shown once a cohort is large enough that no individual can be singled out. */
 const K_ANON = 3;
@@ -45,17 +49,18 @@ async function partnerStats(code: string) {
   };
 }
 
-function months(dates: Date[], n = 6) {
+function months(locale: Locale, dates: Date[], n = 6) {
   const now = new Date();
+  const fmt = new Intl.DateTimeFormat(INTL_TAG[locale], { timeZone: TIME_ZONE, month: "short" });
   return Array.from({ length: n }, (_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (n - 1 - i), 1);
     const count = dates.filter((x) => x.getFullYear() === d.getFullYear() && x.getMonth() === d.getMonth()).length;
-    return { key: `${d.getFullYear()}-${d.getMonth()}`, label: d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", month: "short" }), count };
+    return { key: `${d.getFullYear()}-${d.getMonth()}`, label: fmt.format(d), count };
   });
 }
 
 export default async function PartnersPage({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
-  const [user, sp, h] = await Promise.all([requireUser(), searchParams, headers()]);
+  const [user, sp, h, t] = await Promise.all([requireUser(), searchParams, headers(), getT()]);
   if (user.role !== "partner" && user.role !== "admin") redirect("/app");
   const isAdmin = user.role === "admin";
   const partners = isAdmin ? await db.partner.findMany({ orderBy: { createdAt: "asc" } }) : [];
@@ -64,8 +69,8 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
   if (!partner)
     return (
       <>
-        <PageHeader eyebrow="Партнёрам" title={<>Партнёрский <Script>кабинет</Script></>} />
-        <Empty title="Партнёрский профиль не привязан" sub={`Напиши на ${SUPPORT_EMAIL} — команда Simplify привяжет твой аккаунт к партнёрскому коду.`} />
+        <PageHeader eyebrow={t("partnersPage.chip")} title={t.rich("partnersPage.title", {}, { s: (c) => <Script>{c}</Script> })} />
+        <Empty title={t("partnersPage.noProfile")} sub={t("partnersPage.noProfileSub", { email: SUPPORT_EMAIL })} />
       </>
     );
 
@@ -74,47 +79,48 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
   const link = `${proto}://${host}/login?mode=signup&ref=${encodeURIComponent(partner.code)}`;
   const conv = stats.signups ? Math.round((stats.paid / stats.signups) * 100) : 0;
-  const signupSeries = months(stats.signupDates);
-  const paySeries = months(stats.payDates);
+  const signupSeries = months(t.locale, stats.signupDates);
+  const paySeries = months(t.locale, stats.payDates);
+  const pct = Math.round(partner.revShare * 100);
   const maxBar = Math.max(1, ...signupSeries.map((m) => m.count), ...paySeries.map((m) => m.count));
   const allStats = isAdmin ? await Promise.all(partners.map(async (p) => ({ p, s: await partnerStats(p.code) }))) : [];
 
   return (
     <>
       <PageHeader
-        eyebrow={`Партнёр · ${partner.code}`}
-        title={<>{partner.name} · <Script>партнёр</Script></>}
-        sub={`Доля выручки: ${Math.round(partner.revShare * 100)}% партнёру, ${100 - Math.round(partner.revShare * 100)}% Simplify — с каждой оплаченной Career Campaign по твоему коду.`}
+        eyebrow={t("partnersPage.eyebrow", { code: partner.code })}
+        title={t.rich("partnersPage.nameTitle", { name: partner.name }, { s: (c) => <Script>{c}</Script> })}
+        sub={t("partnersPage.sub", { partner: pct, simplify: 100 - pct })}
       />
 
       <div className="flex flex-col gap-6">
         <Card strong className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0 flex-1">
-            <Label className="mb-2">Реферальная ссылка</Label>
+            <Label className="mb-2">{t("partnersPage.refLink")}</Label>
             <code className="block truncate rounded-xl border border-line bg-white/70 px-3.5 py-2.5 font-mono text-[13px] text-head" title={link}>{link}</code>
-            <p className="mt-2 text-[12.5px] text-ink-3">Код <span className="font-mono text-head">{partner.code}</span> также можно ввести при регистрации.</p>
+            <p className="mt-2 text-[12.5px] text-ink-3">{t.rich("partnersPage.codeNote", { code: partner.code }, { c: (c) => <span className="font-mono text-head">{c}</span> })}</p>
           </div>
-          <CopyButton text={link} label="Копировать ссылку" className="self-start lg:self-center" />
+          <CopyButton labels={{ copied: t("interviewsPage.copy.copied"), failed: t("interviewsPage.copy.failed") }} text={link} label={t("partnersPage.copyLink")} className="self-start lg:self-center" />
         </Card>
 
-        <section aria-label="Ключевые показатели" className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-          <Card><Stat label="Аудитория" value={partner.audience.toLocaleString("ru-RU")} hint="охват партнёра, не пользователи Simplify" /></Card>
-          <Card><Stat label="Регистрации" value={stats.signups} hint="по твоему коду" /></Card>
-          <Card><Stat label="Оплаченные кампании" value={stats.paid} hint={`конверсия ${conv}%`} /></Card>
-          <Card><Stat label="Выручка" value={<span className="text-[26px]">{fmtKzt(stats.revenue)}</span>} hint="до вычетов, оплачено" /></Card>
-          <Card className="col-span-2 lg:col-span-1"><Stat label="Твоя доля" value={<span className="text-[26px]">{fmtKzt(stats.share)}</span>} tone="green" hint={`${Math.round(partner.revShare * 100)}% от выручки`} /></Card>
+        <section aria-label={t("partnersPage.kpiAria")} className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <Card><Stat label={t("partnersPage.audience")} value={t.num(partner.audience, 0)} hint={t("partnersPage.audienceHint")} /></Card>
+          <Card><Stat label={t("partnersPage.signups")} value={stats.signups} hint={t("partnersPage.signupsHint")} /></Card>
+          <Card><Stat label={t("partnersPage.paidCampaigns")} value={stats.paid} hint={t("partnersPage.conversion", { n: conv })} /></Card>
+          <Card><Stat label={t("partnersPage.revenue")} value={<span className="text-[26px]">{t.money(stats.revenue)}</span>} hint={t("partnersPage.revenueHint")} /></Card>
+          <Card className="col-span-2 lg:col-span-1"><Stat label={t("partnersPage.share")} value={<span className="text-[26px]">{t.money(stats.share)}</span>} tone="green" hint={t("partnersPage.shareHint", { n: pct })} /></Card>
         </section>
 
         <div className="grid gap-4 lg:grid-cols-[1.3fr_1fr]">
           <Card>
             <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-              <Label>Последние 6 месяцев</Label>
-              <div className="flex gap-3 text-[12px] text-ink-3">
-                <span className="flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-sm bg-teal/45" />Регистрации</span>
-                <span className="flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-sm bg-green" />Оплаты</span>
+              <Label>{t("partnersPage.last6")}</Label>
+              <div className="flex flex-wrap gap-3 text-[12px] text-ink-3">
+                <span className="flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-sm bg-teal/45" />{t("partnersPage.legendSignups")}</span>
+                <span className="flex items-center gap-1.5"><span aria-hidden className="size-2 rounded-sm bg-green" />{t("partnersPage.legendPayments")}</span>
               </div>
             </div>
-            <div role="img" aria-label={signupSeries.map((m, i) => `${m.label}: ${count(m.count, ["регистрация", "регистрации", "регистраций"])}, ${count(paySeries[i].count, ["оплата", "оплаты", "оплат"])}`).join("; ")} className="flex h-40 items-end gap-2 sm:gap-4">
+            <div role="img" aria-label={signupSeries.map((m, i) => t("partnersPage.chartBar", { month: m.label, s: m.count, p: paySeries[i].count })).join("; ")} className="flex h-40 items-end gap-2 sm:gap-4">
               {signupSeries.map((m, i) => (
                 <div key={m.key} className="flex h-full flex-1 flex-col items-center gap-2">
                   <div className="flex w-full flex-1 items-end justify-center gap-1">
@@ -128,22 +134,22 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
           </Card>
 
           <Card>
-            <div className="mb-4 flex items-center gap-2"><ShieldCheck className="size-4 text-green" strokeWidth={1.7} /><Label>Результаты приведённых пользователей</Label></div>
+            <div className="mb-4 flex items-center gap-2"><ShieldCheck className="size-4 shrink-0 text-green" strokeWidth={1.7} aria-hidden /><Label>{t("partnersPage.outcomes")}</Label></div>
             {stats.campaigns >= K_ANON ? (
               <dl className="grid grid-cols-3 gap-3">
-                <div><dt className="label !text-[11px]">Кампании</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.campaigns}</dd></div>
-                <div><dt className="label !text-[11px]">С интервью</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.withInterview}</dd><dd className="text-[12px] text-ink-3">{Math.round((stats.withInterview / stats.campaigns) * 100)}%</dd></div>
-                <div><dt className="label !text-[11px]">С оффером</dt><dd className="num mt-1 text-[28px] leading-none text-green">{stats.hired}</dd></div>
+                <div><dt className="label !text-[11px]">{t("partnersPage.campaigns")}</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.campaigns}</dd></div>
+                <div><dt className="label !text-[11px]">{t("partnersPage.withInterview")}</dt><dd className="num mt-1 text-[28px] leading-none text-head">{stats.withInterview}</dd><dd className="text-[12px] text-ink-3">{Math.round((stats.withInterview / stats.campaigns) * 100)}%</dd></div>
+                <div><dt className="label !text-[11px]">{t("partnersPage.withOffer")}</dt><dd className="num mt-1 text-[28px] leading-none text-green">{stats.hired}</dd></div>
               </dl>
             ) : (
               <p className="flex gap-2 text-[14px] text-ink-2">
-                <Users className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} />
-                Результаты появятся, когда наберётся не меньше {count(K_ANON, ["кампании", "кампаний", "кампаний"])} — так ни одного пользователя нельзя узнать по цифрам. Сейчас: {stats.campaigns}.
+                <Users className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
+                <span>{t("partnersPage.kAnon", { k: K_ANON, n: stats.campaigns })}</span>
               </p>
             )}
             <p className="mt-4 flex gap-2 text-[12px] text-ink-3">
-              <Info className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.7} />
-              Только агрегаты. Имена, email, CV и переписка приведённых пользователей партнёру недоступны.
+              <Info className="mt-0.5 size-3.5 shrink-0" strokeWidth={1.7} aria-hidden />
+              <span>{t("partnersPage.aggregatesOnly")}</span>
             </p>
           </Card>
         </div>
@@ -151,14 +157,14 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
         {isAdmin && (
           <Card className="!p-0">
             <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-5 sm:px-6">
-              <Label>Все партнёры · администратор</Label>
+              <Label>{t("partnersPage.allPartners")}</Label>
               <Chip tone="dark">{partners.length}</Chip>
             </div>
             <div className="scroll-thin mt-4 overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-[13.5px]">
                 <thead>
                   <tr className="border-b border-line">
-                    {["Партнёр", "Код", "Аудитория", "Регистрации", "Оплаты", "Выручка", "Выплата партнёру"].map((c) => <th key={c} scope="col" className="label px-5 py-2.5 !text-[11px] font-normal first:pl-6">{c}</th>)}
+                    {(["partner", "code", "audience", "signups", "payments", "revenue", "payout"] as const).map((c) => <th key={c} scope="col" className="label px-5 py-2.5 !text-[11px] font-normal first:pl-6">{t(`partnersPage.col.${c}`)}</th>)}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
@@ -168,11 +174,11 @@ export default async function PartnersPage({ searchParams }: { searchParams: Pro
                         <Link href={`/partners?code=${p.code}`} aria-current={p.id === partner.id ? "true" : undefined} className="underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-green">{p.name}</Link>
                       </th>
                       <td className="px-5 py-3 font-mono text-[12px]">{p.code}</td>
-                      <td className="num px-5 py-3">{p.audience.toLocaleString("ru-RU")}</td>
+                      <td className="num px-5 py-3">{t.num(p.audience, 0)}</td>
                       <td className="num px-5 py-3">{s.signups}</td>
                       <td className="num px-5 py-3">{s.paid}</td>
-                      <td className="num px-5 py-3">{fmtKzt(s.revenue)}</td>
-                      <td className="num px-5 py-3 text-green">{fmtKzt(s.share)}</td>
+                      <td className="num px-5 py-3">{t.money(s.revenue)}</td>
+                      <td className="num px-5 py-3 text-green">{t.money(s.share)}</td>
                     </tr>
                   ))}
                 </tbody>

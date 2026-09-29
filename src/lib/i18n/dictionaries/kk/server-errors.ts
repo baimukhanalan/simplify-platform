@@ -1,0 +1,31 @@
+import type { serverErrorsRu } from "../ru/server-errors";
+
+export const serverErrorsKk: typeof serverErrorsRu = {
+  checkLimit: "Тексеру тым көп болды. {n} минуттан кейін қайта көр.",
+  checkNoCv: "CV қос: PDF жүкте немесе мәтінін қой (кемінде бірнеше абзац).",
+  checkFailed: "CV-ді талдау мүмкін болмады. Қайта байқап көр немесе мәтінін қолмен қой.",
+  badLink: "Сілтеме қате сияқты",
+  needCv: "PDF жүкте немесе CV мәтінін қой — агент оны өзі талдайды.",
+  checkFields: "Белгіленген өрістерді тексер",
+  needTitle: "Лауазымды немесе атауды көрсет",
+  positionNotFound: "Позиция табылмады",
+  fixed: "Түзетілді",
+  turnStale: "Сұрақ ескірді — бетті жаңарт",
+  pickOption: "Нұсқалардың бірін таңда",
+  needRole: "Қандай рөл іздейміз? Мысалы, Data Analyst",
+  needLevel: "Деңгейді таңда",
+  needRegion: "Кемінде бір аймақты таңда",
+  needFormat: "Кемінде бір форматты таңда",
+  friendDiscount: "{name} · алғашқы кампанияға −{pct}%",
+  cvParse: {
+    tooMany: "Жүктеу тым көп — кейінірек қайта көр",
+    badRequest: "file өрісі бар multipart/form-data күтіледі",
+    noFile: "Файл алынбады",
+    tooBig: "Файл 5 МБ-тан үлкен",
+    badType: "Тек PDF және TXT қолдау көрсетіледі",
+    notPdf: "Файл PDF-ке ұқсамайды",
+    tooLong: "CV 20 беттен ұзын — файлды қысқарт",
+    unreadable: "Файлды оқу мүмкін болмады. Басқа PDF байқап көр немесе мәтінді қолмен қой.",
+    noText: "Файлда мәтін жоқтың қасы — бәлкім, бұл скан. CV мәтінін қолмен қой.",
+  },
+};

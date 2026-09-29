@@ -6,7 +6,8 @@ export const maxDuration = 60;
 /**
  * Inbound employer mail for personal forwarding addresses (<alias>@INBOUND_EMAIL_DOMAIN).
  * Accepts Postmark Inbound JSON and the generic JSON posted by scripts/inbound-email-worker.js.
- * Auth: INBOUND_EMAIL_SECRET via `X-Inbound-Secret`, basic auth or `?token=`. No secret configured → 503.
+ * Auth: INBOUND_EMAIL_SECRET via `X-Inbound-Secret` or as the basic-auth password (https://inbound:<secret>@host/…).
+ * No secret configured → 503.
  */
 export async function POST(req: Request) {
   // Per source IP: generous for a provider's delivery burst, a wall for secret guessing.

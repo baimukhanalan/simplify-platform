@@ -24,24 +24,34 @@ export function formatNumber(locale: Locale, n: number, digits = 1) {
   return numberFormat(locale, { maximumFractionDigits: digits }).format(n);
 }
 
+const NNBSP = "\u202F";
+const MONEY_PREFIX: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
+
 /**
- * Money, whole units: KZT → «29 990 ₸» (ru, kk) / «₸29,990» (en); USD → «$60 000» / «$60,000»; other ISO codes use Intl.
- * The ₸ sign is kept in every language (never «KZT» / «тг»).
+ * Money, whole units: KZT → «29 990 ₸» (ru, kk) / «₸29,990» (en); USD → «$60 000» / «$60,000»; other ISO codes use Intl
+ * in English. ru/kk output is identical to the legacy helper (fmtMoney / fmtKzt in src/lib/engine/taxonomy.ts): digits
+ * grouped with the narrow no-break space U+202F, «−» for negatives. The ₸ sign is kept in every language (never «KZT» / «тг»).
  */
 export function formatMoney(locale: Locale, amount: number, currency = "KZT") {
-  const n = Math.round(amount);
-  const cur = currency.toUpperCase();
-  const num = formatNumber(locale, n, 0);
-  if (cur === "KZT") return locale === "en" ? `₸${num}` : `${num} ₸`;
-  if (cur === "USD") return `${n < 0 ? "−" : ""}$${formatNumber(locale, Math.abs(n), 0)}`;
-  return numberFormat(locale, { style: "currency", currency: cur, currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(n);
+  const n = Math.round(Number.isFinite(amount) ? amount : 0);
+  const cur = (currency || "KZT").toUpperCase();
+  const sign = n < 0 ? "−" : "";
+  if (locale === "en") {
+    const num = formatNumber(locale, Math.abs(n), 0);
+    if (cur === "KZT") return `${sign}₸${num}`;
+    if (cur === "USD") return `${sign}$${num}`;
+    return numberFormat(locale, { style: "currency", currency: cur, currencyDisplay: "narrowSymbol", maximumFractionDigits: 0 }).format(n);
+  }
+  const digits = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, NNBSP);
+  if (MONEY_PREFIX[cur]) return `${sign}${MONEY_PREFIX[cur]}${digits}`;
+  return `${sign}${digits}${NNBSP}${cur === "KZT" ? "₸" : cur}`;
 }
 
 export type DateStyle =
   | "dayMonth" //       29 сентября · 29 қыркүйек · September 29
   | "dayMonthShort" //  29 сент. · 29 қыр. · Sep 29
   | "dayMonthYear" //   29 сентября 2026 г. · 2026 ж. 29 қыркүйек · September 29, 2026
-  | "weekdayDayMonth" // вт, 29 сентября · …
+  | "weekdayDayMonth" // вт, 29 сентября · 29 қыркүйек, сейсенбі · Tue, September 29
   | "time" //           15:05 (24-hour in every language)
   | "dateTime"; //      29 сентября, 15:05
 
@@ -59,6 +69,8 @@ export function formatDate(locale: Locale, d: Date | number | string | null | un
   if (d == null) return "—";
   const date = d instanceof Date ? d : new Date(d);
   if (Number.isNaN(date.getTime())) return "—";
+  // ICU's short Kazakh weekdays («жм», «сс») read as typos: Kazakh spells the weekday out («2 қазан, жұма»).
+  if (style === "weekdayDayMonth" && locale === "kk") return dateFormat(locale, { ...STYLES.weekdayDayMonth, weekday: "long" }).format(date);
   if (style === "dateTime") return `${dateFormat(locale, STYLES.dayMonth).format(date)}, ${dateFormat(locale, STYLES.time).format(date)}`;
   return dateFormat(locale, STYLES[style]).format(date);
 }

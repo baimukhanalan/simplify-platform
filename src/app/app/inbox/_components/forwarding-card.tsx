@@ -1,67 +1,78 @@
 import { ExternalLink, KeyRound, MailPlus } from "lucide-react";
 import type { ForwardingStatus } from "@/lib/inbound/service";
 import { dismissForwardingCode } from "@/lib/inbound/actions";
-import { PROVIDER_RU } from "@/lib/inbound/verify";
-import { fmtDateTime } from "@/lib/ops";
 import { Chip, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
-import { agoRu } from "../../opportunities/_lib/when";
+import { getT } from "@/lib/i18n/server";
+import type { MessageKey, T } from "@/lib/i18n/translator";
+import { agoT, dateTimeT } from "../../opportunities/_lib/labels";
 import { CopyButton, ProviderGuide, RegenerateAlias, type Guide } from "./forwarding-client";
 
-// Words employer mail almost always carries (RU + EN). Used in the provider filters below.
+// Words employer mail almost always carries (RU + EN) — filter content, the same in every interface language.
 const WORDS_RU = "вакансия, отклик, собеседование, интервью, оффер, резюме";
 const WORDS_EN = "interview, application, offer, recruiting, careers";
 const GMAIL_QUERY = "{вакансия отклик собеседование интервью оффер резюме interview application offer recruiting careers}";
+const WORDS = `${WORDS_RU}, ${WORDS_EN}`;
 
-function guides(address: string): Guide[] {
+function guides(t: T, address: string): Guide[] {
   return [
     {
       key: "gmail",
       label: "Gmail",
       steps: [
-        { text: "Открой Gmail на компьютере → шестерёнка → «Все настройки» → вкладка «Пересылка и POP/IMAP» → «Добавить адрес пересылки». Вставь адрес:", copy: address },
-        { text: "Gmail отправит на этот адрес код подтверждения — через минуту он появится прямо в этой карточке. Введи код в Gmail или нажми «Подтвердить в Gmail»." },
-        { text: "Пересылать всю почту не нужно. В строке поиска Gmail открой «Показать параметры поиска», в поле «Содержит слова» вставь фильтр и нажми «Создать фильтр»:", copy: GMAIL_QUERY },
-        { text: "Отметь «Переслать» → выбери свой адрес Simplify → «Создать фильтр». Готово: письма работодателей будут приходить сюда сами." },
+        { text: t("inbox.gmail1"), copy: address },
+        { text: t("inbox.gmail2") },
+        { text: t("inbox.gmail3"), copy: GMAIL_QUERY },
+        { text: t("inbox.gmail4") },
       ],
-      note: "Можно и проще — в «Пересылке и POP/IMAP» включить «Пересылать копии входящих сообщений» на этот адрес. Рассылки и спам агент отсеет сам: они не меняют статусы заявок.",
+      note: t("inbox.gmailNote"),
     },
     {
       key: "outlook",
       label: "Outlook",
       steps: [
-        { text: "Открой Outlook в браузере → шестерёнка «Параметры» → «Почта» → «Правила» → «Добавить новое правило». Назови правило, например «Simplify»." },
-        { text: `Условие: «Тема или текст содержат» — добавь слова: ${WORDS_RU}, ${WORDS_EN}.` },
-        { text: "Действие: «Переслать» → вставь адрес и нажми «Сохранить»:", copy: address },
+        { text: t("inbox.outlook1") },
+        { text: t("inbox.outlook2", { words: WORDS }) },
+        { text: t("inbox.outlook3"), copy: address },
       ],
-      note: "Outlook не просит подтверждать адрес. Если он пишет, что пересылка на внешние адреса запрещена — это ограничение рабочей почты организации; настрой пересылку с личного ящика.",
+      note: t("inbox.outlookNote"),
     },
     {
       key: "mailru",
       label: "Mail.ru",
       steps: [
-        { text: "Открой Почту Mail.ru → «Настройки» → «Фильтры» → «Добавить фильтр»." },
-        { text: `Условие: «Тема» содержит — добавь по одному через «или»: ${WORDS_RU}, ${WORDS_EN}.` },
-        { text: "Действие: «Переслать копию письма на адрес» → вставь адрес и сохрани:", copy: address },
-        { text: "Mail.ru попросит подтвердить пересылку — письмо со ссылкой придёт на этот адрес и появится в этой карточке. Открой ссылку, и фильтр заработает." },
+        { text: t("inbox.mailru1") },
+        { text: t("inbox.mailru2", { words: WORDS }) },
+        { text: t("inbox.mailru3"), copy: address },
+        { text: t("inbox.mailru4") },
       ],
     },
     {
       key: "yandex",
-      label: "Яндекс",
+      label: t("inbox.guideYandex"),
       steps: [
-        { text: "Открой Яндекс Почту → шестерёнка → «Все настройки» → «Правила обработки писем» → «Создать правило»." },
-        { text: `Если: «Тема» содержит — добавь условия через «или»: ${WORDS_RU}, ${WORDS_EN}.` },
-        { text: "Действие: «Переслать по адресу» → вставь адрес → «Создать правило»:", copy: address },
-        { text: "Яндекс пришлёт на этот адрес письмо со ссылкой подтверждения — она появится в этой карточке. Открой её, чтобы включить правило." },
+        { text: t("inbox.yandex1") },
+        { text: t("inbox.yandex2", { words: WORDS }) },
+        { text: t("inbox.yandex3"), copy: address },
+        { text: t("inbox.yandex4") },
       ],
     },
   ];
 }
 
+/** Mail providers by name (PROVIDER_RU in src/lib/inbound/verify.ts); `fem`: Russian verb agreement («Яндекс Почта прислала»). */
+const PROVIDER: Record<string, { key: MessageKey; fem: boolean }> = {
+  gmail: { key: "inbox.providerGmail", fem: false },
+  yandex: { key: "inbox.providerYandex", fem: true },
+  mailru: { key: "inbox.providerMailru", fem: true },
+  outlook: { key: "inbox.providerOutlook", fem: false },
+};
+
 /** «Пересылка писем»: the personal forwarding address, its status and set-up instructions per mail provider. */
-export function ForwardingCard({ status }: { status: ForwardingStatus }) {
+export async function ForwardingCard({ status }: { status: ForwardingStatus }) {
+  const t = await getT();
   const { address, lastAt, verification: v } = status;
+  const provider = v ? PROVIDER[v.provider] : null;
   const working = status.state === "simulated" || Boolean(lastAt);
   const addrId = "forwarding-address";
   const codeId = "forwarding-code";
@@ -73,34 +84,34 @@ export function ForwardingCard({ status }: { status: ForwardingStatus }) {
         </span>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 id="forwarding-title" className="text-[15.5px] font-medium text-head">Пересылка писем</h2>
+            <h2 id="forwarding-title" className="text-[15.5px] font-medium text-head">{t("inbox.fwdTitle")}</h2>
             {v ? (
-              <Chip tone="amber" dot>Нужно подтвердить</Chip>
+              <Chip tone="amber" dot>{t("inbox.fwdNeedConfirm")}</Chip>
             ) : working ? (
-              <Chip tone="green" dot>Работает</Chip>
+              <Chip tone="green" dot>{t("inbox.fwdWorking")}</Chip>
             ) : (
-              <Chip tone="amber">Ждём первое письмо</Chip>
+              <Chip tone="amber">{t("inbox.fwdWaiting")}</Chip>
             )}
           </div>
           <p className="text-[13.5px] text-ink-3">
             {working ? (
               lastAt ? (
-                <>Последнее письмо — <time dateTime={lastAt.toISOString()} title={fmtDateTime(lastAt)}>{agoRu(lastAt)}</time>. Письма работодателей приходят сюда сами, агент разбирает каждое.</>
+                t.rich("inbox.fwdLast", { ago: agoT(t, lastAt) }, { t: (c) => <time dateTime={lastAt.toISOString()} title={dateTimeT(t, lastAt)}>{c}</time> })
               ) : (
-                <>Письма работодателей приходят сюда сами, агент разбирает каждое.</>
+                t("inbox.fwdAuto")
               )
             ) : (
-              <>Настрой в своей почте пересылку на этот адрес — ответы работодателей будут появляться здесь сами, и агент будет двигать заявки.</>
+              t("inbox.fwdSetup")
             )}
           </p>
         </div>
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className="label !text-[11px]">Твой адрес для пересылки</span>
+        <span className="label !text-[11px]">{t("inbox.fwdAddress")}</span>
         <div className="flex flex-wrap items-center gap-2">
           <code id={addrId} className="min-w-0 flex-1 basis-56 break-all rounded-2xl border border-line bg-white/80 px-4 py-2.5 font-mono text-[14px] text-head">{address}</code>
-          <CopyButton value={address} targetId={addrId} label="Скопировать адрес" />
+          <CopyButton value={address} targetId={addrId} label={t("inbox.fwdCopyAddress")} />
         </div>
         <RegenerateAlias />
       </div>
@@ -110,27 +121,28 @@ export function ForwardingCard({ status }: { status: ForwardingStatus }) {
           <div className="flex items-start gap-2.5">
             <KeyRound className="mt-0.5 size-4 shrink-0 text-amber" strokeWidth={1.8} aria-hidden />
             <p className="text-[13.5px] text-ink-2">
-              {PROVIDER_RU[v.provider]} прислал{v.provider === "yandex" || v.provider === "mailru" ? "а" : ""} подтверждение пересылки{v.requester ? <> для <span className="break-all text-head">{v.requester}</span></> : null}
-              {" "}<time dateTime={v.at.toISOString()} className="text-ink-3">{agoRu(v.at)}</time>.{" "}
-              {v.code ? "Введи код в настройках пересылки" : "Открой ссылку, чтобы включить пересылку"}
-              {v.code && v.link ? " или подтверди по ссылке." : "."}
+              {t("inbox.fwdVerifySent", { provider: provider ? t(provider.key) : v.provider, fem: provider?.fem ? "yes" : "no" })}
+              {v.requester ? t.rich("inbox.fwdVerifyFor", { requester: v.requester }, { r: (c) => <span className="break-all text-head">{c}</span> }) : null}
+              {" "}<time dateTime={v.at.toISOString()} className="text-ink-3">{agoT(t, v.at)}</time>.{" "}
+              {t(v.code ? "inbox.fwdEnterCode" : "inbox.fwdOpenLink")}
+              {v.code && v.link ? t("inbox.fwdOrLink") : "."}
             </p>
           </div>
           {v.code && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="label !text-[11px]">Код подтверждения</span>
+              <span className="label !text-[11px]">{t("inbox.fwdCode")}</span>
               <code id={codeId} className="num rounded-xl border border-line bg-white px-3.5 py-1.5 font-mono text-[20px] tracking-[.12em] text-head">{v.code}</code>
-              <CopyButton value={v.code} targetId={codeId} label="Скопировать код" />
+              <CopyButton value={v.code} targetId={codeId} label={t("inbox.fwdCopyCode")} />
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
             {v.link && (
               <a href={v.link} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-2 rounded-full bg-cta px-4 text-[13.5px] font-medium text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
-                {v.provider === "gmail" ? "Подтвердить в Gmail" : "Открыть ссылку подтверждения"}<ExternalLink className="size-4" aria-hidden /><span className="sr-only"> (откроется в новой вкладке)</span>
+                {t(v.provider === "gmail" ? "inbox.fwdConfirmGmail" : "inbox.fwdOpenConfirm")}<ExternalLink className="size-4" aria-hidden /><span className="sr-only"> {t("work.newTab")}</span>
               </a>
             )}
             <form action={dismissForwardingCode}>
-              <SubmitButton variant="ghost" size="sm" pendingText="Скрываем…">Готово, подтверждено</SubmitButton>
+              <SubmitButton variant="ghost" size="sm" pendingText={t("inbox.fwdHiding")}>{t("inbox.fwdDone")}</SubmitButton>
             </form>
           </div>
         </div>
@@ -138,10 +150,10 @@ export function ForwardingCard({ status }: { status: ForwardingStatus }) {
 
       <details className="group" open={!working && !v ? true : undefined}>
         <summary className="inline-flex min-h-10 cursor-pointer list-none items-center gap-1.5 rounded text-[13px] text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
-          <span className="group-open:hidden">Как настроить пересылку</span><span className="hidden group-open:inline">Скрыть инструкцию</span>
+          <span className="group-open:hidden">{t("inbox.fwdHowTo")}</span><span className="hidden group-open:inline">{t("inbox.fwdHideHowTo")}</span>
         </summary>
         <div className="mt-3">
-          <ProviderGuide guides={guides(address)} />
+          <ProviderGuide guides={guides(t, address)} />
         </div>
       </details>
     </section>

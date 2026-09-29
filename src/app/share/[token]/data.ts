@@ -1,7 +1,8 @@
 import "server-only";
 import { cache } from "react";
 import { db } from "@/lib/db";
-import { clampText, firstName, journeyStats, plural } from "@/app/app/hired/_lib/journey";
+import { clampText, firstName, journeyStats } from "@/app/app/hired/_lib/journey";
+import type { T } from "@/lib/i18n/translator";
 
 const TOKEN = /^[A-Za-z0-9_-]{16,64}$/;
 
@@ -20,7 +21,7 @@ export const loadShare = cache(async (token: string) => {
   if (!campaign || campaign.status !== "hired") return null;
   const s = await journeyStats(campaign);
   return {
-    name: firstName(campaign.user.name),
+    name: firstName(campaign.user.name, ""), // empty → the page shows its translated «Кандидат»
     role: clampText(s.publicOffer?.role, MAX_ROLE),
     company: clampText(s.publicOffer?.company, MAX_COMPANY),
     applications: s.applications,
@@ -29,18 +30,30 @@ export const loadShare = cache(async (token: string) => {
   };
 });
 
-/** Public headline. Russian copy around the owner's English moment ("HIRED."); role/company stay as written in the offer. */
-export function headline(d: { name: string; role: string | null; company: string | null }) {
-  if (d.role && d.company) return `${d.name}: HIRED. ${d.role} в ${d.company}`;
-  if (d.role) return `${d.name}: HIRED. ${d.role}`;
-  return `${d.name}: HIRED.`;
+type Head = { name: string; role: string | null; company: string | null };
+const shownName = (t: T, name: string) => name || t("sharePage.candidate");
+
+/** Public headline in the visitor's language around the owner's English moment ("HIRED."); role/company stay as written. */
+export function headline(t: T, d: Head) {
+  const name = shownName(t, d.name);
+  if (d.role && d.company) return t("sharePage.headline", { name, role: d.role, company: d.company });
+  if (d.role) return t("sharePage.headlineRole", { name, role: d.role });
+  return t("sharePage.headlineName", { name });
+}
+
+/** OG card title: «Имя · роль в компании» (the card already shows HIRED.). */
+export function ogTitle(t: T, d: Head) {
+  const name = shownName(t, d.name);
+  if (d.role && d.company) return t("sharePage.ogTitle", { name, role: d.role, company: d.company });
+  if (d.role) return t("sharePage.ogTitleRole", { name, role: d.role });
+  return name;
 }
 
 /** "12 заявок · 3 интервью · 21 день до оффера". */
-export function statsLine(d: { applications: number; interviews: number; daysToOffer: number | null }) {
+export function statsLine(t: T, d: { applications: number; interviews: number; daysToOffer: number | null }) {
   return [
-    `${d.applications} ${plural(d.applications, ["заявка", "заявки", "заявок"])}`,
-    `${d.interviews} интервью`,
-    ...(d.daysToOffer != null ? [`${d.daysToOffer} ${plural(d.daysToOffer, ["день", "дня", "дней"])} до оффера`] : []),
+    t("sharePage.statApplications", { n: d.applications }),
+    t("sharePage.statInterviews", { n: d.interviews }),
+    ...(d.daysToOffer != null ? [t("sharePage.statDays", { n: d.daysToOffer })] : []),
   ].join(" · ");
 }

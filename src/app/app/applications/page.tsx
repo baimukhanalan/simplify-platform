@@ -7,8 +7,10 @@ import { isSimulation } from "@/lib/mode";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { ButtonLink, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
-import { plural } from "../../_components/ru";
-import { needsList, needsYouCached } from "../../_components/global-needs";
+import { needsYouCached } from "../../_components/global-needs";
+import { getT } from "@/lib/i18n/server";
+import type { T } from "@/lib/i18n/translator";
+import { needsListT } from "../opportunities/_lib/needs";
 import { ApplicationCard, type AppCardData } from "./_components/card";
 
 export const metadata = { title: "Applications" };
@@ -20,10 +22,10 @@ type SP = Record<string, string | string[] | undefined>;
  * The same groups are the columns of the optional board view (?view=board), so both views always agree.
  */
 const GROUPS = [
-  { key: "offer", label: "Оффер", hint: "Разбери цифры и реши", statuses: ["offer", "hired"], dot: "bg-green" },
-  { key: "interview", label: "Интервью", hint: "Идут раунды интервью", statuses: ["recruiter", "hiring_manager", "technical", "final"], dot: "bg-teal" },
-  { key: "assessment", label: "Тестовые", hint: "Тестовое задание от работодателя", statuses: ["assessment"], dot: "bg-amber" },
-  { key: "waiting", label: "Ждём ответа", hint: "Заявка отправлена, ждём работодателя", statuses: ["submitted", "pending"], dot: "bg-cta" },
+  { key: "offer", label: "groupOffer", hint: "groupOfferHint", statuses: ["offer", "hired"], dot: "bg-green" },
+  { key: "interview", label: "groupInterview", hint: "groupInterviewHint", statuses: ["recruiter", "hiring_manager", "technical", "final"], dot: "bg-teal" },
+  { key: "assessment", label: "groupAssessment", hint: "groupAssessmentHint", statuses: ["assessment"], dot: "bg-amber" },
+  { key: "waiting", label: "groupWaiting", hint: "groupWaitingHint", statuses: ["submitted", "pending"], dot: "bg-cta" },
 ] as const;
 // Groups holding statuses worth telling apart show a status chip on each card. «Ждём ответа» doesn't: submitted and
 // pending mean the same to the user there, and the group label already says it.
@@ -32,28 +34,28 @@ const MULTI = new Set(["interview", "offer"]);
 const BOARD_ORDER = ["sm:order-4", "sm:order-3", "sm:order-2", "sm:order-1"];
 
 // Simulation: statuses only move on their own, so the manual status change is not mentioned.
-const Header = () => (
+const Header = ({ t }: { t: T }) => (
   <PageHeader
     eyebrow="Applications"
-    title={<>Твои <Script>заявки</Script></>}
-    sub={isSimulation() ? "Каждая заявка двигается по этапам сама — по ответам работодателей." : "Каждая заявка двигается по этапам сама — по письмам работодателей. Если что-то произошло вне почты, статус можно поменять на странице заявки."}
+    title={t.rich("apps.title", {}, { s: (c) => <Script>{c}</Script> })}
+    sub={t(isSimulation() ? "apps.subSimulation" : "apps.subLive")}
     actions={
       <Link href="/app/insights" className="inline-flex min-h-10 items-center gap-1.5 rounded text-[13.5px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
-        Стратегия агента<ArrowRight className="size-3.5" aria-hidden />
+        {t("apps.strategy")}<ArrowRight className="size-3.5" aria-hidden />
       </Link>
     }
   />
 );
 
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<SP> }) {
-  const [user, sp] = await Promise.all([requireUser(), searchParams]);
+  const [user, sp, t] = await Promise.all([requireUser(), searchParams, getT()]);
   const board = (Array.isArray(sp.view) ? sp.view[0] : sp.view) === "board";
   const campaign = await currentCampaign(user.id);
   if (!campaign) {
     return (
       <>
-        <Header />
-        <Empty title="Заявок пока нет" sub="Запусти кампанию — агент будет подавать на сильные вакансии и показывать здесь каждую заявку." action={<ButtonLink href="/app/campaign">Начать кампанию</ButtonLink>} />
+        <Header t={t} />
+        <Empty title={t("apps.emptyTitle")} sub={t("apps.emptyNoCampaignSub")} action={<ButtonLink href="/app/campaign">{t("apps.startCampaign")}</ButtonLink>} />
       </>
     );
   }
@@ -70,12 +72,12 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
 
   if (!apps.length) {
     // Nothing sent yet — but if something blocks sending (questions, handoffs, Apply decisions), say it here too.
-    const blocking = needsList(waiting, ["offer", "interview", "assessments"]);
+    const blocking = needsListT(t, waiting, ["offer", "interview", "assessments"]);
     return (
       <>
-        <Header />
+        <Header t={t} />
         {blocking.length > 0 && <AgentStatus needs={blocking} className="-mt-3 mb-5" />}
-        <Empty title="Заявок пока нет" sub="Агент подаёт на вакансии выше твоего порога Match — и на те, где ты нажимаешь Apply. Первые заявки появятся здесь." action={<ButtonLink href="/app/opportunities" variant="glass" size="sm">Смотреть Opportunities</ButtonLink>} />
+        <Empty title={t("apps.emptyTitle")} sub={t("apps.emptySub")} action={<ButtonLink href="/app/opportunities" variant="glass" size="sm">{t("apps.seeOpportunities")}</ButtonLink>} />
       </>
     );
   }
@@ -85,34 +87,34 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     const items = apps.filter((a) => (g.statuses as readonly string[]).includes(a.status));
     // «Ждём ответа»: newest submission first — the order the user sent them in, not the last background update.
     // The Interviews column says «идут раунды» only while a round is still ahead (interviewCounts).
-    const hint = g.key === "interview" && !ic.activeRounds ? "Раунды позади — ждём решения работодателя" : g.hint;
-    return { ...g, hint, items: g.key === "waiting" ? items.sort(bySubmitted) : items };
+    const hint = t(g.key === "interview" && !ic.activeRounds ? "apps.groupInterviewDone" : `apps.${g.hint}`);
+    return { ...g, label: t(`apps.${g.label}`), hint, items: g.key === "waiting" ? items.sort(bySubmitted) : items };
   });
   const rejected = apps.filter((a) => a.status === "rejected");
   const n = (k: string) => groups.find((g) => g.key === k)?.items.length ?? 0;
   const responded = apps.length - n("waiting");
 
   // Same numbers as Today, Opportunities and Inbox (needsYou, src/lib/ops-data.ts).
-  const needs: Need[] = needsList(waiting);
+  const needs: Need[] = needsListT(t, waiting);
 
   return (
     <div className="flex flex-col gap-5">
-      <Header />
+      <Header t={t} />
 
       <AgentStatus needs={needs} className="-mt-3" />
 
       <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Summary k={plural(apps.length, ["заявка", "заявки", "заявок"])} v={apps.length} />
-        <Summary k={plural(responded, ["ответ", "ответа", "ответов"])} v={responded} hint={`${Math.round((responded / apps.length) * 100)}%`} />
+        <Summary k={t("apps.sumApplications", { n: apps.length })} v={apps.length} />
+        <Summary k={t("apps.sumResponses", { n: responded })} v={responded} hint={`${Math.round((responded / apps.length) * 100)}%`} />
         {/* «в процессе» = the Tests + Interviews groups below, so the number always equals those two columns. */}
-        <Summary k="в процессе" v={n("assessment") + n("interview")} />
-        <Summary k={plural(n("offer"), ["оффер", "оффера", "офферов"])} v={n("offer")} tone={n("offer") ? "green" : undefined} />
+        <Summary k={t("apps.sumInProgress")} v={n("assessment") + n("interview")} />
+        <Summary k={t("apps.sumOffers", { n: n("offer") })} v={n("offer")} tone={n("offer") ? "green" : undefined} />
       </dl>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <nav aria-label="Вид" className="glass inline-flex gap-1 !rounded-full p-1">
-          <ViewLink href="/app/applications" active={!board} icon={<List className="size-3.5" aria-hidden />}>Списком</ViewLink>
-          <ViewLink href="/app/applications?view=board" active={board} icon={<LayoutGrid className="size-3.5" aria-hidden />}>Доской</ViewLink>
+        <nav aria-label={t("apps.viewAria")} className="glass inline-flex gap-1 !rounded-full p-1">
+          <ViewLink href="/app/applications" active={!board} icon={<List className="size-3.5" aria-hidden />}>{t("apps.viewList")}</ViewLink>
+          <ViewLink href="/app/applications?view=board" active={board} icon={<LayoutGrid className="size-3.5" aria-hidden />}>{t("apps.viewBoard")}</ViewLink>
         </nav>
       </div>
 
@@ -127,10 +129,10 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                 <span className="num rounded-full bg-white/80 px-2 py-0.5 text-[11.5px] text-ink-3">{g.items.length}</span>
               </h2>
               {g.items.length === 0 ? (
-                <div className="grid h-16 place-items-center rounded-2xl border border-dashed border-line text-[12px] text-ink-3">пусто</div>
+                <div className="grid h-16 place-items-center rounded-2xl border border-dashed border-line text-[12px] text-ink-3">{t("apps.columnEmpty")}</div>
               ) : (
                 <ul className="scroll-thin flex flex-col gap-2 pr-0.5 lg:max-h-[64vh] lg:overflow-y-auto">
-                  {g.items.map((a) => <li key={a.id}><ApplicationCard a={a} showStatus={MULTI.has(g.key)} compact /></li>)}
+                  {g.items.map((a) => <li key={a.id}><ApplicationCard t={t} a={a} showStatus={MULTI.has(g.key)} compact /></li>)}
                 </ul>
               )}
             </section>
@@ -146,7 +148,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
                 <span className="text-[13px] font-normal text-ink-3">{g.hint}</span>
               </h2>
               <ul className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-                {g.items.map((a) => <li key={a.id}><ApplicationCard a={a} showStatus={MULTI.has(g.key)} /></li>)}
+                {g.items.map((a) => <li key={a.id}><ApplicationCard t={t} a={a} showStatus={MULTI.has(g.key)} /></li>)}
               </ul>
             </section>
           ))}
@@ -156,14 +158,14 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
       {rejected.length > 0 && (
         <details className="group glass !rounded-2xl">
           <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-4 py-3 text-[14px] text-ink-2 focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
-            <span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-rose" aria-hidden />Отказы <span className="num text-ink-3">{rejected.length}</span></span>
+            <span className="flex items-center gap-2"><span className="size-1.5 rounded-full bg-rose" aria-hidden />{t("apps.rejected")} <span className="num text-ink-3">{rejected.length}</span></span>
             <span className="flex items-center gap-1.5 text-[12.5px] text-ink-3">
-              агент учёл их при выборе следующих вакансий
+              {t("apps.rejectedNote")}
               <ChevronDown className="size-4 text-teal transition-transform group-open:rotate-180" aria-hidden />
             </span>
           </summary>
           <ul className="grid gap-2 px-2 pb-2 sm:grid-cols-2 lg:grid-cols-3">
-            {rejected.map((a) => <li key={a.id}><ApplicationCard a={a} compact /></li>)}
+            {rejected.map((a) => <li key={a.id}><ApplicationCard t={t} a={a} compact /></li>)}
           </ul>
         </details>
       )}

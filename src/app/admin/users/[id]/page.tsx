@@ -4,7 +4,8 @@ import { ArrowLeft, Bell, Check, Minus } from "lucide-react";
 import { requireAdmin } from "@/lib/auth";
 import { Card, Chip, Label, PageHeader, cx } from "@/components/ui";
 import { userDetail } from "@/lib/admin/queries";
-import { FUNNEL_STEPS, campaignDay, stageLabel } from "@/lib/admin/metrics";
+import { FUNNEL_STEPS, bonusBreakdown, campaignDay, stageLabel } from "@/lib/admin/metrics";
+import { GUARANTEE_DAYS } from "@/lib/engine/guarantee";
 import { PLANS, SENIORITY_LABEL, fmtKzt, fmtMoney } from "@/lib/engine/taxonomy";
 import { j } from "@/lib/db";
 import { fmtNum, fmtYearsRu } from "@/lib/ru";
@@ -153,7 +154,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
                         <td className="num px-4 py-2.5">{c.applications}</td>
                         <td className="num px-4 py-2.5">{c.withInterview}</td>
                         <td className="whitespace-nowrap px-4 py-2.5 text-[12.5px] text-ink-3">{ago(c.lastRunAt, now)}</td>
-                        <td className="px-4 py-2.5 pr-6 text-[12.5px] text-ink-3">{c.guaranteeStatus === "extended" ? <Chip tone="dark">продлена</Chip> : c.bonusDays ? `+${c.bonusDays} дн.` : "—"}</td>
+                        <td className="px-4 py-2.5 pr-6 text-[12.5px] text-ink-3"><BonusDays c={c} /></td>
                       </tr>
                     );
                   })}
@@ -197,5 +198,18 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
         </div>
       </div>
     </>
+  );
+}
+
+/** «+45 дн.» with where the days came from: «15 за друзей · 30 по гарантии». */
+function BonusDays({ c }: { c: { bonusDays: number; guaranteeStatus: string } }) {
+  const b = bonusBreakdown(c, GUARANTEE_DAYS);
+  if (!b.total) return <>—</>;
+  const parts = [b.referral ? `${b.referral} за друзей` : "", b.guarantee ? `${b.guarantee} по гарантии` : ""].filter(Boolean);
+  return (
+    <span className="flex flex-col whitespace-nowrap">
+      <span className="num text-head">+{b.total} дн.</span>
+      {parts.length > 0 && <span className="text-[11.5px] text-ink-3">{parts.join(" · ")}</span>}
+    </span>
   );
 }

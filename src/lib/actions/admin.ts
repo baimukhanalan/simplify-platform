@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { ADMIN_SEARCH_COOKIE } from "../admin/metrics";
+import { revealEmailFor } from "../admin/reveal";
 import { requireAdmin } from "../auth";
 import { db } from "../db";
 import { runTick, logEvent } from "../engine/agent";
@@ -51,13 +52,8 @@ export async function adminUserSearch(form: FormData) {
   redirect("/admin/users");
 }
 
-const idSchema = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
-
-/** The full address of one user, on an explicit «показать» click in the admin panel. */
+/** The full address of one user, on an explicit «показать» click in the admin panel. Audited (admin id + target id). */
 export async function adminRevealEmail(userId: string): Promise<{ email?: string; error?: string }> {
-  await requireAdmin();
-  const id = idSchema.safeParse(userId);
-  if (!id.success) return { error: "Неверный идентификатор" };
-  const u = await db.user.findUnique({ where: { id: id.data }, select: { email: true } });
-  return u ? { email: u.email } : { error: "Пользователь не найден" };
+  const admin = await requireAdmin();
+  return revealEmailFor(admin.id, userId);
 }

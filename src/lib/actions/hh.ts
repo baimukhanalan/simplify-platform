@@ -4,24 +4,26 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { db } from "../db";
 import { logEvent } from "../engine/agent";
+import { actionT } from "../i18n/action";
 import { hhAccessToken, hhIntegration, myResumes, patchHhMeta, revokeToken } from "../hh/client";
 
 export type HhActionState = { ok?: boolean; error?: string; savedAt?: number } | undefined;
 
 export async function selectHhResume(_prev: HhActionState, form: FormData): Promise<HhActionState> {
   const user = await requireUser();
+  const t = await actionT();
   const id = String(form.get("resumeId") ?? "").trim();
-  if (!id) return { error: "Выбери резюме." };
+  if (!id) return { error: t("agentPage.err.noResume") };
   const row = await hhIntegration(user.id);
-  if (!row?.accessToken) return { error: "hh.kz не подключён." };
+  if (!row?.accessToken) return { error: t("agentPage.err.hhNotConnected") };
   let resumes;
   try {
     resumes = await myResumes(user.id);
   } catch {
-    return { error: "Не удалось получить резюме с hh.kz. Попробуй ещё раз или переподключи аккаунт." };
+    return { error: t("agentPage.err.resumesFailed") };
   }
   const pick = resumes.find((r) => r.id === id);
-  if (!pick) return { error: "Это резюме не найдено в твоём аккаунте hh.kz." };
+  if (!pick) return { error: t("agentPage.err.resumeNotFound") };
   await db.integration.update({ where: { id: row.id }, data: { resumeId: pick.id } });
   await patchHhMeta(user.id, { resumeTitle: pick.title });
   if (row.resumeId !== pick.id) await logEvent(user.id, "integration", `hh.kz: для откликов выбрано резюме «${pick.title}»`);

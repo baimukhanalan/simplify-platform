@@ -1,10 +1,8 @@
-import type { Metadata } from "next";
-import { LegalPage } from "../_components/legal-page";
-import { LEGAL_DOCS } from "@/lib/legal";
+import { LegalPage, legalMetadata } from "../_components/legal-doc-page";
 import { privacyContent } from "./content";
 
-export const metadata: Metadata = { title: LEGAL_DOCS.privacy.title, description: "Как Simplify собирает, использует, хранит и защищает персональные данные — по Закону РК «О персональных данных и их защите»." };
+export const generateMetadata = () => legalMetadata("privacy");
 
-export default function Privacy() {
+export default function PrivacyPage() {
   return <LegalPage doc="privacy" {...privacyContent()} />;
 }

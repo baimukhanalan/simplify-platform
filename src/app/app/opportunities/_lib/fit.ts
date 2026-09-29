@@ -1,9 +1,10 @@
 // Pure presentation logic for Opportunities: turns engine output (match reasons, eligibility, job vs goal)
-// into human sentences — "Why this fits" and «Риски». Safe for server and client.
-import { ROLE_FAMILIES, SENIORITY_LABEL, seniorityIndex } from "@/lib/engine/taxonomy";
+// into human sentences — "Why this fits" and «Риски» — in the interface language (pass `t`). Safe for server and client.
+import { ROLE_FAMILIES, seniorityIndex } from "@/lib/engine/taxonomy";
 import { isOverridable } from "@/lib/engine/matching";
-import { industryRu, plural } from "../../../_components/ru";
-import { fmtNum } from "@/lib/ru";
+import type { T } from "@/lib/i18n/translator";
+import { seniorityName } from "@/lib/i18n/labels";
+import { industryT } from "./labels";
 
 export type Reason = { label: string; ok: boolean };
 
@@ -32,28 +33,29 @@ export type FitCandidate = {
 export type FitOpp = { match: number; eligibility: string; pInterview: number; reasons: Reason[]; blockers: string[]; softGaps: string[] };
 
 const DAY = 86400000;
-const years = (n: number) => fmtNum(n);
+/** Years as the UI shows them: one decimal at most (2,5). */
+const round1 = (n: number) => Math.round(n * 10) / 10;
 
 /** Engine reasons are skills, the role, years ("3+ years") or salary («Зарплата от $60 000») — classify by label shape. */
 const isYearsReason = (label: string) => /\byears?\b|≥/i.test(label);
 const isSalaryReason = (label: string) => /^зарплата|salary/i.test(label.trim());
-/** "от 1 года", "от 2 лет", "от 2,5 года" — genitive after «от». */
-const fromYears = (n: number) => (n % 1 === 0 ? plural(n, ["года", "лет", "лет"]) : "года");
 
 /**
  * Interview probability as a number with a plain-language comparison: "22% — выше среднего".
  * Calibrated on the shown (rounded) percent so the words never disagree with the number: < 8% «ниже среднего»,
- * 8–15% «средняя», > 15% «выше среднего».
+ * 8–15% «средняя», > 15% «выше среднего». Without `t` the words are Russian.
  */
-export function interviewChance(o: { eligibility: string; pInterview: number }) {
+export function interviewChance(o: { eligibility: string; pInterview: number }, t?: T) {
   const pct = Math.round(Math.max(0, Math.min(1, o.pInterview)) * 100);
-  const [qual, tone] =
-    o.eligibility === "blocked" ? (["не проходишь по требованиям", "rose"] as const)
-    : pct > 15 ? (["выше среднего", "green"] as const)
-    : pct >= 8 ? (["средняя", "teal"] as const)
-    : (["ниже среднего", "amber"] as const);
-  return { pct, qual, tone, label: `${pct}% — ${qual}` };
+  const [key, tone] =
+    o.eligibility === "blocked" ? (["chanceBlocked", "rose"] as const)
+    : pct > 15 ? (["chanceAbove", "green"] as const)
+    : pct >= 8 ? (["chanceAverage", "teal"] as const)
+    : (["chanceBelow", "amber"] as const);
+  const qual = t ? t(`opps.${key}`) : CHANCE_RU[key];
+  return { pct, qual, tone, label: t ? t("opps.chanceLabel", { pct, qual }) : `${pct}% — ${qual}` };
 }
+const CHANCE_RU = { chanceBlocked: "не проходишь по требованиям", chanceAbove: "выше среднего", chanceAverage: "средняя", chanceBelow: "ниже среднего" } as const;
 
 const INDUSTRY_ALIASES: Record<string, string[]> = {
   fintech: ["fintech", "finance", "bank", "payments", "kaspi", "credit"],
@@ -70,42 +72,49 @@ function hasDomain(industry: string, background: string) {
   return keys.some((k) => bg.includes(k));
 }
 
-/** Short positive bullets, most convincing first. */
-export function whyFits(o: FitOpp, job: FitJob, c: FitCandidate, limit = 4): string[] {
+/** Short positive bullets, most convincing first. Skill and role labels are shown as the engine names them. */
+export function whyFits(t: T, o: FitOpp, job: FitJob, c: FitCandidate, limit = 4): string[] {
   const out: string[] = [];
   const roleLabel = ROLE_FAMILIES[job.roleFamily]?.label ?? "";
   const skills = o.reasons.filter((r) => r.ok && !isYearsReason(r.label) && !isSalaryReason(r.label) && r.label !== roleLabel);
   const role = o.reasons.find((r) => r.label === roleLabel);
-  if (skills.length) out.push(`Совпадают навыки: ${skills.slice(0, 3).map((r) => r.label).join(", ")}`);
-  if (job.industry && hasDomain(job.industry, c.background)) out.push(`Есть опыт в отрасли: ${industryRu(job.industry, true)}`);
-  if (role?.ok) out.push(`Роль совпадает с целью: ${role.label}`);
-  if (job.remote === "remote" && o.eligibility !== "blocked") out.push("Удалённо — доступно тебе");
-  else if (c.workModes.includes(job.remote) && o.eligibility !== "blocked") out.push(`${job.remote === "hybrid" ? "Гибрид" : "Офис"} — твой формат`);
+  if (skills.length) out.push(t("opps.whySkills", { list: skills.slice(0, 3).map((r) => r.label).join(", ") }));
+  if (job.industry && hasDomain(job.industry, c.background)) out.push(t("opps.whyDomain", { industry: industryT(t, job.industry, true) }));
+  if (role?.ok) out.push(t("opps.whyRole", { role: role.label }));
+  if (job.remote === "remote" && o.eligibility !== "blocked") out.push(t("opps.whyRemote"));
+  else if (c.workModes.includes(job.remote) && o.eligibility !== "blocked") out.push(t(job.remote === "hybrid" ? "opps.whyHybrid" : "opps.whyOnsite"));
   const senGap = seniorityIndex(job.seniority) - seniorityIndex(c.seniority);
-  if (senGap === 0 || (senGap === 1 && c.yearsExperience >= job.minYears)) out.push(`Уровень совпадает: ${SENIORITY_LABEL[job.seniority] ?? job.seniority}`);
-  if (job.minYears && c.yearsExperience >= job.minYears) out.push(`Опыт ${years(c.yearsExperience)} ${c.yearsExperience % 1 === 0 ? plural(c.yearsExperience, ["год", "года", "лет"]) : "года"} — требуется от ${years(job.minYears)}`);
+  if (senGap === 0 || (senGap === 1 && c.yearsExperience >= job.minYears)) out.push(t("opps.whyLevel", { level: seniorityName(t, job.seniority) }));
+  if (job.minYears && c.yearsExperience >= job.minYears) out.push(t("opps.whyYears", { years: round1(c.yearsExperience), min: round1(job.minYears) }));
   const salary = o.reasons.find((r) => isSalaryReason(r.label));
-  if (salary?.ok) out.push("Зарплата выше твоего минимума");
+  if (salary?.ok) out.push(t("opps.whySalary"));
   return out.slice(0, limit);
 }
 
+/**
+ * One risk line. `engine`: the engine's own words (blockers, soft gaps) — Russian for now, rendered with lang="ru" in
+ * other languages; `blocker`: a hard requirement the user fails; `old`: the «posted over a month ago» line.
+ */
+export type Risk = { text: string; engine: boolean; blocker?: boolean; old?: boolean };
+
 /** Honest risks: stated gaps plus what the posting leaves unknown. */
-export function risks(o: FitOpp, job: FitJob, c: FitCandidate): string[] {
-  const out: string[] = [...o.blockers];
-  if (job.minYears && c.yearsExperience < job.minYears) out.push(`Нужен опыт от ${years(job.minYears)} ${fromYears(job.minYears)}, у тебя ${years(c.yearsExperience)}`);
+export function risks(t: T, o: FitOpp, job: FitJob, c: FitCandidate): Risk[] {
+  const out: Risk[] = o.blockers.map((b) => ({ text: b, engine: true, blocker: true }));
+  if (job.minYears && c.yearsExperience < job.minYears) out.push({ text: t("opps.riskYears", { min: round1(job.minYears), have: t.num(c.yearsExperience) }), engine: false });
   for (const g of o.softGaps) {
     if (/^Требуется \d/.test(g)) continue; // restated above with the user's exact years
-    out.push(job.sponsorship === "yes" && /спонсорство не указано/i.test(g) ? "Нужна виза — компания спонсирует" : g);
+    out.push(job.sponsorship === "yes" && /спонсорство не указано/i.test(g) ? { text: t("opps.riskVisaSponsored"), engine: false } : { text: g, engine: true });
   }
   const missing = o.reasons.filter((r) => !r.ok && !isYearsReason(r.label) && !isSalaryReason(r.label) && r.label !== (ROLE_FAMILIES[job.roleFamily]?.label ?? ""));
-  const mentioned = out.join(" ");
+  const mentioned = out.map((r) => r.text).join(" ");
   const unlisted = missing.filter((r) => !mentioned.includes(r.label));
-  if (unlisted.length) out.push(`Нет в профиле: ${unlisted.map((r) => r.label).join(", ")}`);
-  if (!job.salaryMin && !job.salaryMax) out.push("Зарплата не опубликована");
-  if (job.sponsorship === "unknown" && c.needsSponsorship && job.remote !== "remote") out.push("Спонсорство визы не указано");
+  if (unlisted.length) out.push({ text: t("opps.riskNotInProfile", { list: unlisted.map((r) => r.label).join(", ") }), engine: false });
+  if (!job.salaryMin && !job.salaryMax) out.push({ text: t("opps.riskNoSalary"), engine: false });
+  if (job.sponsorship === "unknown" && c.needsSponsorship && job.remote !== "remote") out.push({ text: t("opps.riskSponsorship"), engine: false });
   const age = (Date.now() - job.postedAt.getTime()) / DAY;
-  if (age > 30) out.push("Вакансия опубликована больше месяца назад");
-  return [...new Set(out)];
+  if (age > 30) out.push({ text: t("opps.riskOld"), engine: false, old: true });
+  const seen = new Set<string>();
+  return out.filter((r) => (seen.has(r.text) ? false : (seen.add(r.text), true)));
 }
 
 /**
@@ -115,14 +124,17 @@ export function risks(o: FitOpp, job: FitJob, c: FitCandidate): string[] {
 export type BlockKind = "filter" | "requirement";
 
 /** One short line for the Apply button's title / the skipped state. */
-export const blockedNote = (kind: BlockKind) => (kind === "filter" ? "Не подходит тебе — вакансия вне твоих фильтров цели" : "Ты не проходишь по требованиям — агент не подаёт");
+export const blockedNote = (t: T, kind: BlockKind) => t(kind === "filter" ? "opps.blockedFilter" : "opps.blockedRequirement");
+
+/** fitVerdict().headline in the interface language (the reason line stays the engine's). */
+export const blockedHeadline = (t: T, kind: BlockKind | null) => t(kind === "filter" ? "opps.headlineFilter" : "opps.headlineRequirement");
 
 /** Eligibility as a verdict the user reads in one glance. */
-export function eligibilityVerdict(e: string, kind: BlockKind | null = "requirement") {
-  if (e === "blocked" && kind === "filter") return { label: "Не подходит тебе", hint: "Вне твоих фильтров цели — агент не подаёт", tone: "rose" as const };
-  if (e === "blocked") return { label: "Не проходишь", hint: "Агент на неё не подаёт", tone: "rose" as const };
-  if (e === "soft") return { label: "Проходишь", hint: "Есть пробелы, но подать можно", tone: "amber" as const };
-  return { label: "Проходишь", hint: "Формальных препятствий нет", tone: "green" as const };
+export function eligibilityVerdict(t: T, e: string, kind: BlockKind | null = "requirement") {
+  if (e === "blocked" && kind === "filter") return { label: t("opps.headlineFilter"), hint: t("opps.verdictFilterHint"), tone: "rose" as const };
+  if (e === "blocked") return { label: t("opps.headlineRequirement"), hint: t("opps.verdictBlockedHint"), tone: "rose" as const };
+  if (e === "soft") return { label: t("opps.verdictPass"), hint: t("opps.verdictSoftHint"), tone: "amber" as const };
+  return { label: t("opps.verdictPass"), hint: t("opps.verdictOkHint"), tone: "green" as const };
 }
 
 /**
@@ -144,9 +156,7 @@ export const isDreamCompany = (company: string, dreamCompanies: string[]) =>
  * For a blocked role the user may still send (isOverridable — src/lib/engine/matching.ts), the line shown above
  * Apply / Auto; null when the block is final (visa, language, the user's own filters…).
  */
-export function overrideNote(eligibility: string, blockers: string[] | string, dream: boolean): string | null {
+export function overrideNote(t: T, eligibility: string, blockers: string[] | string, dream: boolean): string | null {
   if (eligibility !== "blocked" || !isOverridable(blockers, { dream })) return null;
-  return dream
-    ? "Компания мечты — уровень не совпадает с целью. Агент сам не подаёт, но ты можешь: Apply или Auto."
-    : "Уровень ниже цели — агент сам не подаёт, но ты можешь: Apply или Auto.";
+  return t(dream ? "opps.overrideDream" : "opps.overrideLevel");
 }

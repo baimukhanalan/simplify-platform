@@ -33,7 +33,8 @@ export async function latestHiredCampaign(userId: string) {
   return db.campaign.findFirst({ where: { userId, status: "hired" }, orderBy: { hiredAt: "desc" } });
 }
 
-export const firstName = (name: string) => clampText(name.trim().split(/\s+/)[0], 32) || "Кандидат";
+/** First name for public/owner copy; `fallback` when the name is empty (the callers pass their translated «Кандидат»). */
+export const firstName = (name: string, fallback = "Кандидат") => clampText(name.trim().split(/\s+/)[0], 32) || fallback;
 
 /** Russian plural — the shared helper, re-exported for the public share page. */
 export { plural } from "@/app/_components/ru";

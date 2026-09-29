@@ -11,6 +11,7 @@ import { count, fmtNum, roleLabelRu, type Forms } from "@/lib/ru";
 import { STRONG_MATCH } from "@/lib/engine/matching";
 import type { NsKey, T } from "@/lib/i18n/translator";
 import { regionNames } from "@/lib/i18n/labels";
+import { campaignDay } from "@/lib/campaign-day";
 
 const DAY = 86400000;
 
@@ -37,12 +38,8 @@ export function dayLabel(key: string, now = new Date()) {
   return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("ru-RU", { day: "numeric", month: "long", timeZone: "UTC" });
 }
 
-export function campaignDay(c: { startedAt: Date | null; createdAt: Date; endsAt: Date | null }, now = Date.now()) {
-  const start = (c.startedAt ?? c.createdAt).getTime();
-  const total = c.endsAt ? Math.max(1, Math.round((c.endsAt.getTime() - start) / DAY)) : 60;
-  const day = Math.min(total, Math.max(1, Math.floor((now - start) / DAY) + 1));
-  return { day, total };
-}
+/** One formula for the app and /admin (src/lib/campaign-day.ts). */
+export { campaignDay };
 
 // ——— Goal line & "what the agent is doing" ———
 

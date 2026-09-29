@@ -1,22 +1,23 @@
 import { cx } from "@/components/ui";
-import { fmtMoney } from "@/lib/engine/taxonomy";
+import { getT } from "@/lib/i18n/server";
 
 /** Market range bar (CSS only): band low→high, median tick, offer / target / final markers. */
-export function RangeBar({ low, mid, high, offer, target, final, currency }: { low: number; mid: number; high: number; offer: number; target?: number; final?: number; currency: string }) {
-  const format = (n: number) => fmtMoney(n, currency);
+export async function RangeBar({ low, mid, high, offer, target, final, currency }: { low: number; mid: number; high: number; offer: number; target?: number; final?: number; currency: string }) {
+  const t = await getT();
+  const format = (n: number) => t.money(n, currency);
   const short = format;
   const values = [low, high, offer, target ?? offer, final ?? offer];
   const min = Math.min(...values) * 0.9;
   const max = Math.max(...values) * 1.06;
   const pct = (v: number) => `${((v - min) / (max - min || 1)) * 100}%`;
   const clampPos = (v: number) => Math.max(4, Math.min(96, ((v - min) / (max - min || 1)) * 100));
-  const label = `Рынок ${format(low)}–${format(high)}, медиана ${format(mid)}. Оффер ${format(offer)}${target ? `, цель ${format(target)}` : ""}${final ? `, итог ${format(final)}` : ""}.`;
+  const label = `${t("offersPage.range.aria", { low: format(low), high: format(high), mid: format(mid), offer: format(offer) })}${target ? t("offersPage.range.ariaTarget", { amount: format(target) }) : ""}${final ? t("offersPage.range.ariaFinal", { amount: format(final) }) : ""}.`;
 
   return (
     <div role="img" aria-label={label} className="select-none">
       {/* Top markers */}
       <div className="relative h-11">
-        <Marker pos={clampPos(offer)} label="Оффер" value={format(offer)} tone="dark" />
+        <Marker pos={clampPos(offer)} label={t("offersPage.range.offer")} value={format(offer)} tone="dark" />
       </div>
       <div className="relative h-3 rounded-full bg-head/8">
         <div className="absolute inset-y-0 rounded-full bg-gradient-to-r from-green/25 via-green/45 to-green/25" style={{ left: pct(low), width: `calc(${pct(high)} - ${pct(low)})` }} />
@@ -28,19 +29,19 @@ export function RangeBar({ low, mid, high, offer, target, final, currency }: { l
       {/* Bottom scale */}
       <div className="relative mt-2 h-11 text-[11.5px] text-ink-3">
         <span className="num absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${clampPos(low)}%` }}>{short(low)}<span className="block text-center text-[11px] text-ink-3">p15</span></span>
-        <span className="num absolute -translate-x-1/2 whitespace-nowrap text-green" style={{ left: `${clampPos(mid)}%` }}>{short(mid)}<span className="block text-center text-[11px]">медиана</span></span>
+        <span className="num absolute -translate-x-1/2 whitespace-nowrap text-green" style={{ left: `${clampPos(mid)}%` }}>{short(mid)}<span className="block text-center text-[11px]">{t("offersPage.range.median")}</span></span>
         <span className="num absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${clampPos(high)}%` }}>{short(high)}<span className="block text-center text-[11px] text-ink-3">p85</span></span>
       </div>
       {final != null && final !== offer && (
         <p className="mt-1 flex items-center gap-2 text-[12.5px] text-ink-3">
           <span aria-hidden className="size-2.5 rounded-full bg-green" />
-          Итог переговоров: <span className="num text-head">{format(final)}</span>
+          {t("offersPage.range.final")} <span className="num text-head">{format(final)}</span>
         </p>
       )}
       {target != null && (
         <p className="mt-1 flex items-center gap-2 text-[12.5px] text-ink-3">
           <span aria-hidden className="size-2.5 rounded-full border-2 border-green bg-white" />
-          Цель переговоров: <span className="num text-head">{format(target)}</span>
+          {t("offersPage.range.target")} <span className="num text-head">{format(target)}</span>
         </p>
       )}
     </div>

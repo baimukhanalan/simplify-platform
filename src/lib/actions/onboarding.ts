@@ -12,6 +12,7 @@ import { REGIONS, SENIORITY, classifyRole, cleanRoleTitle, extractSkills } from 
 import { buildCareerCheck, chatTurnsFor, confirmSeniority, intlAuthRegions, markStepDone, readinessForUser, syncSeniorityFromYears, syncYearsFromFacts, LAST_STEP, STEP } from "../onboarding";
 import { cleanIntent, intentToGoal } from "../../app/_components/campaign-intent";
 import { captureError } from "../monitoring";
+import { actionT } from "../i18n/action";
 
 export type FormState = { error?: string; ok?: boolean; message?: string; fields?: Record<string, string> } | undefined;
 
@@ -36,8 +37,9 @@ export async function runCareerCheck(_: FormState, form: FormData): Promise<Form
   const cvText = noNul(String(form.get("cvText") ?? "")).slice(0, 30000);
   const target = str(form, "target", 120);
   const rl = await rateLimit("career-check", 6, 60 * 60 * 1000);
-  if (!rl.ok) return { error: `Слишком много проверок. Попробуй через ${Math.ceil((rl.retryAfter ?? 60) / 60)} мин.`, fields: { target } };
-  if (cvText.trim().length < 120) return { error: "Добавь CV: загрузи PDF или вставь текст (минимум несколько абзацев).", fields: { target } };
+  const t = await actionT();
+  if (!rl.ok) return { error: t("serverErrors.checkLimit", { n: Math.ceil((rl.retryAfter ?? 60) / 60) }), fields: { target } };
+  if (cvText.trim().length < 120) return { error: t("serverErrors.checkNoCv"), fields: { target } };
   let id: string;
   try {
     const result = await buildCareerCheck(cvText, target);
@@ -46,7 +48,7 @@ export async function runCareerCheck(_: FormState, form: FormData): Promise<Form
   } catch (err) {
     console.error("[career-check]", err);
     await captureError(err, { source: "action", meta: { step: "career-check" } });
-    return { error: "Не удалось проанализировать CV. Попробуй ещё раз или вставь текст вручную.", fields: { target } };
+    return { error: t("serverErrors.checkFailed"), fields: { target } };
   }
   redirect(`/check/${id}`);
 }
@@ -62,10 +64,11 @@ export async function saveSources(_: FormState, form: FormData): Promise<FormSta
   const noCv = form.get("noCv") === "1";
   const prev = user.profile;
   const fields: Record<string, string> = {};
-  for (const [k, v] of Object.entries(links)) if (v && !URLISH.test(v)) fields[k] = "Похоже на некорректную ссылку";
+  const t = await actionT();
+  for (const [k, v] of Object.entries(links)) if (v && !URLISH.test(v)) fields[k] = t("serverErrors.badLink");
   const hasText = cvText.trim().length >= 120;
-  if (!hasText && !prev?.cvText && !noCv) fields.cvText = "Загрузи PDF или вставь текст CV — агент разберёт его сам.";
-  if (Object.keys(fields).length) return { error: fields.cvText ?? "Проверь отмеченные поля", fields };
+  if (!hasText && !prev?.cvText && !noCv) fields.cvText = t("serverErrors.needCv");
+  if (Object.keys(fields).length) return { error: fields.cvText ?? t("serverErrors.checkFields"), fields };
 
   await db.profile.upsert({ where: { userId: user.id }, create: { userId: user.id }, update: {} });
   const fresh = hasText && cvText !== prev?.cvText;
@@ -143,11 +146,12 @@ export async function updateFactBasics(_: FormState, form: FormData): Promise<Fo
   const user = await requireUser();
   const id = str(form, "id", 60);
   const title = str(form, "title", 200);
-  if (title.length < 2) return { error: "Укажи должность или название" };
+  const t = await actionT();
+  if (title.length < 2) return { error: t("serverErrors.needTitle") };
   const res = await db.fact.updateMany({ where: { id, userId: user.id }, data: { title, org: str(form, "org", 200), startDate: str(form, "startDate", 40), endDate: str(form, "endDate", 40) } });
-  if (!res.count) return { error: "Позиция не найдена" };
+  if (!res.count) return { error: t("serverErrors.positionNotFound") };
   revalidatePath("/onboarding");
-  return { ok: true, message: "Исправлено" };
+  return { ok: true, message: t("serverErrors.fixed") };
 }
 
 export type TurnResult = { ok: true } | { ok: false; error: string };
@@ -157,9 +161,9 @@ export async function answerTurn(turnId: string, rawValue: string): Promise<Turn
   const user = await requireUser();
   const turns = await chatTurnsFor(user.id);
   const turn = turns.find((t) => t.id === String(turnId));
-  if (!turn) return { ok: false, error: "Вопрос устарел — обнови страницу" };
+  if (!turn) return { ok: false, error: (await actionT())("serverErrors.turnStale") };
   const value = noNul(String(rawValue ?? "")).trim().slice(0, 1000);
-  if (turn.kind === "choice" && value && !turn.options?.some((o) => o.value === value)) return { ok: false, error: "Выбери один из вариантов" };
+  if (turn.kind === "choice" && value && !turn.options?.some((o) => o.value === value)) return { ok: false, error: (await actionT())("serverErrors.pickOption") };
   const factId = turn.factId ?? null;
 
   const [kind, arg] = turn.id.split(":");
@@ -241,11 +245,12 @@ export async function saveGoal(_: FormState, form: FormData): Promise<FormState>
   const countries = list(form, "countries").filter((c) => c in REGIONS);
   const workModes = list(form, "workModes").filter((m) => MODES.includes(m));
   const fields: Record<string, string> = {};
-  if (primaryRole.length < 2) fields.primaryRole = "Какую роль ищем? Например, Data Analyst";
-  if (!SENIORITY.includes(seniority as (typeof SENIORITY)[number])) fields.seniority = "Выбери уровень";
-  if (!countries.length) fields.countries = "Выбери хотя бы один регион";
-  if (!workModes.length) fields.workModes = "Выбери хотя бы один формат";
-  if (Object.keys(fields).length) return { error: "Проверь отмеченные поля", fields };
+  const t = await actionT();
+  if (primaryRole.length < 2) fields.primaryRole = t("serverErrors.needRole");
+  if (!SENIORITY.includes(seniority as (typeof SENIORITY)[number])) fields.seniority = t("serverErrors.needLevel");
+  if (!countries.length) fields.countries = t("serverErrors.needRegion");
+  if (!workModes.length) fields.workModes = t("serverErrors.needFormat");
+  if (Object.keys(fields).length) return { error: t("serverErrors.checkFields"), fields };
 
   const relocation = form.get("relocation") === "on";
   // The ₸ form sends the annual amount in tenge (salaryLocal + salaryCurrency=KZT) next to its USD conversion: the goal

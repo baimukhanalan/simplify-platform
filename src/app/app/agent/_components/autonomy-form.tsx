@@ -6,6 +6,7 @@ import { saveAutonomy, type AutonomyState } from "@/lib/actions/agent";
 import { useActionForm } from "@/app/_components/use-action-form";
 import type { Autonomy } from "@/lib/engine/autonomy";
 import { cx } from "@/components/ui";
+import { useT } from "@/lib/i18n/client";
 
 type Row = { key: string; label: string; hint: string };
 
@@ -51,6 +52,7 @@ const snap = (v: Record<string, boolean>, sensitive: string, autoOn: boolean, th
  */
 export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = false }: { initial: Autonomy; rows: Row[]; autoSubmitConsent: boolean; standing?: boolean }) {
   const { state, pending, formAction, onSubmit: submit } = useActionForm<AutonomyState>(saveAutonomy, {});
+  const t = useT();
   const [v, setV] = useState<Record<string, boolean>>(() => Object.fromEntries(rows.map((r) => [r.key, Boolean(initial[r.key as keyof Autonomy])])));
   const [sensitive, setSensitive] = useState(initial.sensitive);
   // One control for two fields (shared with the Opportunities switch): on/off = submitApplications, slider = threshold.
@@ -72,7 +74,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = fals
   return (
     <form action={formAction} onSubmit={onSubmit} className="flex flex-col gap-6" aria-describedby={state.error ? "autonomy-error" : undefined}>
       <fieldset aria-labelledby="self-h" className="glass p-5 sm:p-6">
-        <h2 id="self-h" className="label mb-1">Агент делает сам</h2>
+        <h2 id="self-h" className="label mb-1">{t("agentPage.form.selfTitle")}</h2>
         <div className="divide-y divide-line">
           {shownSelfRows.map((r) => (
             <Switch
@@ -82,37 +84,38 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = fals
           {standing && (
             <div className="flex items-start justify-between gap-4 py-3.5">
               <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="text-[15px] text-head">Подача заявок</span>
-                <span className="text-[13px] text-ink-3">Агент сам подаёт на каждую подходящую вакансию в пределах дневного лимита и отвечает на вопросы анкеты</span>
+                <span className="text-[15px] text-head">{t("agentPage.form.submitTitle")}</span>
+                <span className="text-[13px] text-ink-3">{t("agentPage.form.submitHint")}</span>
               </div>
-              <span className="mt-0.5 inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[.08em] text-green"><Check className="size-4" aria-hidden />Всегда</span>
+              <span className="mt-0.5 inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[.08em] text-green"><Check className="size-4" aria-hidden />{t("agentPage.form.always")}</span>
             </div>
           )}
         </div>
       </fieldset>
 
       {!standing && <fieldset id="auto-apply" aria-labelledby="auto-h" className="glass scroll-mt-24 p-5 sm:p-6">
-        <h2 id="auto-h" className="label mb-1">Автоподача</h2>
+        <h2 id="auto-h" className="label mb-1">{t("agentPage.form.autoTitle")}</h2>
         <p className="mb-1 text-[13px] text-ink-3">
-          Здесь — какие роли агент отправляет сам. Отправлять вообще ему разрешает согласие{" "}
-          <Link href="/app/settings#autosubmit" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">«Автоподача заявок» в Приватности</Link>
-          {autoSubmitConsent ? " — оно включено." : " — сейчас оно выключено."}
+          {t.rich("agentPage.form.autoIntro", {}, {
+            link: (c) => <Link href="/app/settings#autosubmit" className="inline-flex min-h-10 items-center rounded text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">{c}</Link>,
+          })}
+          {autoSubmitConsent ? t("agentPage.form.consentOn") : t("agentPage.form.consentOff")}
         </p>
         <Switch
           name="submitApplications"
-          label={`Автоподача на все вакансии с Match от ${threshold}%`}
+          label={t("agentPage.form.autoLabel", { n: threshold })}
           hint={
             autoOn
-              ? `Агент сам подаёт на вакансии с Match ≥ ${threshold}%. Ниже порога пакет готов, а заявка ждёт твоего Apply или Auto в Opportunities.`
-              : "Выключено: агент находит и готовит пакеты, но подаёт только на вакансии с отметкой Apply или Auto."
+              ? t("agentPage.form.autoHintOn", { n: threshold })
+              : t("agentPage.form.autoHintOff")
           }
           checked={autoOn}
           onChange={setAutoOn}
-          note={!autoSubmitConsent ? "Автоподача выключена в настройках приватности (согласие): агент сам ничего не отправляет, даже вакансии с Auto. Подать можно кнопкой Apply." : undefined}
+          note={!autoSubmitConsent ? t("agentPage.form.consentOffNote") : undefined}
         />
         <div className={cx("flex flex-col gap-2 pb-1 pt-4 transition-opacity", !autoOn && "opacity-60")}>
           <div className="flex items-center justify-between">
-            <label htmlFor="threshold" className="label !text-[11px]">Порог Match</label>
+            <label htmlFor="threshold" className="label !text-[11px]">{t("agentPage.form.thresholdLabel")}</label>
             <output htmlFor="threshold" className="num text-[22px] leading-none text-head">{threshold}%</output>
           </div>
           {/* Always submitted: the threshold is kept while auto-apply is off, so switching it back on restores it. */}
@@ -128,12 +131,12 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = fals
             aria-valuetext={`${threshold}%`}
             className="h-10 w-full cursor-pointer accent-[#1a6e48]"
           />
-          <div className="flex justify-between font-mono text-[11px] uppercase tracking-[.06em] text-ink-3"><span>50% · больше заявок</span><span>100% · только идеальные</span></div>
+          <div className="flex justify-between gap-3 font-mono text-[11px] uppercase tracking-[.06em] text-ink-3"><span>{t("agentPage.form.thresholdLow")}</span><span>{t("agentPage.form.thresholdHigh")}</span></div>
         </div>
       </fieldset>}
 
       {!standing && <fieldset aria-labelledby="ask-h" className="glass p-5 sm:p-6">
-        <h2 id="ask-h" className="label mb-1">Только с твоего разрешения</h2>
+        <h2 id="ask-h" className="label mb-1">{t("agentPage.form.askTitle")}</h2>
         <div className="divide-y divide-line">
           {askRows.map((r) => (
             <Switch key={r.key} name={r.key} label={r.label} hint={r.hint} checked={v[r.key]} onChange={(x) => setV((p) => ({ ...p, [r.key]: x }))} />
@@ -142,12 +145,12 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = fals
       </fieldset>}
 
       {!standing && <fieldset className="glass p-5 sm:p-6" aria-describedby="sensitive-help">
-        <legend className="mb-1 float-left w-full"><h2 className="label">Деликатные вопросы</h2></legend>
-        <p id="sensitive-help" className="clear-both mb-4 pt-1 text-[13px] text-ink-3">Пол, этническая принадлежность, инвалидность, статус ветерана — добровольные вопросы в анкетах.</p>
+        <legend className="mb-1 float-left w-full"><h2 className="label">{t("agentPage.form.sensitiveTitle")}</h2></legend>
+        <p id="sensitive-help" className="clear-both mb-4 pt-1 text-[13px] text-ink-3">{t("agentPage.form.sensitiveHelp")}</p>
         <div className="grid gap-2.5 sm:grid-cols-2">
           {([
-            { value: "ask", title: "Спросить меня", sub: "Агент остановится и спросит тебя в «Подтверждениях»." },
-            { value: "decline", title: "Отвечать «Предпочитаю не указывать»", sub: "Агент сам выберет вариант «Предпочитаю не указывать» и продолжит." },
+            { value: "ask", title: t("agentPage.form.askMe"), sub: t("agentPage.form.askMeSub") },
+            { value: "decline", title: t("agentPage.form.decline"), sub: t("agentPage.form.declineSub") },
           ] as const).map((o) => (
             <label
               key={o.value}
@@ -157,7 +160,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = fals
               )}
             >
               <input type="radio" name="sensitive" value={o.value} checked={sensitive === o.value} onChange={() => setSensitive(o.value)} className="mt-1 size-4 accent-[#1a6e48]" />
-              <span className="flex flex-col gap-0.5">
+              <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="text-[14.5px] text-head">{o.title}</span>
                 <span className="text-[12.5px] text-ink-3">{o.sub}</span>
               </span>
@@ -181,15 +184,15 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = fals
             className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-cta px-6 text-[14.5px] font-medium text-white shadow-(--shadow-cta) transition-all hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green disabled:opacity-60"
           >
             {pending && <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />}
-            {pending ? "Сохраняем…" : "Сохранить настройки"}
+            {pending ? t("common.saving") : t("agentPage.form.save")}
           </button>
         )}
         <span role="alert" id="autonomy-error" className="text-[13px] text-rose empty:hidden">{state.error}</span>
         <span role="status" aria-live="polite" className="text-[13px]">
           {state.error ? null : dirty && !pending ? (
-            <span className="text-ink-3">Есть несохранённые изменения</span>
+            <span className="text-ink-3">{t("agentPage.form.dirty")}</span>
           ) : state.ok && !pending ? (
-            <span className="inline-flex items-center gap-1.5 text-green"><Check className="size-4" aria-hidden />Сохранено. Агент применит это в следующем цикле.</span>
+            <span className="inline-flex items-center gap-1.5 text-green"><Check className="size-4" aria-hidden />{t("agentPage.form.saved")}</span>
           ) : null}
         </span>
       </div>

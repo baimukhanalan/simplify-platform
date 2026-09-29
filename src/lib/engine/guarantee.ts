@@ -1,5 +1,6 @@
-// The interview guarantee (public offer): «Если за 60 дней кампании не было ни одного приглашения на интервью, кампания
-// продлевается на 30 дней бесплатно — один раз на кампанию.»
+// The interview guarantee (public offer): «Если за время кампании не было ни одного приглашения на интервью, кампания
+// продлевается на 30 дней бесплатно — один раз на кампанию.» Checked at the campaign's end (endsAt), which referral
+// bonus days may have moved — hence «за время кампании», not a fixed number of days.
 //
 // Campaign length is derived from endsAt everywhere (app layout, Today's campaignDay, the campaign page clock), so the
 // extension is endsAt += GUARANTEE_DAYS, bonusDays += GUARANTEE_DAYS, guaranteeStatus = "extended". It is applied the
@@ -9,6 +10,7 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import { db } from "../db";
 import { visibleOpportunities } from "../mode";
+import { INERT_SOURCES } from "../inbound/filter";
 import { INTERVIEW_STATUSES } from "./taxonomy";
 
 export const GUARANTEE_DAYS = 30;
@@ -32,18 +34,25 @@ export const guaranteeDue = (c: GuaranteeCampaign, now = new Date()) =>
  * so it happened during the campaign:
  *   · an opportunity at an interview stage or later (recruiter / hiring_manager / technical / final / offer / hired) —
  *     the reachedInterview rule of insights.ts;
+ *   · an opportunity that EVER reached such a stage: a status_change (manual move) or inbox (employer mail) event with
+ *     `to` in that set — moving a card back afterwards doesn't bring the guarantee back;
  *   · an Interview row of a real round (assessments never count) — kept even if the role was later rejected;
- *   · an employer email classified "interview" linked to one of the campaign's roles.
+ *   · an Offer row linked to one of the campaign's roles;
+ *   · an authoritative employer email classified "interview" linked to one of the campaign's roles (forwarded letters
+ *     that were not verified — INERT_SOURCES — never count).
  * Simulation mode: the internal corpus only (visibleOpportunities) — the same roles the user sees.
  */
 export async function hadInterview(campaignId: string, client: Client = db) {
   const opp = visibleOpportunities({ campaignId });
-  const [byStatus, byRow, byMail] = await Promise.all([
+  const reached = INTERVIEW_REACHED_STATUSES.map((st) => ({ data: { contains: `"to":"${st}"` } }));
+  const [byStatus, byEvent, byRow, byOffer, byMail] = await Promise.all([
     client.opportunity.count({ where: { ...opp, status: { in: INTERVIEW_REACHED_STATUSES } } }),
+    client.event.count({ where: { type: { in: ["status_change", "inbox"] }, opportunity: opp, OR: reached } }),
     client.interview.count({ where: { round: { not: "assessment" }, opportunity: opp } }),
-    client.inboxMessage.count({ where: { classification: "interview", opportunity: opp } }),
+    client.offer.count({ where: { opportunity: opp } }),
+    client.inboxMessage.count({ where: { classification: "interview", source: { notIn: INERT_SOURCES }, opportunity: opp } }),
   ]);
-  return byStatus + byRow + byMail > 0;
+  return byStatus + byEvent + byRow + byOffer + byMail > 0;
 }
 
 /** Full eligibility: guaranteeDue and not a single interview invitation during the campaign. */
@@ -61,7 +70,8 @@ export type GuaranteeResult = { applied: false } | { applied: true; userId: stri
 export async function applyGuaranteeWith(client: Client, campaignId: string, now = new Date()): Promise<GuaranteeResult> {
   const c = await client.campaign.findUnique({ where: { id: campaignId }, select: { id: true, userId: true, status: true, endsAt: true, hiredAt: true, guaranteeStatus: true } });
   if (!c || !c.endsAt || !(await guaranteeEligible(c, now, client))) return { applied: false };
-  const endsAt = new Date(c.endsAt.getTime() + GUARANTEE_DAYS * DAY);
+  // From max(endsAt, now): a campaign noticed late (no tick for days) still gets 30 real days, never an end in the past.
+  const endsAt = new Date(Math.max(c.endsAt.getTime(), now.getTime()) + GUARANTEE_DAYS * DAY);
   const moved = await client.campaign.updateMany({
     where: { id: c.id, guaranteeStatus: "", status: { in: ["active", "paused"] }, hiredAt: null, endsAt: c.endsAt },
     data: { endsAt, bonusDays: { increment: GUARANTEE_DAYS }, guaranteeStatus: "extended", guaranteeExtendedAt: now },
@@ -78,7 +88,7 @@ const dateRu = (d: Date) => d.toLocaleDateString("ru-RU", { timeZone: "Asia/Alma
 export async function announceGuarantee(r: GuaranteeResult, campaignId: string) {
   if (!r.applied) return;
   const { logEvent, notify } = await import("./agent");
-  await logEvent(r.userId, "campaign_guarantee", `Гарантия интервью: за 60 дней приглашений не было — кампания продлена на ${GUARANTEE_DAYS} дней бесплатно, до ${dateRu(r.endsAt)}`, null, { campaignId, days: GUARANTEE_DAYS, endsAt: r.endsAt.toISOString() });
+  await logEvent(r.userId, "campaign_guarantee", `Гарантия интервью: за время кампании приглашений на интервью не было — кампания продлена на ${GUARANTEE_DAYS} дней бесплатно, до ${dateRu(r.endsAt)}`, null, { campaignId, days: GUARANTEE_DAYS, endsAt: r.endsAt.toISOString() });
   await notify(r.userId, "info", GUARANTEE_TITLE, `Агент продолжает поиск до ${dateRu(r.endsAt)}. Это гарантия интервью — она действует один раз на кампанию.`, "/app/campaign");
 }
 

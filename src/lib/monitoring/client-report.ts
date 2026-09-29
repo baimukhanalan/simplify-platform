@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { captureError } from "./index";
+import { db } from "../db";
+import { captureError, maybePruneErrorLog } from "./index";
 import { sessionUserIdFromCookieHeader } from "./session";
 
 // POST /api/monitoring/client — error-boundary reports from browsers. Public (no auth), so: same-origin only, JSON only,
@@ -9,6 +10,11 @@ import { sessionUserIdFromCookieHeader } from "./session";
 export const MAX_BODY = 16 * 1024;
 const PER_IP = { limit: 20, windowMs: 60_000 };
 const GLOBAL = { limit: 300, windowMs: 60_000 };
+/** Open (unresolved) client-sourced ErrorLog rows kept; past it every report folds into one overflow row (count++). */
+export const CLIENT_OPEN_CAP = 500;
+export const OVERFLOW_MESSAGE = "client error overflow";
+/** Chance that a capture also runs the (at most daily per instance) retention cleanup. */
+const PRUNE_CHANCE = 0.01;
 
 const Report = z.object({
   message: z.string().trim().min(1).max(1000),
@@ -44,7 +50,7 @@ function hit(key: string, limit: number, windowMs: number, now = Date.now()) {
   cur.n++;
   return { ok: cur.n <= limit, retryAfter: Math.ceil((cur.reset - now) / 1000) };
 }
-export const resetClientReportLimits = () => hits.clear();
+export const resetClientReportLimits = () => { hits.clear(); fullCache = null; };
 
 /** Same trust rules as src/lib/rate-limit.ts: Vercel's header, X-Forwarded-For only behind a trusted proxy. */
 function clientIp(h: Headers) {
@@ -61,6 +67,8 @@ export async function handleClientReport(req: Request): Promise<Response> {
   const site = h.get("sec-fetch-site");
   if (site && site !== "same-origin" && site !== "none") return json(403, { error: "forbidden" });
   const origin = h.get("origin");
+  // A browser's fetch() POST always carries one of the two; a script without either is not our page (dev tools aside).
+  if (!origin && site !== "same-origin" && process.env.NODE_ENV !== "development") return json(403, { error: "forbidden" });
   const host = h.get("x-forwarded-host") || h.get("host");
   if (origin && host) {
     try { if (new URL(origin).host !== host) return json(403, { error: "forbidden" }); } catch { return json(403, { error: "forbidden" }); }
@@ -84,6 +92,12 @@ export async function handleClientReport(req: Request): Promise<Response> {
 
   const r = parsed.data;
   const userId = await sessionUserIdFromCookieHeader(h.get("cookie") ?? "");
+  if (Math.random() < PRUNE_CHANCE) void maybePruneErrorLog();
+  if (await clientLogFull()) {
+    // Storage cap: anyone can post here, so past CLIENT_OPEN_CAP open client rows nothing new is stored — one row counts.
+    await captureError(Object.assign(new Error(OVERFLOW_MESSAGE), { name: "Overflow", stack: "" }), { source: "client", route: "/", userId, meta: { overflow: true } });
+    return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+  }
   const err = Object.assign(new Error(r.message), { name: r.name || "Error", stack: r.stack ? `${r.name || "Error"}: ${r.message}\n${r.stack.split("\n").filter((l) => /^\s*at\s|@/.test(l)).join("\n")}` : "" });
   await captureError(err, {
     source: "client",
@@ -94,6 +108,20 @@ export async function handleClientReport(req: Request): Promise<Response> {
   });
   return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
 }
+
+/** Open client rows at the cap? Cached for a few seconds per instance (the endpoint is rate-limited anyway). */
+let fullCache: { at: number; full: boolean } | null = null;
+async function clientLogFull(now = Date.now()) {
+  if (fullCache && now - fullCache.at < 5000) return fullCache.full;
+  try {
+    const open = await db.errorLog.count({ where: { source: "client", resolvedAt: null, NOT: { message: OVERFLOW_MESSAGE } } });
+    fullCache = { at: now, full: open >= CLIENT_OPEN_CAP };
+  } catch {
+    fullCache = { at: now, full: false };
+  }
+  return fullCache.full;
+}
+export const resetClientLogCache = () => { fullCache = null; };
 
 /** Read the body, aborting past `max` bytes (a missing / lying Content-Length can't make us buffer more). */
 async function readLimited(req: Request, max: number): Promise<string> {

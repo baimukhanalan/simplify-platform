@@ -8,7 +8,7 @@ import { db } from "../db";
 import { rateLimitUser } from "../rate-limit";
 import { logEvent } from "../engine/agent";
 import { webhookSecret } from "./config";
-import { TEXT } from "./format";
+import { botLocale, botText } from "./format";
 import { linkChatByCode, unlinkChat } from "./link";
 import { statusText } from "./status";
 
@@ -25,7 +25,7 @@ const Update = z.object({
   message: z
     .object({
       chat: z.object({ id: z.number().int(), type: z.string() }),
-      from: z.object({ is_bot: z.boolean().optional() }).passthrough().optional(),
+      from: z.object({ is_bot: z.boolean().optional(), language_code: z.string().max(35).optional() }).passthrough().optional(),
       text: z.string().max(4096).optional(),
     })
     .passthrough()
@@ -84,10 +84,13 @@ async function handleMessage(msg: z.infer<typeof Update>["message"]): Promise<Re
   if (!msg || msg.from?.is_bot) return null;
   const chatId = msg.chat.id;
   const chat = String(chatId);
+  // Replies in the linked user's interface language; before linking, in the language of the Telegram app.
+  const tgLang = msg.from?.language_code ?? null;
+  const text = (userLocale?: string | null) => botText(botLocale(userLocale, tgLang));
   // Notifications are personal: only a private chat with the bot can be linked.
   if (msg.chat.type !== "private") {
     const c = parseCommand(msg.text ?? "");
-    return c?.cmd === "start" ? reply(chatId, TEXT.groupOnly) : null;
+    return c?.cmd === "start" ? reply(chatId, text().groupOnly) : null;
   }
   // Per-chat flood guard: a chat hammering the bot gets silence, not an answer per message.
   const rl = await rateLimitUser("tg-chat", chat, 30, 60_000);
@@ -97,28 +100,34 @@ async function handleMessage(msg: z.infer<typeof Update>["message"]): Promise<Re
   switch (c?.cmd) {
     case "start": {
       if (!c.arg) {
-        const linked = await db.user.findFirst({ where: { telegramChatId: chat }, select: { id: true } });
-        return reply(chatId, linked ? TEXT.alreadyLinked : TEXT.startNoCode);
+        const linked = await db.user.findFirst({ where: { telegramChatId: chat }, select: { id: true, locale: true } });
+        return reply(chatId, linked ? text(linked.locale).alreadyLinked : text().startNoCode);
       }
       const out = await linkChatByCode(c.arg, chat);
       if (out.kind === "linked") {
         await logEvent(out.userId, "telegram", "Telegram подключён для уведомлений").catch(() => {});
-        return reply(chatId, TEXT.linked(out.name.split(/\s+/)[0] ?? ""));
+        const u = await db.user.findUnique({ where: { id: out.userId }, select: { locale: true } }).catch(() => null);
+        return reply(chatId, text(u?.locale).linked(out.name.split(/\s+/)[0] ?? ""));
       }
-      return reply(chatId, out.kind === "already" ? TEXT.alreadyLinked : out.kind === "expired" ? TEXT.expired : TEXT.invalid);
+      if (out.kind === "already") {
+        const u = await db.user.findUnique({ where: { id: out.userId }, select: { locale: true } }).catch(() => null);
+        return reply(chatId, text(u?.locale).alreadyLinked);
+      }
+      return reply(chatId, out.kind === "expired" ? text().expired : text().invalid);
     }
     case "stop": {
+      const before = await db.user.findFirst({ where: { telegramChatId: chat }, select: { locale: true } });
       const userId = await unlinkChat(chat);
       if (userId) await logEvent(userId, "telegram", "Telegram отключён командой /stop").catch(() => {});
-      return reply(chatId, userId ? TEXT.stopped : TEXT.notLinked);
+      return reply(chatId, userId ? text(before?.locale).stopped : text().notLinked);
     }
     case "status": {
-      const user = await db.user.findFirst({ where: { telegramChatId: chat }, select: { id: true } });
-      return reply(chatId, user ? await statusText(user.id) : TEXT.notLinked);
+      const user = await db.user.findFirst({ where: { telegramChatId: chat }, select: { id: true, locale: true } });
+      return reply(chatId, user ? await statusText(user.id, new Date(), botLocale(user.locale, tgLang)) : text().notLinked);
     }
     default: {
-      const user = await db.user.findFirst({ where: { telegramChatId: chat }, select: { id: true } });
-      return reply(chatId, user ? TEXT.help : TEXT.notLinked);
+      const user = await db.user.findFirst({ where: { telegramChatId: chat }, select: { id: true, locale: true } });
+      return reply(chatId, user ? text(user.locale).help : text().notLinked);
     }
   }
 }

@@ -7,6 +7,7 @@ import { AUTONOMY_LABELS, mergeAutonomyForm, readStoredAutonomy } from "../engin
 import { isSimulation } from "../mode";
 import { logEvent, SENSITIVE_DECLINE } from "../engine/agent";
 import { answerMatchingApprovals } from "../engine/approvals";
+import { actionT } from "../i18n/action";
 
 export type AutonomyState = { ok?: boolean; error?: string; savedAt?: number };
 
@@ -16,7 +17,12 @@ export async function saveAutonomy(_prev: AutonomyState, form: FormData): Promis
   // The user's own stored values — never the simulation's standing overlay (readAutonomy), which must not be persisted.
   const before = readStoredAutonomy(fresh?.autonomy ?? user.autonomy);
   const next = mergeAutonomyForm(before, form, isSimulation());
-  if ("error" in next) return { error: next.error };
+  if ("error" in next) {
+    // The engine validates in Russian; the user sees the same message in their language.
+    const t = await actionT();
+    const sensitive = String(form.get("sensitive") ?? "");
+    return { error: sensitive !== "ask" && sensitive !== "decline" ? t("agentPage.err.sensitive") : t("agentPage.err.threshold") };
+  }
 
   await db.user.update({ where: { id: user.id }, data: { autonomy: s(next) } });
   // Campaign.autoSubmit is not touched here: it mirrors only the auto-submit consent (Settings → Privacy).

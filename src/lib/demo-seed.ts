@@ -15,7 +15,7 @@ import { PLANS, seniorityFromYears } from "./engine/taxonomy";
 import { loadCareer } from "./career";
 import { assessReadinessFor } from "./payments/readiness-snapshot";
 import { startOfToday } from "./time";
-import { REFERRAL_REWARD_DAYS, ensureReferralCode, referralPrice } from "./referral";
+import { REFERRAL_DISCOUNT_PCT, REFERRAL_REWARD_DAYS, ensureReferralCode, firstName, referralPrice } from "./referral";
 
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
@@ -76,16 +76,26 @@ async function removeOrphans() {
 /** Marks the seed's own payment rows (internal meta, never shown), so a reseed can clean them up. */
 const SEED_MARK = '"seededBy":"showcase"';
 
-/** Friends the showcase account invited: day = days after the campaign start they signed up; paidDay = when they paid. */
-const SHOWCASE_FRIENDS = [
-  { email: "dana.ermekova.94@mail.kz", name: "Dana Ermekova", day: 1, paidDay: 3 },
-  { email: "timur.abenov.work@gmail.com", name: "Timur Abenov", day: 5, paidDay: null },
-  { email: "madina.serikkyzy@inbox.kz", name: "Madina Serikkyzy", day: 7.4, paidDay: null },
+/**
+ * Friends the showcase account invited: day = days after the campaign start they signed up; paidDay = when they paid.
+ * Their addresses live on a domain we own (never a real public mailbox someone could register or receive mail at), and a
+ * reseed removes every account on it — so it is idempotent even after a seed that crashed half-way.
+ */
+export const SEED_FRIEND_DOMAIN = "friends.simplify.kz";
+export const SHOWCASE_FRIENDS = [
+  { email: `dana.ermekova@${SEED_FRIEND_DOMAIN}`, name: "Dana Ermekova", day: 1, paidDay: 3 },
+  { email: `timur.abenov@${SEED_FRIEND_DOMAIN}`, name: "Timur Abenov", day: 5, paidDay: null },
+  { email: `madina.serikkyzy@${SEED_FRIEND_DOMAIN}`, name: "Madina Serikkyzy", day: 7.4, paidDay: null },
 ] as const;
+/** Addresses earlier seeds used (real public mail domains): removed on reseed, but only while still the showcase's invitees. */
+const LEGACY_FRIEND_EMAILS = ["dana.ermekova.94@mail.kz", "timur.abenov.work@gmail.com", "madina.serikkyzy@inbox.kz"];
 
 async function seedReferrals(userId: string, campaignId: string, startedAt: number, realNow: number) {
   const code = await ensureReferralCode(userId);
-  const discountKzt = referralPrice(PLANS.local.priceKzt).discountKzt;
+  // A paying friend is booked exactly like the real path: a paid Kaspi invoice at the discounted price (meta.referral)
+  // and the campaign it started, priced at what was charged.
+  const referrer = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true } });
+  const { amount, discountKzt } = referralPrice(PLANS.local.priceKzt);
   let rewarded = 0;
   for (const f of SHOWCASE_FRIENDS) {
     if (await db.user.findUnique({ where: { email: f.email }, select: { id: true } })) continue; // taken by a real account
@@ -94,6 +104,15 @@ async function seedReferrals(userId: string, campaignId: string, startedAt: numb
       data: { email: f.email, name: f.name, passwordHash: await hashPassword(randomBytes(24).toString("hex")), createdAt: signedUp, profile: { create: {} }, goal: { create: {} } },
     });
     const paidAt = f.paidDay != null ? new Date(Math.min(startedAt + f.paidDay * DAY, realNow - HOUR)) : null;
+    if (paidAt) {
+      const plan = PLANS.local;
+      // Paused: the friend's own profile is empty, so no agent cycle runs for this account.
+      const campaign = await db.campaign.create({ data: { userId: friend.id, plan: plan.key, priceKzt: amount, status: "paused", mode: "autonomous", dailyLimit: plan.dailyLimit, autoSubmit: true, startedAt: paidAt, endsAt: new Date(paidAt.getTime() + plan.days * DAY), createdAt: paidAt } });
+      const tx = `TX-${randomBytes(12).toString("hex").toUpperCase()}`;
+      const meta = { seededBy: "showcase", transactionId: tx, txIds: [tx], lastEvent: "payment.succeeded", expiresAt: new Date(paidAt.getTime() + 30 * 60000).toISOString(), referral: { fullKzt: plan.priceKzt, discountKzt, pct: REFERRAL_DISCOUNT_PCT, from: firstName(referrer.name) } };
+      await db.payment.create({ data: { userId: friend.id, campaignId: campaign.id, amount, currency: "KZT", provider: "kaspi_mock", status: "paid", plan: plan.key, externalId: `KSP-${randomBytes(16).toString("hex").toUpperCase()}`, paidAt, meta: JSON.stringify(meta), createdAt: new Date(paidAt.getTime() - 3 * 60000) } });
+      await db.user.update({ where: { id: friend.id }, data: { careerMode: "active" } });
+    }
     await db.referral.create({
       data: {
         referrerId: userId, referredUserId: friend.id, code, createdAt: signedUp,
@@ -147,7 +166,8 @@ const log = (...a: unknown[]) => { if (process.env.SEED_VERBOSE !== "0") console
 export async function seedDemo(opts: { staff: boolean; staffPassword?: string } = { staff: true }) {
   log("Resetting showcase data…");
   // Invited friends of the showcase account go first (only rows still linked to it — a real account is never touched).
-  await db.user.deleteMany({ where: { email: { in: SHOWCASE_FRIENDS.map((f) => f.email) }, referredBy: { referrer: { email: "aruzhan@simplify.kz" } } } });
+  await db.user.deleteMany({ where: { email: { endsWith: `@${SEED_FRIEND_DOMAIN}` } } });
+  await db.user.deleteMany({ where: { email: { in: LEGACY_FRIEND_EMAILS }, referredBy: { referrer: { email: "aruzhan@simplify.kz" } } } });
   await db.user.deleteMany({ where: { email: { in: opts.staff ? ["aruzhan@simplify.kz", "demo@simplify.kz", "admin@simplify.kz", "partner@amaskills.kz"] : ["aruzhan@simplify.kz", "demo@simplify.kz"] } } });
   await removeOrphans();
   log(`Corpus roles re-normalized: ${await renormalizeDemoJobs()}`);

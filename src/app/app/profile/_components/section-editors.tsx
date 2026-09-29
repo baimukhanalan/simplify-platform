@@ -10,6 +10,7 @@ import { addSkill, removeSkill, updateConstraints } from "@/lib/actions/profile"
 import { ActionForm, FormSubmit } from "./action-form";
 import { Check } from "./bits";
 import { CitizenshipField } from "./citizenship-field";
+import { useT } from "@/lib/i18n/client";
 
 /** Renders its children only while the nearest enclosing <details> is open (Editable's «Изменить»). */
 export function WhenOpen({ children }: { children: ReactNode }) {
@@ -27,17 +28,18 @@ export function WhenOpen({ children }: { children: ReactNode }) {
 }
 
 export function SkillsEditor({ skills, fromFacts }: { skills: string[]; fromFacts: string[] }) {
+  const t = useT();
   return (
     <WhenOpen>
       <div className="flex flex-col gap-4">
         {skills.length > 0 && (
-          <ul className="flex flex-wrap gap-2" aria-label="Навыки">
+          <ul className="flex flex-wrap gap-2" aria-label={t("profilePage.skills.title")}>
             {skills.map((s) => (
               <li key={s}>
                 <form action={removeSkill} className="inline-flex items-center gap-0.5 rounded-full border border-line bg-white/80 py-0.5 pl-3 pr-0.5 text-[13.5px] text-head">
                   {s}
                   <input type="hidden" name="skill" value={s} />
-                  <button type="submit" aria-label={`Удалить навык ${s}`} className="grid size-10 place-items-center rounded-full text-ink-3 transition-colors hover:bg-rose-soft hover:text-rose focus-visible:outline-2 focus-visible:outline-green">
+                  <button type="submit" aria-label={t("profilePage.skills.removeAria", { skill: s })} className="grid size-10 place-items-center rounded-full text-ink-3 transition-colors hover:bg-rose-soft hover:text-rose focus-visible:outline-2 focus-visible:outline-green">
                     <X className="size-3.5" strokeWidth={1.8} aria-hidden />
                   </button>
                 </form>
@@ -46,19 +48,19 @@ export function SkillsEditor({ skills, fromFacts }: { skills: string[]; fromFact
           </ul>
         )}
         <form action={addSkill} className="flex flex-col gap-2 sm:flex-row">
-          <label className="sr-only" htmlFor="add-skill">Новый навык</label>
-          <input id="add-skill" name="skill" required className="field sm:max-w-sm" placeholder="Например: dbt, Looker (через запятую)" />
-          <SubmitButton variant="glass" pendingText="Добавляем…"><Plus className="size-4" strokeWidth={1.7} aria-hidden />Добавить</SubmitButton>
+          <label className="sr-only" htmlFor="add-skill">{t("profilePage.skills.newLabel")}</label>
+          <input id="add-skill" name="skill" required className="field sm:max-w-sm" placeholder={t("profilePage.skills.placeholder")} />
+          <SubmitButton variant="glass" pendingText={t("profilePage.adding")}><Plus className="size-4" strokeWidth={1.7} aria-hidden />{t("profilePage.add")}</SubmitButton>
         </form>
         {fromFacts.length > 0 && (
           <div className="flex flex-col gap-2 border-t border-line pt-4">
-            <div className="label">Есть в опыте</div>
+            <div className="label">{t("profilePage.skills.fromExperience")}</div>
             <div className="flex flex-wrap gap-2">
-              {fromFacts.map((t) => (
-                <form key={t} action={addSkill}>
-                  <input type="hidden" name="skill" value={t} />
+              {fromFacts.map((x) => (
+                <form key={x} action={addSkill}>
+                  <input type="hidden" name="skill" value={x} />
                   <button type="submit" className="inline-flex min-h-10 items-center gap-1 rounded-full border border-dashed border-green/35 px-3 text-[13px] text-green transition-colors hover:bg-green-soft focus-visible:outline-2 focus-visible:outline-green">
-                    <Plus className="size-3" strokeWidth={2} aria-hidden />{t}
+                    <Plus className="size-3" strokeWidth={2} aria-hidden />{x}
                   </button>
                 </form>
               ))}
@@ -81,6 +83,7 @@ export type ConstraintsDraft = {
 };
 
 export function ConstraintsEditor({ d }: { d: ConstraintsDraft }) {
+  const t = useT();
   return (
     <WhenOpen>
       <ActionForm action={updateConstraints} closeDetailsOnSuccess className="flex flex-col gap-4">
@@ -88,30 +91,30 @@ export function ConstraintsEditor({ d }: { d: ConstraintsDraft }) {
           <CitizenshipField defaultValue={d.citizenship} options={d.citizenshipOptions} />
           {d.workFormat != null ? (
             <div className="flex flex-col gap-1.5">
-              <span className="label">Формат работы</span>
+              <span className="label">{t("profilePage.constraints.workFormat")}</span>
               <input type="hidden" name="remotePref" value={d.remotePref} />
               <p className="text-[14px] text-head">{d.workFormat}</p>
-              <Link href="/app/goal" className="inline-flex min-h-10 w-fit items-center text-[12.5px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">Меняется в цели →</Link>
+              <Link href="/app/goal" className="inline-flex min-h-10 w-fit items-center text-[12.5px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-green">{t("profilePage.constraints.changedInGoal")}</Link>
             </div>
           ) : (
-            <Field label="Формат работы">
+            <Field label={t("profilePage.constraints.workFormat")}>
               <select name="remotePref" defaultValue={d.remotePref} className="field">
                 {d.remoteOptions.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
             </Field>
           )}
-          <Field label="Минимальная зарплата, USD / год" hint={d.minSalaryHint}>
+          <Field label={t("profilePage.constraints.minSalaryField")} hint={d.minSalaryHint}>
             {/* The goal may be stored in KZT/EUR: prefilled converted to USD, since the action saves this field as USD. */}
             <input name="minSalary" type="number" min={0} step={1000} inputMode="numeric" defaultValue={d.minSalary} className="field" placeholder="70000" />
           </Field>
-          <Field label="Выход на работу">
+          <Field label={t("profilePage.constraints.notice")}>
             <select name="noticePeriod" defaultValue={d.noticePeriod} className="field">
               {d.noticeOptions.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
           </Field>
         </div>
         <fieldset className="flex flex-col gap-2">
-          <legend className="label mb-2">Право на работу (кроме гражданства)</legend>
+          <legend className="label mb-2">{t("profilePage.constraints.authLegend")}</legend>
           <div className="flex flex-wrap gap-2">
             {d.authOptions.map(([c, l]) => (
               <label key={c} className="inline-flex min-h-10 cursor-pointer items-center rounded-full border border-line bg-white/70 px-3.5 text-[13.5px] text-ink-2 transition-colors has-[:checked]:border-cta has-[:checked]:bg-cta has-[:checked]:text-white has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-green">
@@ -122,10 +125,10 @@ export function ConstraintsEditor({ d }: { d: ConstraintsDraft }) {
           {d.authHidden.map((c) => <input key={c} type="hidden" name="workAuth" value={c} />)}
         </fieldset>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Check name="needsSponsorship" defaultChecked={d.needsSponsorship} label="Нужна рабочая виза (спонсорство)" hint="Для стран, где нет права на работу." />
-          <Check name="relocation" defaultChecked={d.relocation} label="Переезд возможен" />
+          <Check name="needsSponsorship" defaultChecked={d.needsSponsorship} label={t("profilePage.constraints.sponsorship")} hint={t("profilePage.constraints.sponsorshipHint")} />
+          <Check name="relocation" defaultChecked={d.relocation} label={t("profilePage.constraints.relocationOk")} />
         </div>
-        <div><FormSubmit pendingText="Сохраняем…">Сохранить</FormSubmit></div>
+        <div><FormSubmit pendingText={t("profilePage.saving")}>{t("profilePage.save")}</FormSubmit></div>
       </ActionForm>
     </WhenOpen>
   );

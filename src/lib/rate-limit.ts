@@ -42,5 +42,7 @@ export async function rateLimitUser(bucket: string, userId: string, limit: numbe
   return mem;
 }
 
+/** Whole minutes to wait (at least 1) — for a translated «try again in N min» (actionMsg.tooOften). */
+export const retryMinutes = (retryAfter?: number) => Math.max(1, Math.ceil((retryAfter ?? 60) / 60));
 /** Human-readable "try again in N min" for Russian UI messages. */
-export const retryText = (retryAfter?: number) => `Слишком часто. Попробуй через ${Math.max(1, Math.ceil((retryAfter ?? 60) / 60))} мин.`;
+export const retryText = (retryAfter?: number) => `Слишком часто. Попробуй через ${retryMinutes(retryAfter)} мин.`;

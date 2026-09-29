@@ -380,6 +380,31 @@ describe(`DB · stress: ${N} users, ${N * 20} events`, () => {
   });
 });
 
+/* ——————————————————— e-mail reveal audit ——————————————————— */
+
+describe("admin e-mail reveal is audited", () => {
+  test("a reveal logs admin id + target id (never the address); bad / unknown ids log nothing", async () => {
+    const { revealEmailFor, REVEAL_EVENT } = await import("../src/lib/admin/reveal");
+    const stamp = Date.now();
+    const admin = await db.user.create({ data: { email: `admin-reveal-${stamp}@example.com`, passwordHash: "x", name: "Admin", role: "admin" } });
+    const target = await db.user.create({ data: { email: `target-reveal-${stamp}@example.com`, passwordHash: "x", name: "Target" } });
+    assert.deepEqual(await revealEmailFor(admin.id, target.id), { email: target.email });
+    const ev = await db.event.findMany({ where: { type: REVEAL_EVENT } });
+    assert.equal(ev.length, 1);
+    assert.equal(ev[0].userId, admin.id);
+    assert.deepEqual(JSON.parse(ev[0].data), { adminId: admin.id, targetId: target.id });
+    assert.ok(!ev[0].message.includes(target.email) && !ev[0].data.includes(target.email) && !ev[0].data.includes("@"));
+    assert.equal((await revealEmailFor(admin.id, "nope-missing")).error, "Пользователь не найден");
+    assert.equal((await revealEmailFor(admin.id, "bad id!")).error, "Неверный идентификатор");
+    assert.equal(await db.event.count({ where: { type: REVEAL_EVENT } }), 1);
+  });
+
+  test("the server action checks requireAdmin before the audited helper", () => {
+    const src = readFileSync(path.join(process.cwd(), "src/lib/actions/admin.ts"), "utf8");
+    assert.match(src, /adminRevealEmail\(userId: string\)[^\n]*\n\s*const admin = await requireAdmin\(\);\s*return revealEmailFor\(admin\.id, userId\);/);
+  });
+});
+
 /* ——————————————————— static security guard ——————————————————— */
 
 describe("security · every admin page and action requires an admin", () => {

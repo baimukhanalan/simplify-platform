@@ -11,24 +11,27 @@ export type GlobalNeedKind = "offer" | "questions" | "handoffs" | "interview" | 
 
 /** The consent only the user can give (needsYou.enableAutoSubmit). */
 export const ENABLE_AUTOSUBMIT = { text: "Включи автоподачу в настройках", href: "/app/settings#autosubmit" } as const;
-export type GlobalNeed = { kind: GlobalNeedKind; text: string; href: string };
+/** `n`: how many (1 for the autosubmit consent) — the status line words it in the interface language (statusLine.el.*). */
+export type GlobalNeed = { kind: GlobalNeedKind; n: number; text: string; href: string };
 
 /** needsYou, cached per request (several components on one screen ask for it). */
 export const needsYouCached = cache((userId: string) => needsYou(userId));
 
 /** Short forms for the status line: «ждут тебя: оффер, 2 вопроса.» */
-export const globalNeeds = cache(async (userId: string): Promise<GlobalNeed[]> => {
-  const n = await needsYouCached(userId);
+export const globalNeeds = cache(async (userId: string): Promise<GlobalNeed[]> => globalNeedsOf(await needsYouCached(userId)));
+
+/** globalNeeds for already loaded numbers (pure). */
+export function globalNeedsOf(n: NeedsYou): GlobalNeed[] {
   const out: GlobalNeed[] = [];
-  if (n.enableAutoSubmit) out.push({ kind: "autosubmit", text: "включить автоподачу", href: ENABLE_AUTOSUBMIT.href });
-  if (n.offer) out.push({ kind: "offer", text: n.offer === 1 ? "оффер" : count(n.offer, ["оффер", "оффера", "офферов"]), href: "/app/offers" });
-  if (n.interviews48h) out.push({ kind: "interview", text: n.interviews48h === 1 ? "интервью в ближайшие 48 ч" : `${n.interviews48h} интервью в ближайшие 48 ч`, href: "/app/interviews" });
-  if (n.assessments) out.push({ kind: "assessments", text: count(n.assessments, ["тестовое задание", "тестовых задания", "тестовых заданий"]), href: "/app/interviews" });
-  if (n.questions) out.push({ kind: "questions", text: count(n.questions, ["вопрос", "вопроса", "вопросов"]), href: "/app/approvals" });
-  if (n.handoffs) out.push({ kind: "handoffs", text: `${count(n.handoffs, ["заявка", "заявки", "заявок"])} к отправке`, href: "/app/approvals#kind-handoff" });
-  if (n.applyDecisions) out.push({ kind: "decisions", text: `${count(n.applyDecisions, ["вакансия", "вакансии", "вакансий"])} на решение`, href: "/app/opportunities" });
+  if (n.enableAutoSubmit) out.push({ kind: "autosubmit", n: 1, text: "включить автоподачу", href: ENABLE_AUTOSUBMIT.href });
+  if (n.offer) out.push({ kind: "offer", n: n.offer, text: n.offer === 1 ? "оффер" : count(n.offer, ["оффер", "оффера", "офферов"]), href: "/app/offers" });
+  if (n.interviews48h) out.push({ kind: "interview", n: n.interviews48h, text: n.interviews48h === 1 ? "интервью в ближайшие 48 ч" : `${n.interviews48h} интервью в ближайшие 48 ч`, href: "/app/interviews" });
+  if (n.assessments) out.push({ kind: "assessments", n: n.assessments, text: count(n.assessments, ["тестовое задание", "тестовых задания", "тестовых заданий"]), href: "/app/interviews" });
+  if (n.questions) out.push({ kind: "questions", n: n.questions, text: count(n.questions, ["вопрос", "вопроса", "вопросов"]), href: "/app/approvals" });
+  if (n.handoffs) out.push({ kind: "handoffs", n: n.handoffs, text: `${count(n.handoffs, ["заявка", "заявки", "заявок"])} к отправке`, href: "/app/approvals#kind-handoff" });
+  if (n.applyDecisions) out.push({ kind: "decisions", n: n.applyDecisions, text: `${count(n.applyDecisions, ["вакансия", "вакансии", "вакансий"])} на решение`, href: "/app/opportunities" });
   return out;
-});
+}
 
 /** «15 вакансий ждут твоего решения» — the Apply decisions, one wording on Today, Opportunities and Applications. */
 export const decisionsWaiting = (n: number) => `${count(n, ["вакансия ждёт", "вакансии ждут", "вакансий ждут"])} твоего решения`;

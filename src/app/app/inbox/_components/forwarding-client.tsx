@@ -3,9 +3,11 @@ import { useActionState, useEffect, useId, useRef, useState, type KeyboardEvent 
 import { Check, Copy, RefreshCw } from "lucide-react";
 import { regenerateInboxAlias, type RegenerateState } from "@/lib/inbound/actions";
 import { cx } from "@/components/ui";
+import { useT } from "@/lib/i18n/client";
 
 /** Copy a value; «Скопировано» is announced to screen readers. Falls back to selecting the text when the clipboard is blocked. */
-export function CopyButton({ value, label = "Скопировать", targetId, className }: { value: string; label?: string; targetId?: string; className?: string }) {
+export function CopyButton({ value, label, targetId, className }: { value: string; label?: string; targetId?: string; className?: string }) {
+  const t = useT();
   const [done, setDone] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -33,7 +35,7 @@ export function CopyButton({ value, label = "Скопировать", targetId, 
       className={cx("inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full border border-stroke bg-white px-4 text-[13px] font-medium text-head transition-colors hover:bg-mint-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green", className)}
     >
       {done ? <Check className="size-4 text-green" aria-hidden /> : <Copy className="size-4" aria-hidden />}
-      <span aria-live="polite">{done ? "Скопировано" : label}</span>
+      <span aria-live="polite">{done ? t("inbox.copied") : label ?? t("inbox.copy")}</span>
     </button>
   );
 }
@@ -41,6 +43,7 @@ export function CopyButton({ value, label = "Скопировать", targetId, 
 /** «Сменить адрес» with an inline confirmation: the old address stops working at once. */
 export function RegenerateAlias() {
   const [state, action, pending] = useActionState<RegenerateState, FormData>(regenerateInboxAlias, {});
+  const t = useT();
   // The confirmation belongs to the state it was opened on: a finished regeneration (a new state) closes it by itself.
   const [openedOn, setOpenedOn] = useState<RegenerateState | null>(null);
   const asking = openedOn !== null && (openedOn === state || Boolean(state.error));
@@ -50,23 +53,23 @@ export function RegenerateAlias() {
     return (
       <div className="flex flex-col gap-1">
         <button type="button" onClick={() => setAsking(true)} className="inline-flex min-h-10 items-center gap-1.5 self-start rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
-          <RefreshCw className="size-3.5" aria-hidden />Сменить адрес
+          <RefreshCw className="size-3.5" aria-hidden />{t("inbox.changeAddress")}
         </button>
-        {state.address && <p role="status" className="text-[12.5px] text-green">Новый адрес готов. Обнови его в настройках пересылки своей почты.</p>}
+        {state.address && <p role="status" className="text-[12.5px] text-green">{t("inbox.newAddressReady")}</p>}
       </div>
     );
   }
   return (
     <form action={action} className="flex flex-col gap-2.5 rounded-2xl border border-amber/20 bg-amber-soft/60 p-3.5" aria-describedby={noteId}>
-      <p id={noteId} className="text-[13px] text-ink-2">Старый адрес сразу перестанет принимать письма — пересылку в почте нужно будет настроить на новый.</p>
+      <p id={noteId} className="text-[13px] text-ink-2">{t("inbox.changeWarning")}</p>
       {state.error && <p role="alert" className="text-[12.5px] text-rose">{state.error}</p>}
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={pending} className="inline-flex h-10 items-center gap-2 rounded-full bg-cta px-4 text-[13px] font-medium text-white shadow-(--shadow-cta) hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green disabled:opacity-60" aria-busy={pending || undefined}>
           {pending && <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden />}
-          {pending ? "Меняем…" : "Сменить адрес"}
+          {t(pending ? "inbox.changing" : "inbox.changeAddress")}
         </button>
         <button type="button" onClick={() => setAsking(false)} disabled={pending} className="inline-flex h-10 items-center rounded-full px-4 text-[13px] text-head hover:bg-white/70 focus-visible:outline-2 focus-visible:outline-green">
-          Отмена
+          {t("work.cancel")}
         </button>
       </div>
     </form>
@@ -90,9 +93,10 @@ export function ProviderGuide({ guides }: { guides: Guide[] }) {
     tabs.current[to]?.focus();
   };
   const g = guides[active];
+  const t = useT();
   return (
     <div className="flex flex-col gap-4">
-      <div role="tablist" aria-label="Почтовый сервис" className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div role="tablist" aria-label={t("inbox.mailService")} className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {guides.map((x, i) => (
           <button
             key={x.key}

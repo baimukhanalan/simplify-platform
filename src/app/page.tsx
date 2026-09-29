@@ -37,7 +37,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </>}
       />
 
-      <main id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col px-4 sm:px-8">
+      {/* The landing body is Russian-only: lang="ru" keeps it labelled right whatever language <html> carries. */}
+      <main lang="ru" id="main-content" tabIndex={-1} className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col px-4 sm:px-8">
         {deleted && (
           <p role="status" className="mx-auto mt-2 flex w-full max-w-[620px] items-start gap-2.5 rounded-2xl border border-green/20 bg-green-soft px-4 py-3 text-[14px] text-head animate-fade">
             <CircleCheck className="mt-0.5 size-4 shrink-0 text-green" aria-hidden />
@@ -121,7 +122,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
         </section>
       </main>
 
-      <footer className="mx-auto flex w-full max-w-[1180px] flex-col items-center justify-between gap-3 border-t border-line px-4 py-8 text-[12.5px] text-ink-3 sm:flex-row sm:px-8">
+      <footer lang="ru" className="mx-auto flex w-full max-w-[1180px] flex-col items-center justify-between gap-3 border-t border-line px-4 py-8 text-[12.5px] text-ink-3 sm:flex-row sm:px-8">
         <Logo className="!h-[18px] opacity-70" />
         <nav aria-label="Документы и сервисы" className="flex flex-wrap items-center justify-center gap-x-4">
           <Link href="/check" className="inline-flex min-h-10 items-center hover:text-head focus-visible:outline-2 focus-visible:outline-green">Проверка CV</Link>

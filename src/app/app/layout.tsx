@@ -51,7 +51,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   const [{ counts, clock, moments, todayShowsOffer }, t] = await Promise.all([shellData(user.id), getT()]);
   return (
-    <I18nScope ns={["nav", "errors"]}>
+    <I18nScope ns={["nav", "shell", "pwa"]}>
     <div className="flex min-h-dvh flex-col lg:flex-row">
       <Nav counts={counts} role={user.role} campaign={clock} userName={user.name} quietQueue={isSimulation()} />
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-16 pt-4 sm:px-8 lg:pt-6">

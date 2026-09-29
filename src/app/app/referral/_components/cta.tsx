@@ -2,10 +2,12 @@ import Link from "next/link";
 import { ArrowRight, Gift } from "lucide-react";
 import { cx } from "@/components/ui";
 import { REFERRAL_DISCOUNT_PCT, REFERRAL_REWARD_DAYS } from "@/lib/referral";
+import { getT } from "@/lib/i18n/server";
 
 /** Slim «Пригласи друга» entry point: light (Campaign page) or dark (HIRED screen). */
-export function ReferralCta({ tone = "light", className }: { tone?: "light" | "dark"; className?: string }) {
+export async function ReferralCta({ tone = "light", className }: { tone?: "light" | "dark"; className?: string }) {
   const dark = tone === "dark";
+  const t = await getT();
   return (
     <Link
       href="/app/referral"
@@ -19,9 +21,9 @@ export function ReferralCta({ tone = "light", className }: { tone?: "light" | "d
         <Gift className="size-4" strokeWidth={1.8} aria-hidden />
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className={cx("text-[14px] font-medium", dark ? "text-white" : "text-head")}>Пригласи друга</span>
+        <span className={cx("text-[14px] font-medium", dark ? "text-white" : "text-head")}>{t("referralPage.cta.title")}</span>
         <span className={cx("text-[12.5px]", dark ? "text-white/55" : "text-ink-3")}>
-          Другу — −{REFERRAL_DISCOUNT_PCT}% на первую кампанию, тебе — +{REFERRAL_REWARD_DAYS} дней к своей.
+          {t("referralPage.cta.text", { pct: REFERRAL_DISCOUNT_PCT, days: REFERRAL_REWARD_DAYS })}
         </span>
       </span>
       <ArrowRight className={cx("size-4 shrink-0 transition-transform group-hover:translate-x-0.5", dark ? "text-[#8fc7ad]" : "text-teal")} strokeWidth={1.8} aria-hidden />

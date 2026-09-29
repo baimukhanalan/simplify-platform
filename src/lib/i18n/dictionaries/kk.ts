@@ -3,6 +3,11 @@
 // Case endings are never glued to a {variable} (company names, roles): phrases are built so the name stands alone.
 import type { Dictionary } from "./ru";
 import { globalErrorKk } from "./global-error";
+import { appErrorKk } from "./app-error";
+import { partCKk } from "./kk/part-c";
+import { partBKk } from "./kk/part-b";
+import { partAKk } from "./kk/part-a";
+import { partFinalKk } from "./kk/part-final";
 
 export const kk: Dictionary = {
   common: {
@@ -176,7 +181,7 @@ export const kk: Dictionary = {
     kindInvite: "Сұхбатқа шақыру",
     metaTailored: "Кіріспе мен дағдылар реті вакансияға сай",
     metaApplied: "Greenhouse формасы арқылы",
-    metaInvite: "Рекрутермен скрининг · бс, 15:00",
+    metaInvite: "Рекрутермен скрининг · бейсенбі, 15:00",
     where1: "Қашықтан · Еуропа",
     where2: "Гибрид · Алматы",
     where3: "Қашықтан · бүкіл әлем",
@@ -622,15 +627,14 @@ export const kk: Dictionary = {
     notFoundSignedIn: "Сілтеме ескірген немесе бет көшірілген. Агент жұмысын жалғастыруда — кабинетке орал.",
     notFoundSignedOut: "Сілтеме ескірген немесе бет көшірілген.",
     openToday: "Today ашу",
-    appEyebrow: "Бірдеңе дұрыс болмады",
-    appTitle: "Бет жүктелмеді",
-    appText: "Агент бұл уақытта жұмысын жалғастыруда. Қайталап көр — көмектеспесе, Today-ге орал.",
-    code: "Коды: {digest}",
-    retry: "Қайталау",
-    toToday: "Today-ге",
+    ...appErrorKk,
     appNotFoundTitle: "Бұл бет табылмады",
     appNotFoundText: "Вакансия немесе сұхбат енді қолжетімсіз болуы мүмкін.",
     backToToday: "Today-ге оралу",
   },
+  ...partCKk,
+  ...partBKk,
+  ...partAKk,
+  ...partFinalKk,
   globalError: globalErrorKk,
 };

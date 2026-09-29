@@ -6,6 +6,10 @@ import { db, noNul } from "../db";
 import { createSession, destroySession, hashPassword, verifyPassword, safeNext } from "../auth";
 import { rateLimit } from "../rate-limit";
 import { legalAcceptance } from "../legal";
+import { actionT } from "../i18n/action";
+import { entryLocale } from "../i18n/server";
+import { applyLocale } from "../i18n/persist";
+import { DEFAULT_LOCALE, type Locale } from "../i18n/config";
 import { REFERRAL_COOKIE, REFERRAL_DISCOUNT_PCT, attachReferral, findReferrer, firstName } from "../referral";
 
 // Compared against when the email is unknown, so response time doesn't reveal registered emails.
@@ -40,11 +44,13 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
   if (await db.user.findUnique({ where: { email } })) return { error: "Аккаунт с таким email уже есть — войди" };
   // An unknown or malformed code is ignored (signup still succeeds), never stored.
   const partner = ref ? await db.partner.findUnique({ where: { code: ref }, select: { code: true } }) : null;
+  // The language the sign-up page was shown in (the `locale` cookie, else the browser's Accept-Language): the account keeps it.
+  const locale: Locale = await entryLocale().catch(() => DEFAULT_LOCALE);
   let user: { id: string };
   try {
     user = await db.user.create({
       data: {
-        name, email, passwordHash: await hashPassword(password), referredByCode: partner?.code ?? null,
+        name, email, passwordHash: await hashPassword(password), referredByCode: partner?.code ?? null, locale,
         consents: JSON.stringify({ terms: true, autoSubmit: true, emailScan: false, copilot: true, analytics: form.get("analytics") === "on", at: new Date().toISOString(), legal: legalAcceptance() }),
         profile: { create: {} }, goal: { create: {} },
       },
@@ -59,6 +65,8 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
   const jar = await cookies();
   if (!partner) await attachReferral(user.id, ref ?? jar.get(REFERRAL_COOKIE)?.value);
   jar.delete(REFERRAL_COOKIE);
+  // …and the cookie remembers it, so every page from here on (including signed-out ones) uses that choice.
+  await applyLocale(null, locale, jar);
   await createSession(user.id);
   const plan = String(form.get("plan") ?? "");
   redirect(plan === "local" || plan === "international" ? `/onboarding?plan=${plan}` : "/onboarding");
@@ -81,7 +89,9 @@ export async function checkReferral(code: string): Promise<ReferralCheck> {
   const partner = await db.partner.findUnique({ where: { code: ref }, select: { name: true } });
   if (partner) return { valid: true, partnerName: partner.name };
   const friend = await findReferrer(ref);
-  return friend ? { valid: true, partnerName: `${firstName(friend.name)} · −${REFERRAL_DISCOUNT_PCT}% на первую кампанию` } : { valid: false, partnerName: null };
+  if (!friend) return { valid: false, partnerName: null };
+  const t = await actionT();
+  return { valid: true, partnerName: t("serverErrors.friendDiscount", { name: firstName(friend.name), pct: REFERRAL_DISCOUNT_PCT }) };
 }
 
 export async function logout() {

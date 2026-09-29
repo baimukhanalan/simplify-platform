@@ -1,7 +1,21 @@
 // Static offline fallback, served by the service worker (public/sw.js) when a page navigation fails without network.
 // Self-contained on purpose: it's cached once and must render with nothing else available (no app CSS/JS/fonts),
 // and it carries no user data, so caching it is safe.
+// Language: the worker caches this page once, but the user may switch language later — so the page carries all three
+// languages and picks one on the device (the `locale` cookie, which the switcher writes with the saved language →
+// navigator.languages → Russian). The Russian markup is the no-JS fallback.
+import { LOCALES, LOCALE_COOKIE } from "@/lib/i18n/config";
+import { shellRu } from "@/lib/i18n/dictionaries/ru/shell";
+import { shellKk } from "@/lib/i18n/dictionaries/kk/shell";
+import { shellEn } from "@/lib/i18n/dictionaries/en/shell";
+
 export const dynamic = "force-static";
+
+const TEXT = { ru: shellRu.offline, kk: shellKk.offline, en: shellEn.offline };
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+// JSON inside <script>: no «</script>» break-out.
+const json = (v: unknown) => JSON.stringify(v).replace(/</g, "\\u003c");
+const ru = TEXT.ru;
 
 const HTML = `<!doctype html>
 <html lang="ru">
@@ -10,7 +24,7 @@ const HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
 <meta name="theme-color" content="#dcefe6">
-<title>Нет соединения · Simplify</title>
+<title>${esc(ru.docTitle)}</title>
 <style>
   :root { color-scheme: light only; }
   * { box-sizing: border-box; }
@@ -32,11 +46,34 @@ const HTML = `<!doctype html>
 <main>
   <img src="/icons/icon-192.png" alt="" width="64" height="64">
   <div class="label">Simplify</div>
-  <h1>Нет соединения</h1>
-  <p>Проверь интернет — страница откроется сама, как только связь вернётся. Агент тем временем продолжает работать.</p>
-  <button type="button" onclick="location.reload()">Обновить</button>
+  <h1 id="t">${esc(ru.title)}</h1>
+  <p id="x">${esc(ru.text)}</p>
+  <button type="button" id="r" onclick="location.reload()">${esc(ru.reload)}</button>
 </main>
-<script>addEventListener("online", function () { location.reload(); });</script>
+<script>
+(function () {
+  var T = ${json(TEXT)}, L = ${json(LOCALES)}, pick = null;
+  var m = document.cookie.match(/(?:^|;\\s*)${LOCALE_COOKIE}=([^;]+)/);
+  if (m && L.indexOf(m[1]) >= 0) pick = m[1];
+  if (!pick) {
+    var langs = navigator.languages || [navigator.language || ""];
+    for (var i = 0; i < langs.length && !pick; i++) {
+      var b = String(langs[i]).toLowerCase().split("-")[0];
+      if (b === "kz") b = "kk";
+      if (L.indexOf(b) >= 0) pick = b;
+    }
+  }
+  if (pick && pick !== "ru") {
+    var t = T[pick];
+    document.documentElement.lang = pick;
+    document.title = t.docTitle;
+    document.getElementById("t").textContent = t.title;
+    document.getElementById("x").textContent = t.text;
+    document.getElementById("r").textContent = t.reload;
+  }
+})();
+addEventListener("online", function () { location.reload(); });
+</script>
 </body>
 </html>`;
 

@@ -1,10 +1,8 @@
-import type { Metadata } from "next";
-import { LegalPage } from "../_components/legal-page";
-import { LEGAL_DOCS } from "@/lib/legal";
+import { LegalPage, legalMetadata } from "../_components/legal-doc-page";
 import { termsContent } from "./content";
 
-export const metadata: Metadata = { title: LEGAL_DOCS.terms.title, description: "Правила использования сервиса Simplify: аккаунт, работа ИИ-агента, Copilot, оплата и ответственность." };
+export const generateMetadata = () => legalMetadata("terms");
 
-export default function Terms() {
+export default function TermsPage() {
   return <LegalPage doc="terms" {...termsContent()} />;
 }

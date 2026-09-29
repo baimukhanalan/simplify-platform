@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { db, isPostgres, j } from "./db";
 import { runningCampaignWhere } from "./ops-data";
 import { logEvent, notify } from "./engine/agent";
+import { settleGuarantees } from "./engine/guarantee";
 
 /**
  * «Приведи друга». Terms (mirrored in the public offer):
@@ -175,13 +176,22 @@ export async function markReferralPaid(tx: Tx, referredUserId: string, paymentMe
   return row?.id ?? null;
 }
 
-/** Moves a campaign's end by `days` and books them as bonus days (campaign length is always derived from endsAt). */
-async function extendCampaign(tx: Tx, campaignId: string, days: number) {
-  const c = await tx.campaign.findUniqueOrThrow({ where: { id: campaignId }, select: { endsAt: true } });
-  await tx.campaign.update({
-    where: { id: campaignId },
-    data: { bonusDays: { increment: days }, ...(c.endsAt ? { endsAt: new Date(c.endsAt.getTime() + days * DAY) } : {}) },
-  });
+/**
+ * Moves a campaign's end by `days` and books them as bonus days (campaign length is always derived from endsAt).
+ * Compare-and-swap on the endsAt that was read: a concurrent writer (the interview guarantee, which doesn't take the
+ * user lock) is never overwritten — on a conflict re-read and add the days on top of its value.
+ */
+export async function extendCampaign(tx: Tx | typeof db, campaignId: string, days: number) {
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const c = await tx.campaign.findUniqueOrThrow({ where: { id: campaignId }, select: { endsAt: true } });
+    const moved = await tx.campaign.updateMany({
+      where: { id: campaignId, endsAt: c.endsAt },
+      data: { bonusDays: { increment: days }, ...(c.endsAt ? { endsAt: new Date(c.endsAt.getTime() + days * DAY) } : {}) },
+    });
+    if (moved.count) return;
+    await new Promise((r) => setTimeout(r, Math.min(50, 2 * attempt) + Math.random() * 5)); // short jittered backoff
+  }
+  throw new Error(`could not extend campaign ${campaignId}: endsAt keeps changing`);
 }
 
 /**
@@ -208,6 +218,9 @@ export async function rewardReferrer(referralId: string): Promise<"rewarded" | "
   const found = await db.referral.findUnique({ where: { id: referralId }, select: { referrerId: true } });
   if (!found) return "noop";
   const referrerId = found.referrerId;
+  // An overdue campaign the interview guarantee is due to extend counts as running (as everywhere else): settle it first,
+  // outside the transaction (settleGuarantees writes through the shared client).
+  await settleGuarantees(referrerId).catch((e) => console.error("[referral] guarantee settle failed", e));
   const r = await db.$transaction(async (tx) => {
     await lockUser(tx, referrerId);
     const ref = await tx.referral.findUnique({ where: { id: referralId }, select: { status: true } });

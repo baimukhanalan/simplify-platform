@@ -1,4 +1,5 @@
 // Fact kinds as the profile editors list them (plain data: shared by the server list and the client editors).
+// Labels: profilePage.kinds.<key>; `label` is the Russian text, kept for any non-UI reader.
 export const FACT_KIND_OPTIONS = [
   { key: "employment", label: "Опыт работы" },
   { key: "education", label: "Образование" },

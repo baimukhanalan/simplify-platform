@@ -5,6 +5,7 @@
 //   · A generic JSON { to, from, subject, text, html, messageId, headers } — what scripts/inbound-email-worker.js
 //     (Cloudflare Email Routing → Worker) posts. `to` is the envelope recipient; `headers` is an object or [{name, value}].
 import { z } from "zod";
+import { AUTH_HEADER_NAMES, type AuthHeader } from "./auth";
 
 /** Plain-text body kept for classification (1 MB); what is stored and shown is capped lower (BODY_MAX). */
 export const TEXT_MAX = 1_000_000;
@@ -28,6 +29,9 @@ export type InboundLetter = {
   messageId: string | null;
   /** Header names lowercased; repeated headers joined with ", ". */
   headers: Record<string, string>;
+  /** Verdict headers (Authentication-Results, ARC-Authentication-Results, Received-SPF, X-Spam-Tests) in their original
+   *  order, topmost first — auth.ts trusts only the topmost one, written by our receiver. */
+  authHeaders: AuthHeader[];
   format: "postmark" | "generic";
 };
 
@@ -88,7 +92,8 @@ export function parseInbound(body: unknown): InboundLetter | null {
     const r = postmark.safeParse(body);
     if (!r.success) return null;
     const p = r.data;
-    const headers = normHeaders(p.Headers.map((h) => [h.Name, h.Value]));
+    const pairs: [string, string][] = p.Headers.map((h) => [h.Name, h.Value]);
+    const headers = normHeaders(pairs);
     const from = p.FromFull?.Email ? (p.FromFull.Name ? `${p.FromFull.Name} <${p.FromFull.Email}>` : p.FromFull.Email) : p.From;
     const recipients = uniqAddrs([
       p.OriginalRecipient,
@@ -103,7 +108,7 @@ export function parseInbound(body: unknown): InboundLetter | null {
       p.Bcc,
     ]);
     const text = bodyText(p.TextBody, p.HtmlBody);
-    return finish({ recipients, from, subject: p.Subject, text, messageId: cleanId(headers["message-id"] || p.MessageID), headers, format });
+    return finish({ recipients, from, subject: p.Subject, text, messageId: cleanId(headers["message-id"] || p.MessageID), headers, authHeaders: authHeaders(pairs), format });
   }
   if (format === "generic") {
     const r = generic.safeParse(body);
@@ -124,7 +129,7 @@ export function parseInbound(body: unknown): InboundLetter | null {
       headers["cc"] ?? "",
     ]);
     const text = bodyText(g.text, g.html);
-    return finish({ recipients, from: g.from || headers["from"] || "", subject: g.subject || headers["subject"] || "", text, messageId: cleanId(g.messageId || headers["message-id"] || ""), headers, format });
+    return finish({ recipients, from: g.from || headers["from"] || "", subject: g.subject || headers["subject"] || "", text, messageId: cleanId(g.messageId || headers["message-id"] || ""), headers, authHeaders: authHeaders(pairs), format });
   }
   return null;
 }
@@ -143,6 +148,15 @@ function normHeaders(pairs: [string, string][]) {
     if (!key) continue;
     const val = oneLine(String(v)).slice(0, 5000);
     out[key] = out[key] ? `${out[key]}, ${val}`.slice(0, 20_000) : val;
+  }
+  return out;
+}
+
+function authHeaders(pairs: [string, string][]): AuthHeader[] {
+  const out: AuthHeader[] = [];
+  for (const [k, v] of pairs.slice(0, 500)) {
+    const key = String(k).trim().toLowerCase();
+    if (AUTH_HEADER_NAMES.has(key) && out.length < 40) out.push([key, oneLine(String(v)).slice(0, 5000)]);
   }
   return out;
 }

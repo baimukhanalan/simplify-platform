@@ -1,4 +1,4 @@
-// The interview guarantee (src/lib/engine/guarantee.ts): «Если за 60 дней кампании не было ни одного приглашения на
+// The interview guarantee (src/lib/engine/guarantee.ts): «Если за время кампании не было ни одного приглашения на
 // интервью, кампания продлевается на 30 дней бесплатно — один раз на кампанию.»
 // Eligibility matrix, idempotency under 100 concurrent calls, the agent cycle / cron path, the Kaspi purchase path, the
 // lazy settle of the app screens, and the campaign clock after an extension (60 → 90 days). Throwaway SQLite database.
@@ -113,6 +113,38 @@ describe("eligibility matrix", () => {
     }
   });
 
+  test("an unverified forwarded «interview» letter (inert) is not evidence", async () => {
+    const { campaign } = await makeCampaign();
+    const o = await makeOpp(campaign.id, "submitted");
+    await db.inboxMessage.create({ data: { userId: campaign.userId, opportunityId: o.id, fromAddr: "hr@acme.com", subject: "Interview", body: "", classification: "interview", source: "forward-unverified" } });
+    assert.equal(await g.guaranteeEligible(campaign), true);
+  });
+
+  test("moving a card back from an interview stage keeps the guarantee lost (event history)", async () => {
+    // Manual move: setOpportunityStatus logs status_change {from, to}; the card is then moved back.
+    const a = await makeCampaign();
+    const o1 = await makeOpp(a.campaign.id, "submitted");
+    await agent.logEvent(a.user.id, "status_change", "x: submitted → technical (вручную)", o1.id, { from: "submitted", to: "technical", by: "user" });
+    await agent.logEvent(a.user.id, "status_change", "x: technical → submitted (вручную)", o1.id, { from: "technical", to: "submitted", by: "user" });
+    assert.equal(await g.guaranteeEligible(a.campaign), false);
+    assert.equal((await g.applyGuarantee(a.campaign.id)).applied, false);
+    // Employer mail moved it (inbox event with `to`), then the card went back and the Interview row was removed.
+    const b = await makeCampaign();
+    const o2 = await makeOpp(b.campaign.id, "submitted");
+    const job = await db.job.findFirstOrThrow({ where: { opportunities: { some: { id: o2.id } } } });
+    await agent.ingestEmail(b.user.id, { from: `HR <hr@${job.company.toLowerCase()}.kz>`, subject: "Interview invitation", body: `We would love to invite you to an interview for the Data Analyst role at ${job.company}. Please schedule a call.`, opportunityId: o2.id });
+    assert.equal((await db.opportunity.findUniqueOrThrow({ where: { id: o2.id } })).status, "recruiter");
+    await db.opportunity.update({ where: { id: o2.id }, data: { status: "submitted" } });
+    await db.interview.deleteMany({ where: { opportunityId: o2.id } });
+    await db.inboxMessage.deleteMany({ where: { opportunityId: o2.id } });
+    assert.equal(await g.guaranteeEligible(b.campaign), false);
+    // A move that never reached an interview stage doesn't count.
+    const c = await makeCampaign();
+    const o3 = await makeOpp(c.campaign.id, "submitted");
+    await agent.logEvent(c.user.id, "status_change", "x", o3.id, { from: "submitted", to: "assessment", by: "user" });
+    assert.equal(await g.guaranteeEligible(c.campaign), true);
+  });
+
   test("another campaign's interview doesn't count for this one", async () => {
     const { user, campaign } = await makeCampaign();
     const other = await db.campaign.create({ data: { userId: user.id, plan: "local", priceKzt: 1, status: "expired", startedAt: new Date(Date.now() - 200 * DAY), endsAt: new Date(Date.now() - 140 * DAY) } });
@@ -140,12 +172,14 @@ describe("eligibility matrix", () => {
 });
 
 describe("applyGuarantee", () => {
-  test("extends endsAt by exactly 30 days, bonusDays +30, logs one event and one notification", async () => {
+  test("extends to 30 days from max(endsAt, now), bonusDays +30, logs one event and one notification", async () => {
     const { user, campaign } = await makeCampaign();
+    const t0 = Date.now();
     const r = await g.applyGuarantee(campaign.id);
     assert.equal(r.applied, true);
     const c = await reload(campaign.id);
-    assert.equal(c.endsAt!.getTime() - campaign.endsAt!.getTime(), 30 * DAY);
+    // endsAt was an hour ago → the 30 days count from the moment of the extension.
+    assert.ok(c.endsAt!.getTime() >= t0 + 30 * DAY && c.endsAt!.getTime() <= Date.now() + 30 * DAY, "30 real days from now");
     assert.equal(c.bonusDays, 30);
     assert.equal(c.guaranteeStatus, "extended");
     assert.ok(c.guaranteeExtendedAt);
@@ -172,7 +206,7 @@ describe("applyGuarantee", () => {
     const rs = await Promise.all(Array.from({ length: 100 }, () => g.applyGuarantee(campaign.id)));
     assert.equal(rs.filter((r) => r.applied).length, 1);
     const c = await reload(campaign.id);
-    assert.equal(c.endsAt!.getTime() - campaign.endsAt!.getTime(), 30 * DAY);
+    assert.ok(Math.abs(c.endsAt!.getTime() - (Date.now() + 30 * DAY)) < 60_000);
     assert.equal(c.bonusDays, 30);
     assert.equal(await db.event.count({ where: { userId: user.id, type: "campaign_guarantee" } }), 1);
     assert.equal(await db.notification.count({ where: { userId: user.id } }), 1);

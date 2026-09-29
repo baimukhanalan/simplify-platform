@@ -405,6 +405,67 @@ describe("POST /api/monitoring/client", () => {
   });
 });
 
+describe("client endpoint: same-origin, storage cap, retention", () => {
+  beforeEach(async () => {
+    mon.resetMonitoringState();
+    mon.configureMonitoring({ throttleMs: 0, store: null });
+    client.resetClientReportLimits();
+    await db.errorLog.deleteMany({});
+  });
+  const good = { message: "Boom", name: "TypeError", route: "/app/today", boundary: "app" };
+  const req = (body: unknown, headers: Record<string, string>) =>
+    new Request("http://localhost:3000/api/monitoring/client", { method: "POST", headers: { "content-type": "application/json", host: "localhost:3000", ...headers }, body: JSON.stringify(body) });
+
+  test("neither Origin nor Sec-Fetch-Site: same-origin → 403 (curl / server-side scripts), either one alone is fine", async () => {
+    assert.equal((await client.handleClientReport(req(good, {}))).status, 403);
+    assert.equal((await client.handleClientReport(req(good, { "sec-fetch-site": "none" }))).status, 403);
+    assert.equal((await client.handleClientReport(req(good, { origin: "http://localhost:3000" }))).status, 204);
+    assert.equal((await client.handleClientReport(req({ ...good, message: "b" }, { "sec-fetch-site": "same-origin" }))).status, 204);
+    const env = process.env as Record<string, string | undefined>;
+    const saved = env.NODE_ENV;
+    env.NODE_ENV = "development";
+    try {
+      assert.equal((await client.handleClientReport(req({ ...good, message: "dev" }, {}))).status, 204, "dev tools allowed locally");
+    } finally {
+      env.NODE_ENV = saved;
+    }
+  });
+
+  test(`over ${500} open client rows every new report folds into one overflow row (count++)`, async () => {
+    const now = new Date();
+    await db.errorLog.createMany({ data: Array.from({ length: client.CLIENT_OPEN_CAP }, (_, i) => ({ fingerprint: `cap-${i}`, source: "client", message: `m${i}`, createdAt: now, lastSeenAt: now })) });
+    const h = { origin: "http://localhost:3000", "sec-fetch-site": "same-origin" };
+    for (let i = 0; i < 15; i++) assert.equal((await client.handleClientReport(req({ ...good, message: `new ${i}` }, { ...h, "x-vercel-forwarded-for": `198.51.100.${i}` }))).status, 204);
+    await mon.flushMonitoring();
+    assert.equal(await db.errorLog.count(), client.CLIENT_OPEN_CAP + 1, "one overflow row, nothing else new");
+    const over = await db.errorLog.findFirstOrThrow({ where: { message: client.OVERFLOW_MESSAGE } });
+    assert.equal(over.count, 15);
+    // Resolving rows frees room again.
+    await db.errorLog.updateMany({ where: { fingerprint: { startsWith: "cap-" } }, data: { resolvedAt: new Date() } });
+    client.resetClientReportLimits();
+    assert.equal((await client.handleClientReport(req({ ...good, message: "fresh" }, h))).status, 204);
+    await mon.flushMonitoring();
+    assert.equal(await db.errorLog.count({ where: { message: "fresh" } }), 1);
+  });
+
+  test("retention: resolved > 30 days and client rows unseen > 30 days are deleted; at most once a day per instance", async () => {
+    const old = new Date(Date.now() - 31 * 86400000), recent = new Date(Date.now() - 5 * 86400000);
+    await db.errorLog.createMany({ data: [
+      { fingerprint: "r-old", source: "server", message: "a", resolvedAt: old, lastSeenAt: old },
+      { fingerprint: "r-new", source: "server", message: "b", resolvedAt: recent, lastSeenAt: recent },
+      { fingerprint: "c-old", source: "client", message: "c", lastSeenAt: old },
+      { fingerprint: "c-new", source: "client", message: "d", lastSeenAt: recent },
+      { fingerprint: "s-old-open", source: "server", message: "e", lastSeenAt: old },
+    ] });
+    mon.resetPruneClock();
+    assert.equal(await mon.maybePruneErrorLog(), 2);
+    assert.deepEqual((await db.errorLog.findMany({ orderBy: { fingerprint: "asc" } })).map((r) => r.fingerprint), ["c-new", "r-new", "s-old-open"]);
+    await db.errorLog.create({ data: { fingerprint: "c-old-2", source: "client", message: "f", lastSeenAt: old } });
+    assert.equal(await mon.maybePruneErrorLog(), 0, "already ran today");
+    assert.equal(await mon.pruneErrorLog(), 1);
+  });
+});
+
 // ——— Health ———
 describe("GET /api/health", () => {
   test("db ok → 200, no secrets in the body", async () => {

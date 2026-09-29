@@ -3,9 +3,7 @@ import { useEffect, useState } from "react";
 import { BellRing, Monitor, Send, Smartphone } from "lucide-react";
 import { Card, Chip, cx } from "@/components/ui";
 import { endpointKey, isIos, isStandalone, pushSupported, swRegistration, urlBase64ToUint8Array } from "@/lib/push-client";
-import { count } from "@/lib/ru";
-
-const DEVICES = ["устройство", "устройства", "устройств"] as const;
+import { useT } from "@/lib/i18n/client";
 
 export type Device = { id: string; key: string; label: string; createdAt: string };
 type State = "loading" | "unsupported" | "ios-install" | "ios-old" | "denied" | "off" | "on";
@@ -23,9 +21,8 @@ async function currentSubscription() {
   return reg ? { reg, sub: await reg.pushManager.getSubscription().catch(() => null) } : null;
 }
 
-const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "long" });
-
 export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKey: string; initialDevices: Device[]; prefOn: boolean }) {
+  const t = useT();
   const [state, setState] = useState<State>("loading");
   const [devices, setDevices] = useState(initialDevices);
   const [thisKey, setThisKey] = useState<string | null>(null);
@@ -61,9 +58,9 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
     try {
       const perm = await Notification.requestPermission();
       if (perm === "denied") return setState("denied");
-      if (perm !== "granted") return setNote({ tone: "err", text: "Разрешение не выдано. Нажми ещё раз и выбери «Разрешить»." });
+      if (perm !== "granted") return setNote({ tone: "err", text: t("pushCard.err.permission") });
       const cur = await currentSubscription();
-      if (!cur) return setNote({ tone: "err", text: "Браузер не запустил фоновый сервис. Обнови страницу и попробуй снова." });
+      if (!cur) return setNote({ tone: "err", text: t("pushCard.err.noWorker") });
       const appKey = urlBase64ToUint8Array(publicKey);
       let sub = cur.sub;
       if (sub && !sameKey(sub.options.applicationServerKey, appKey)) {
@@ -72,14 +69,14 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
       }
       sub ??= await cur.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
       const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ subscription: sub.toJSON() }) });
-      if (!r.ok) return setNote({ tone: "err", text: r.status === 429 ? "Слишком много попыток — подожди минуту." : "Не получилось включить. Попробуй ещё раз." });
+      if (!r.ok) return setNote({ tone: "err", text: r.status === 429 ? t("pushCard.err.tooManyAttempts") : t("pushCard.err.enableFailed") });
       const data = (await r.json()) as { devices: Device[] };
       setDevices(data.devices);
       setThisKey(await endpointKey(sub.endpoint));
       setState("on");
-      setNote({ tone: "ok", text: "Готово — уведомления будут приходить на это устройство." });
+      setNote({ tone: "ok", text: t("pushCard.err.enabled") });
     } catch {
-      setNote({ tone: "err", text: "Не получилось включить. Проверь интернет и попробуй ещё раз." });
+      setNote({ tone: "err", text: t("pushCard.err.enableOffline") });
     } finally {
       setBusy(null);
     }
@@ -92,14 +89,14 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
       const cur = await currentSubscription();
       if (cur?.sub) {
         const r = await fetch(API, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: cur.sub.endpoint }) });
-        if (!r.ok) return setNote({ tone: "err", text: "Не получилось выключить. Попробуй ещё раз." });
+        if (!r.ok) return setNote({ tone: "err", text: t("pushCard.err.disableFailed") });
         setDevices(((await r.json()) as { devices: Device[] }).devices);
         await cur.sub.unsubscribe().catch(() => {});
       }
       setThisKey(null);
       setState("off");
     } catch {
-      setNote({ tone: "err", text: "Не получилось выключить. Проверь интернет и попробуй ещё раз." });
+      setNote({ tone: "err", text: t("pushCard.err.disableOffline") });
     } finally {
       setBusy(null);
     }
@@ -112,20 +109,20 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
       const sub = (await currentSubscription())?.sub;
       if (!sub) {
         setState("off");
-        return setNote({ tone: "err", text: "Это устройство больше не подписано — включи уведомления заново." });
+        return setNote({ tone: "err", text: t("pushCard.err.notSubscribed") });
       }
       const r = await fetch("/api/push/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) });
-      if (r.ok) return setNote({ tone: "ok", text: "Отправили — уведомление появится через пару секунд." });
+      if (r.ok) return setNote({ tone: "ok", text: t("pushCard.err.sent") });
       if (r.status === 410 || r.status === 404) {
         await sub.unsubscribe().catch(() => {});
         const d = (await r.json().catch(() => ({}))) as { devices?: Device[] };
         if (d.devices) setDevices(d.devices);
         setState("off");
-        return setNote({ tone: "err", text: "Подписка этого устройства устарела — включи уведомления заново." });
+        return setNote({ tone: "err", text: t("pushCard.err.stale") });
       }
-      setNote({ tone: "err", text: r.status === 429 ? "Слишком часто — попробуй через минуту." : "Не получилось отправить. Попробуй чуть позже." });
+      setNote({ tone: "err", text: r.status === 429 ? t("pushCard.err.tooOften") : t("pushCard.err.sendFailed") });
     } catch {
-      setNote({ tone: "err", text: "Не получилось отправить. Проверь интернет." });
+      setNote({ tone: "err", text: t("pushCard.err.sendOffline") });
     } finally {
       setBusy(null);
     }
@@ -133,16 +130,16 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
 
   const on = state === "on";
   const chip =
-    state === "on" ? <Chip tone="green" dot>Включены</Chip>
-    : state === "off" ? <Chip>Выключены</Chip>
-    : state === "denied" ? <Chip tone="rose">Заблокированы</Chip>
+    state === "on" ? <Chip tone="green" dot>{t("pushCard.chipOn")}</Chip>
+    : state === "off" ? <Chip>{t("pushCard.chipOff")}</Chip>
+    : state === "denied" ? <Chip tone="rose">{t("pushCard.chipDenied")}</Chip>
     : null;
 
   return (
     <Card className="flex flex-col gap-3" aria-labelledby="push-h" aria-busy={state === "loading"}>
       <BellRing className="size-5 text-teal" strokeWidth={1.7} aria-hidden />
       <div className="flex min-h-[22px] flex-wrap items-center justify-between gap-2">
-        <h3 id="push-h" className="h-serif text-[19px]">Push-уведомления</h3>
+        <h3 id="push-h" className="h-serif text-[19px]">{t("pushCard.title")}</h3>
         {chip}
       </div>
 
@@ -156,27 +153,27 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
 
       {state === "ios-install" && (
         <p className="text-[13.5px] text-ink-3">
-          На iPhone и iPad уведомления приходят, только когда Simplify установлен на экран «Домой». Нажми «Поделиться» → «На экран Домой», открой Simplify с иконки и включи уведомления здесь.
+          {t("pushCard.iosInstall")}
         </p>
       )}
-      {state === "ios-old" && <p className="text-[13.5px] text-ink-3">Чтобы получать уведомления на iPhone или iPad, обнови iOS до версии 16.4 или новее — и включи их здесь.</p>}
+      {state === "ios-old" && <p className="text-[13.5px] text-ink-3">{t("pushCard.iosOld")}</p>}
       {state === "unsupported" && (
-        <p className="text-[13.5px] text-ink-3">Этот браузер не умеет получать push-уведомления. Открой Simplify в Chrome, Edge, Firefox или Safari — и включи их здесь.</p>
+        <p className="text-[13.5px] text-ink-3">{t("pushCard.unsupported")}</p>
       )}
       {state === "denied" && (
         <div className="flex flex-col gap-2 text-[13.5px] text-ink-3">
-          <p>Уведомления для Simplify заблокированы в настройках {isIos() ? "устройства" : "браузера"}. Чтобы включить:</p>
+          <p>{isIos() ? t("pushCard.deniedDevice") : t("pushCard.deniedBrowser")}</p>
           {isIos() ? (
-            <p className="text-ink-2">Настройки → Уведомления → Simplify → «Допуск уведомлений». Затем открой Simplify заново.</p>
+            <p className="text-ink-2">{t("pushCard.deniedIosSteps")}</p>
           ) : (
-            <p className="text-ink-2">Нажми на значок слева от адреса сайта → «Настройки сайта» → «Уведомления» → «Разрешить». Затем обнови страницу.</p>
+            <p className="text-ink-2">{t("pushCard.deniedBrowserSteps")}</p>
           )}
         </div>
       )}
 
       {(state === "on" || state === "off") && (
         <>
-          <p className="text-[13.5px] text-ink-3">Приглашения на интервью, задания работодателей и офферы — сразу на экран, даже когда Simplify закрыт.</p>
+          <p className="text-[13.5px] text-ink-3">{t("pushCard.intro")}</p>
           <button
             type="button"
             role="switch"
@@ -185,9 +182,9 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
             onClick={on ? disable : enable}
             className="group flex min-h-11 w-full items-center justify-between gap-4 rounded-xl text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green disabled:cursor-wait"
           >
-            <span className="flex flex-col">
-              <span className="text-[15px] text-head">На этом устройстве</span>
-              <span className="text-[12.5px] text-ink-3">{busy === "toggle" ? (on ? "Выключаем…" : "Включаем…") : on ? "Включены" : "Выключены"}</span>
+            <span className="flex min-w-0 flex-col">
+              <span className="text-[15px] text-head">{t("pushCard.thisDevice")}</span>
+              <span className="text-[12.5px] text-ink-3">{busy === "toggle" ? (on ? t("pushCard.turningOff") : t("pushCard.turningOn")) : on ? t("pushCard.on") : t("pushCard.off")}</span>
             </span>
             <span aria-hidden className={cx("relative h-6 w-11 shrink-0 rounded-full transition-colors after:absolute after:left-0.5 after:top-0.5 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform", on ? "bg-green after:translate-x-5" : "bg-head/15", busy === "toggle" && "opacity-60")} />
           </button>
@@ -199,7 +196,7 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
               className="glass inline-flex h-10 w-fit items-center justify-center gap-2 !rounded-full px-4 text-[13px] font-medium text-head transition-all hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green active:scale-[.98] disabled:opacity-50"
             >
               <Send className="size-3.5" strokeWidth={1.8} aria-hidden />
-              {busy === "test" ? "Отправляем…" : "Проверить связь"}
+              {busy === "test" ? t("pushCard.sending") : t("pushCard.check")}
             </button>
           )}
         </>
@@ -210,7 +207,7 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
       {devices.length > 0 && state !== "loading" && (
         <div className="mt-1 flex flex-col gap-2 border-t border-line pt-3">
           <span className="label">
-            {count(devices.length, DEVICES)} с уведомлениями
+            {t("pushCard.devices", { n: devices.length })}
           </span>
           <ul className="flex flex-col gap-1.5">
             {devices.map((d) => {
@@ -220,8 +217,8 @@ export function PushCardClient({ publicKey, initialDevices, prefOn }: { publicKe
                 <li key={d.id} className="flex min-w-0 items-center gap-2.5 text-[13.5px]">
                   <Icon className="size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
                   <span className="min-w-0 truncate text-ink-2">{d.label}</span>
-                  <span className="shrink-0 text-[12.5px] text-ink-3">с {fmtDate(d.createdAt)}</span>
-                  {mine && <Chip tone="teal" className="ml-auto shrink-0">это устройство</Chip>}
+                  <span className="shrink-0 text-[12.5px] text-ink-3">{t("pushCard.since", { date: t.date(d.createdAt, "dayMonth") })}</span>
+                  {mine && <Chip tone="teal" className="ml-auto shrink-0">{t("pushCard.mine")}</Chip>}
                 </li>
               );
             })}

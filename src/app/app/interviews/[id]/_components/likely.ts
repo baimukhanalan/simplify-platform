@@ -1,9 +1,13 @@
 import { englishTitle, retrieveStories, scaffold, type FactLite, type Pack, type StoryLite } from "@/lib/engine/interview";
 import { hasCyrillic, jdSkillsYouHave, latinName } from "@/lib/engine/taxonomy";
 import { achievementClause, achievementLines, possessive } from "@/lib/engine/personalize";
+import { createTranslator, type Messages, type T } from "@/lib/i18n/translator";
+import { interviewsPageRu } from "@/lib/i18n/dictionaries/ru/interviews-page";
 
 // «Скорее всего спросят». Answer text (opener + points) is English, the interview language, and is assembled
-// only from the candidate's own stories and facts. Coaching lives separately in `tips` (Russian, «ты»).
+// only from the candidate's own stories and facts. Coaching (`why`, `tips`, `timing`, point labels `k`) is UI copy in
+// the interface language: pass the page's `t`; without it the Russian copy is used (the original output).
+const RU: T = createTranslator("ru", { interviewsPage: interviewsPageRu } as Messages);
 
 export type LikelyCtx = {
   stories: StoryLite[];
@@ -28,6 +32,8 @@ export type Likely = {
   tips?: string[];
   story?: { title: string; metric: string };
   timing: string;
+  /** The company-overview line (brief content, stored in Russian) — set instead of a tip when `t` isn't Russian. */
+  briefQuote?: string;
 };
 
 const short = (s: string, n = 110) => (s.length > n ? `${s.slice(0, n - 1).trim()}…` : s);
@@ -53,7 +59,7 @@ function eduLine(edu: FactLite, org: (o: string | null | undefined) => string) {
 }
 
 /** Present → Past → Future, filled from the profile. */
-function intro(ctx: LikelyCtx): Pick<Likely, "opener" | "points" | "tips"> {
+function intro(ctx: LikelyCtx, t: T): Pick<Likely, "opener" | "points" | "tips"> {
   const jobs = ctx.facts.filter((f) => f.kind === "employment");
   const [now, prev] = jobs;
   const edu = ctx.facts.find((f) => f.kind === "education");
@@ -82,129 +88,134 @@ function intro(ctx: LikelyCtx): Pick<Likely, "opener" | "points" | "tips"> {
 
   return {
     opener,
-    points: [{ k: "Сейчас", v: present }, ...(past ? [{ k: "Раньше", v: past }] : []), { k: "Дальше", v: future }],
-    tips: ["Порядок: сейчас → раньше → дальше, 60–90 секунд.", "Одной цифры достаточно — не пересказывай всё резюме."],
+    points: [{ k: t("interviewsPage.likely.k.now"), v: present }, ...(past ? [{ k: t("interviewsPage.likely.k.before"), v: past }] : []), { k: t("interviewsPage.likely.k.next"), v: future }],
+    tips: [t("interviewsPage.likely.tips.introOrder"), t("interviewsPage.likely.tips.introOneNumber")],
   };
 }
 
-function storyAnswer(q: string, ctx: LikelyCtx, tips: string[]): Pick<Likely, "opener" | "points" | "story" | "tips"> {
+function storyAnswer(q: string, ctx: LikelyCtx, tips: string[], t: T): Pick<Likely, "opener" | "points" | "story" | "tips"> {
   const [s] = retrieveStories(q, ctx.stories, 1);
   if (!s) {
     const sc = scaffold(q, ctx);
-    return { opener: sc.opener, points: sc.bullets.map((v) => ({ v })), tips: ["Подходящей STAR-истории пока нет — добавь её в Career Profile.", ...tips] };
+    return { opener: sc.opener, points: sc.bullets.map((v) => ({ v })), tips: [t("interviewsPage.likely.tips.noStory"), ...tips] };
   }
   return {
     opener: `A good example is ${s.title.charAt(0).toLowerCase()}${s.title.slice(1)}.`,
     points: [
-      { k: "Ситуация", v: short(s.situation) },
-      { k: "Задача", v: short(s.task) },
-      { k: "Действие", v: short(s.action) },
-      { k: "Результат", v: short(s.result) },
+      { k: t("interviewsPage.likely.k.situation"), v: short(s.situation) },
+      { k: t("interviewsPage.likely.k.task"), v: short(s.task) },
+      { k: t("interviewsPage.likely.k.action"), v: short(s.action) },
+      { k: t("interviewsPage.likely.k.result"), v: short(s.result) },
     ],
     story: { title: s.title, metric: s.metric },
   };
 }
 
-export function buildLikely(_pack: Pack | null, ctx: LikelyCtx): Likely[] {
+export function buildLikely(_pack: Pack | null, ctx: LikelyCtx, tr?: T): Likely[] {
+  const t = tr ?? RU;
+  const secs = (range: string) => t("interviewsPage.likely.secs", { range });
+  // The company overview is Russian brief content: a tip in Russian, a separate quote (lang="ru") otherwise.
+  const quoteAsTip = t.locale === "ru";
   const topFact = ctx.facts.find((f) => f.kind === "employment");
   const topClause = factClause(topFact);
   // Only the user's skills this vacancy asks for (jdSkillsYouHave) — never a profile skill the JD doesn't mention.
   const matched = jdSkillsYouHave(ctx.skills, ctx.technologies, ctx.jdText ?? "");
-  const toGrow = ctx.technologies.filter((t) => !matched.some((m) => m.toLowerCase() === t.toLowerCase()));
+  const toGrow = ctx.technologies.filter((x) => !matched.some((m) => m.toLowerCase() === x.toLowerCase()));
   const tools = matched.slice(0, 3);
-  const proof = topClause ? { k: "Доказательство", v: `At ${topFact?.org ? latinName(topFact.org) : "my current job"}, I ${topClause}.` } : null;
+  const proof = topClause ? { k: t("interviewsPage.likely.k.proof"), v: `At ${topFact?.org ? latinName(topFact.org) : "my current job"}, I ${topClause}.` } : null;
 
   const items: Likely[] = [
     {
       q: "Tell me about yourself.",
-      why: "Открывает почти каждый раунд — задаёт тон всему разговору.",
-      ...intro(ctx),
-      timing: "60–90 сек",
+      why: t("interviewsPage.likely.why.intro"),
+      ...intro(ctx, t),
+      timing: secs("60–90"),
     },
     {
       q: `Why ${ctx.company}?`,
-      why: "Проверяют, что твой выбор осознанный, а не массовая рассылка резюме.",
+      why: t("interviewsPage.likely.why.whyCompany"),
       opener: `What draws me to ${ctx.company} is…`,
       points: [
-        ...(tools.length ? [{ k: "Опыт", v: `My day-to-day work with ${list(tools)} maps directly onto what the team needs.` }] : []),
+        ...(tools.length ? [{ k: t("interviewsPage.likely.k.experience"), v: `My day-to-day work with ${list(tools)} maps directly onto what the team needs.` }] : []),
         ...(proof ? [proof] : []),
-        { k: "Дальше", v: `I'd like to build on that at ${ctx.company} and grow with the product.` },
+        { k: t("interviewsPage.likely.k.next"), v: `I'd like to build on that at ${ctx.company} and grow with the product.` },
       ],
       tips: [
-        `Начни с одного конкретного факта про ${ctx.company}: продукт, рынок или свежая новость.`,
-        ...(ctx.companyWhat ? [`Из обзора компании: ${short(ctx.companyWhat, 160)}`] : []),
+        t("interviewsPage.likely.tips.companyFact", { company: ctx.company }),
+        ...(ctx.companyWhat && quoteAsTip ? [t("interviewsPage.likely.tips.fromBrief", { text: short(ctx.companyWhat, 160) })] : []),
       ],
-      timing: "45–60 сек",
+      ...(ctx.companyWhat && !quoteAsTip ? { briefQuote: short(ctx.companyWhat, 160) } : {}),
+      timing: secs("45–60"),
     },
     {
       q: "Why this role?",
-      why: "Хотят услышать связку: требования роли → твой опыт → чему хочешь научиться.",
+      why: t("interviewsPage.likely.why.whyRole"),
       opener: `The ${ctx.role} role sits right where my experience is strongest.`,
       points: [
-        { k: "Опыт", v: tools.length ? `I already work with ${list(tools)} every day.` : "The core of the role is what I already do every day." },
+        { k: t("interviewsPage.likely.k.experience"), v: tools.length ? `I already work with ${list(tools)} every day.` : "The core of the role is what I already do every day." },
         ...(proof ? [proof] : []),
-        ...(toGrow.length ? [{ k: "Рост", v: `I'd also like to go deeper into ${list(toGrow.slice(0, 2))}.` }] : []),
+        ...(toGrow.length ? [{ k: t("interviewsPage.likely.k.growth"), v: `I'd also like to go deeper into ${list(toGrow.slice(0, 2))}.` }] : []),
       ],
-      tips: toGrow.length ? undefined : ["Добавь, что хочешь взять на себя в первые 6 месяцев."],
-      timing: "45 сек",
+      tips: toGrow.length ? undefined : [t("interviewsPage.likely.tips.firstMonths")],
+      timing: secs("45"),
     },
     {
       q: "Tell me about a difficult analytical problem you solved.",
-      why: "Проверяют, как ты думаешь: постановка, гипотезы, проверка, влияние на решение.",
-      ...storyAnswer("difficult analytical problem data analysis insight impact decision", ctx, ["Структура: контекст → гипотезы → проверка данными → решение и цифра результата."]),
-      timing: "90–120 сек",
+      why: t("interviewsPage.likely.why.problem"),
+      ...storyAnswer("difficult analytical problem data analysis insight impact decision", ctx, [t("interviewsPage.likely.tips.problemStructure")], t),
+      timing: secs("90–120"),
     },
     {
       q: "How do you prioritize conflicting requests from stakeholders?",
-      why: "Запросов всегда больше, чем времени — важно, как ты договариваешься.",
+      why: t("interviewsPage.likely.why.prioritize"),
       opener: "I start by making the trade-off visible instead of silently picking one.",
       points: [
-        { k: "Оценка", v: "I score every request by impact, urgency and effort in one shared table." },
-        { k: "Согласование", v: "If priorities conflict, I agree the order with my manager." },
-        { k: "Коммуникация", v: "I tell stakeholders the timelines and what moves as a result." },
+        { k: t("interviewsPage.likely.k.scoring"), v: "I score every request by impact, urgency and effort in one shared table." },
+        { k: t("interviewsPage.likely.k.alignment"), v: "If priorities conflict, I agree the order with my manager." },
+        { k: t("interviewsPage.likely.k.communication"), v: "I tell stakeholders the timelines and what moves as a result." },
         ...(() => {
           const [s] = retrieveStories("disagree conflict stakeholder deadline priority", ctx.stories, 1);
-          return s ? [{ k: "Пример", v: short(s.title) }] : [];
+          return s ? [{ k: t("interviewsPage.likely.k.example"), v: short(s.title) }] : [];
         })(),
       ],
-      timing: "60–90 сек",
+      timing: secs("60–90"),
     },
   ];
 
-  const sql = ctx.technologies.some((t) => /sql/i.test(t));
+  const sql = ctx.technologies.some((x) => /sql/i.test(x));
   const extra: Record<string, Likely> = {
     recruiter: {
       q: "What are your salary expectations?",
-      why: "На звонке с рекрутером спрашивают почти всегда.",
+      why: t("interviewsPage.likely.why.salary"),
       opener: "Based on the scope and market data, I'm targeting…",
       points: ctx.salary
-        ? [{ k: "Вилка", v: `$${Math.round(ctx.salary.low / 1000)}k–$${Math.round(ctx.salary.high / 1000)}k base.` }, { v: "I'm flexible on the overall package: bonus, learning budget, remote." }]
+        ? [{ k: t("interviewsPage.likely.k.range"), v: `$${Math.round(ctx.salary.low / 1000)}k–$${Math.round(ctx.salary.high / 1000)}k base.` }, { v: "I'm flexible on the overall package: bonus, learning budget, remote." }]
         : [{ v: "I'd love to hear the budgeted range for the role first." }, { v: "I'm flexible on the overall package." }],
-      tips: ["Если можно — сначала спроси их бюджет.", "Называй диапазон, а не одну цифру."],
-      timing: "20 сек",
+      tips: [t("interviewsPage.likely.tips.askBudget"), t("interviewsPage.likely.tips.range")],
+      timing: secs("20"),
     },
     hiring_manager: {
       q: "Tell me about a time you disagreed with your manager.",
-      why: "Нанимающий менеджер проверяет, как ты споришь и договариваешься.",
-      ...storyAnswer("disagreement with manager conflict", ctx, ["Структура: суть разногласия → аргументы данными → чем закончилось → какой вывод из этого следует."]),
-      timing: "90 сек",
+      why: t("interviewsPage.likely.why.disagree"),
+      ...storyAnswer("disagreement with manager conflict", ctx, [t("interviewsPage.likely.tips.disagreeStructure")], t),
+      timing: secs("90"),
     },
     technical: {
       q: sql ? "How would you find the top 3 customers by revenue each month in SQL?" : `How would you approach a typical ${ctx.technologies[0] ?? "technical"} task in this role?`,
-      why: "Задача вживую по ключевому навыку из вакансии.",
+      why: t("interviewsPage.likely.why.technical"),
       opener: sql ? "Let me clarify the tables and the grain first." : "Let me clarify the requirement first.",
       points: sql
         ? [{ v: "Clarify the schema and what counts as revenue." }, { v: "Aggregate revenue by customer and month." }, { v: "ROW_NUMBER() OVER (PARTITION BY month ORDER BY revenue DESC)" }, { v: "Filter rn ≤ 3 and check how ties are handled." }]
         : [{ v: "Clarify the requirement and the expected output." }, { v: "Walk through the approach step by step." }, { v: "Name one trade-off and one edge case." }],
-      tips: ["Думай вслух: интервьюеру важен ход решения, а не только ответ."],
-      timing: "5–10 мин",
+      tips: [t("interviewsPage.likely.tips.thinkAloud")],
+      timing: t("interviewsPage.likely.mins", { range: "5–10" }),
     },
     final: {
       q: "Where do you see yourself in three years?",
-      why: "Финальный раунд проверяет долгосрочную мотивацию и совпадение с траекторией компании.",
+      why: t("interviewsPage.likely.why.future"),
       opener: `In three years I'd like to own a meaningful part of ${possessive(ctx.company)} ${roleNoun(ctx.role)} work.`,
       points: [{ v: "Growing in depth: harder problems and more ownership." }, { v: `Tying my work to where ${ctx.company} is heading.` }, { v: "Being honest about what I still want to learn." }],
-      timing: "45 сек",
+      timing: secs("45"),
     },
   };
   if (extra[ctx.round]) items.push(extra[ctx.round]);

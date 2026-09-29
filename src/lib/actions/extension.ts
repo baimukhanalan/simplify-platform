@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { db, s } from "../db";
 import { randomToken, sha256 } from "../crypto";
-import { rateLimitUser, retryText } from "../rate-limit";
+import { rateLimitUser } from "../rate-limit";
+import { actionT } from "../i18n/action";
 import { logEvent } from "../engine/agent";
 
 export type ExtensionTokenState = { token?: string; error?: string };
@@ -13,7 +14,10 @@ export type ExtensionTokenState = { token?: string; error?: string };
 export async function createExtensionToken(): Promise<ExtensionTokenState> {
   const user = await requireUser();
   const rl = await rateLimitUser("ext-token", user.id, 10, 60 * 60 * 1000);
-  if (!rl.ok) return { error: retryText(rl.retryAfter) };
+  if (!rl.ok) {
+    const t = await actionT();
+    return { error: t("extensionPage.err.tooOften", { n: Math.max(1, Math.ceil((rl.retryAfter ?? 60) / 60)) }) };
+  }
   const token = randomToken(32);
   const tokenHash = sha256(token);
   const meta = s({ createdAt: new Date().toISOString() });

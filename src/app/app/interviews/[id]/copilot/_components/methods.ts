@@ -1,33 +1,35 @@
-// Technical questions: stepwise method cards (Russian coaching) for common analytics / SQL / product questions.
-// Pure and local — matching is a handful of regex tests (<1ms), so the card appears instantly.
+// Technical questions: stepwise method cards (coaching in the interface language) for common analytics / SQL / product
+// questions. Pure and local — matching is a handful of regex tests (<1ms), so the card appears instantly.
+// The card text is «interviewPractice.methods.<id>.{title,steps,formula?,mention?}» (lists: one item per line).
 
-export type Method = { id: string; title: string; steps: string[]; formula?: string; mention?: string[] };
+export type MethodId = "retention" | "churn" | "funnel" | "metricDrop" | "ab" | "sample" | "pvalue" | "joins" | "topn" | "dedup" | "groupby" | "ltv" | "cac" | "cohort" | "success" | "sizing" | "median" | "causal" | "quality" | "dashboard" | "prioritize";
+export type Method = { id: MethodId };
 
-const M: [RegExp, Method][] = [
-  [/retention|retained|удержани/i, { id: "retention", title: "Удержание (retention)", steps: ["Определи когорту (дата первого действия)", "Выбери интервал: день / неделя / месяц", "Посчитай вернувшихся по каждой когорте и периоду", "Построй кривую удержания, сравни когорты"], formula: "вернувшиеся пользователи ÷ размер когорты", mention: ["D1 / D7 / D30", "Скользящее и классическое удержание", "Кривая выходит на плато = product-market fit"] }],
-  [/churn|отток/i, { id: "churn", title: "Отток (churn)", steps: ["Определи «ушедшего» (нет активности N дней / отменил)", "Выбери период и базу на его начало", "Раздели по сегментам и сроку жизни клиента", "Найди ранние сигналы перед уходом"], formula: "ушедшие за период ÷ клиенты на начало", mention: ["Отток клиентов и отток выручки", "Net revenue retention"] }],
-  [/conversion|funnel|воронк|конверси/i, { id: "funnel", title: "Воронка конверсии", steps: ["Перечисли шаги воронки, у каждого — чёткое событие", "Выбери окно (одна сессия / 7 дней)", "Посчитай конверсию между шагами и общую", "Сегментируй самый большой провал: платформа, канал, новые и вернувшиеся"], formula: "пользователи на шаге N+1 ÷ пользователи на шаге N", mention: ["Уникальные пользователи, а не события", "Время до конверсии"] }],
-  [/^(?=.*(drop|declin|fell|decreas|went down|упал|снизил|просел))(?=.*(dau|mau|active|users|revenue|metric|traffic|orders|conversion|sales|метрик|выручк|пользовател))/i, { id: "metric-drop", title: "Разбор падения метрики", steps: ["Сначала проверь данные: трекинг, пайплайн, определения", "Внутреннее или внешнее: релизы, сбои, сезонность, праздники", "Сегменты: платформа, страна, канал, новые и вернувшиеся", "Разложи метрику на драйверы", "Оцени масштаб и предложи следующий шаг"], mention: ["Падение реальное?", "Где именно?", "Почему?"] }],
-  [/a\/b|ab test|experiment|split test|эксперимент/i, { id: "ab", title: "Дизайн A/B-теста", steps: ["Гипотеза и одна главная метрика", "Защитные метрики (не сломать выручку / скорость)", "Единица рандомизации и размер выборки из MDE", "Полные недели, без подглядывания", "Итог: значимость + практический эффект"], formula: "n на группу ≈ 16·σ² ÷ MDE²", mention: ["α = 0.05, мощность 80%", "Эффект новизны", "Проверка SRM"] }],
-  [/sample size|power analysis|mde|размер выборки/i, { id: "sample", title: "Размер выборки", steps: ["Базовая конверсия и минимальный детектируемый эффект", "Выбери α и мощность", "Посчитай n на вариант", "Переведи в дни трафика"], formula: "n ≈ 16·p(1−p) ÷ Δ²", mention: ["Меньше MDE → намного больше n"] }],
-  [/p-?value|significan|statistical|значим/i, { id: "pvalue", title: "p-value и значимость", steps: ["Сформулируй H0 и H1", "p-value — шанс получить такие данные, если верна H0", "Сравни с α, выбранной заранее", "Покажи размер эффекта и доверительный интервал"], mention: ["Это не вероятность, что гипотеза верна", "Множественные сравнения"] }],
-  [/left join|inner join|outer join|join/i, { id: "joins", title: "SQL JOIN", steps: ["INNER: только строки с совпадением в обеих таблицах", "LEFT: все строки слева, NULL там, где совпадения нет", "Следи за размножением строк на ключах один-ко-многим", "Фильтр правой таблицы — в ON, а не в WHERE, чтобы LEFT JOIN остался LEFT"], mention: ["Anti-join: LEFT JOIN … WHERE b.id IS NULL"] }],
-  [/top \d|top-n|top n|rank|highest|second (highest|largest)|window function|оконн/i, { id: "topn", title: "Топ-N в группе (SQL)", steps: ["Агрегируй до нужной детализации (клиент × месяц)", "ROW_NUMBER() / DENSE_RANK() OVER (PARTITION BY группа ORDER BY значение DESC)", "Отфильтруй rn ≤ N во внешнем запросе / CTE", "Реши, что делать с одинаковыми значениями"], mention: ["DENSE_RANK для равных значений", "QUALIFY в Snowflake/BigQuery"] }],
-  [/duplicate|dedup|дубл/i, { id: "dedup", title: "Удаление дубликатов", steps: ["Определи, что делает строку уникальной", "ROW_NUMBER() OVER (PARTITION BY ключ ORDER BY updated_at DESC)", "Оставь rn = 1", "Найди причину дублей в источнике"] }],
-  [/group by|having|aggregat/i, { id: "groupby", title: "GROUP BY / HAVING", steps: ["Выбери детализацию для GROUP BY", "Агрегаты: COUNT, SUM, AVG", "WHERE фильтрует строки до группировки", "HAVING фильтрует группы после агрегации"] }],
-  [/ltv|lifetime value|clv/i, { id: "ltv", title: "LTV", steps: ["ARPU за период", "Валовая маржа", "Ожидаемый срок жизни = 1 ÷ отток", "Сравни с CAC"], formula: "ARPU × маржа ÷ отток", mention: ["LTV:CAC ≥ 3", "Срок окупаемости"] }],
-  [/\bcac\b|acquisition cost/i, { id: "cac", title: "CAC", steps: ["Все затраты на привлечение за период", "Новые клиенты из этих каналов", "Раздели по каналам", "Сравни с LTV и сроком окупаемости"], formula: "затраты на маркетинг и продажи ÷ новые клиенты" }],
-  [/cohort|когорт/i, { id: "cohort", title: "Когортный анализ", steps: ["Сгруппируй пользователей по дате старта (неделя / месяц)", "Отслеживай метрику по возрасту когорты", "Построй когортный треугольник", "Сравни ранние и свежие когорты"], mention: ["Отделяет рост от качества"] }],
-  [/success|measure (the )?(impact|success)|which metric|what metric|north star|kpi|метрик.* успех/i, { id: "success", title: "Как измерить успех фичи", steps: ["Цель фичи одной фразой", "Главная метрика, связанная с этой целью", "Защитные метрики: что не должно ухудшиться", "Опережающий индикатор на первые недели", "Как отделить эффект: A/B или до/после с контролем"], mention: ["North Star и метрика фичи"] }],
-  [/estimate|how many|market size|sizing|оцените|сколько/i, { id: "sizing", title: "Оценка рынка", steps: ["Уточни рамки: кто, где, за какой период", "Сверху вниз: население → доля → частота", "Проверка снизу вверх", "Назови допущения, дай диапазон"], mention: ["Круглые числа", "Считай вслух"] }],
-  [/mean|median|average|outlier|среднее|медиан/i, { id: "median", title: "Среднее и медиана", steps: ["Среднее чувствительно к выбросам", "Медиана — для скошенных данных (выручка, время)", "Посмотри на распределение, прежде чем выбирать", "Упомяни усечённое среднее / перцентили"] }],
-  [/correlation|causation|causal|корреляц/i, { id: "causal", title: "Корреляция и причинность", steps: ["Назови возможные скрытые факторы", "Проверь направление причинности", "Лучшее доказательство — рандомизированный эксперимент", "Иначе: diff-in-diff, matching, естественные эксперименты"] }],
-  [/correct|accurate|validate|sanity|data quality|качество данных|проверяете/i, { id: "quality", title: "Проверка своего анализа", steps: ["Сверь итоги с надёжным источником", "Проверь пропуски, дубли, диапазоны дат", "Проверь порядок величин на здравый смысл", "Попроси коллегу проверить логику"] }],
-  [/dashboard|visuali[sz]|дашборд/i, { id: "dashboard", title: "Дизайн дашборда", steps: ["Кто им пользуется и какое решение он поддерживает", "3–5 ключевых метрик, у каждой одно определение", "Сверху — главные цифры, ниже — разбивки", "Частота обновления и владелец"] }],
-  [/prioriti[sz]|rice|backlog|приоритиз/i, { id: "prioritize", title: "Приоритизация", steps: ["Перечисли запросы с ожидаемым эффектом", "Оценка: эффект × уверенность ÷ усилия (RICE)", "Согласуй порядок с руководителем", "Объясни компромиссы и сроки"] }],
+const M: [RegExp, MethodId][] = [
+  [/retention|retained|удержани/i, "retention"],
+  [/churn|отток/i, "churn"],
+  [/conversion|funnel|воронк|конверси/i, "funnel"],
+  [/^(?=.*(drop|declin|fell|decreas|went down|упал|снизил|просел))(?=.*(dau|mau|active|users|revenue|metric|traffic|orders|conversion|sales|метрик|выручк|пользовател))/i, "metricDrop"],
+  [/a\/b|ab test|experiment|split test|эксперимент/i, "ab"],
+  [/sample size|power analysis|mde|размер выборки/i, "sample"],
+  [/p-?value|significan|statistical|значим/i, "pvalue"],
+  [/left join|inner join|outer join|join/i, "joins"],
+  [/top \d|top-n|top n|rank|highest|second (highest|largest)|window function|оконн/i, "topn"],
+  [/duplicate|dedup|дубл/i, "dedup"],
+  [/group by|having|aggregat/i, "groupby"],
+  [/ltv|lifetime value|clv/i, "ltv"],
+  [/\bcac\b|acquisition cost/i, "cac"],
+  [/cohort|когорт/i, "cohort"],
+  [/success|measure (the )?(impact|success)|which metric|what metric|north star|kpi|метрик.* успех/i, "success"],
+  [/estimate|how many|market size|sizing|оцените|сколько/i, "sizing"],
+  [/mean|median|average|outlier|среднее|медиан/i, "median"],
+  [/correlation|causation|causal|корреляц/i, "causal"],
+  [/correct|accurate|validate|sanity|data quality|качество данных|проверяете/i, "quality"],
+  [/dashboard|visuali[sz]|дашборд/i, "dashboard"],
+  [/prioriti[sz]|rice|backlog|приоритиз/i, "prioritize"],
 ];
 
 export function matchMethod(q: string): Method | null {
-  for (const [re, m] of M) if (re.test(q)) return m;
+  for (const [re, id] of M) if (re.test(q)) return { id };
   return null;
 }

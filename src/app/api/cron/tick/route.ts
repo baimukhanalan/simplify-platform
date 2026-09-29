@@ -6,7 +6,8 @@ import { hhEnabled } from "@/lib/hh/client";
 import { isSimulation } from "@/lib/mode";
 import { syncHhNegotiations } from "@/lib/hh/sync";
 import { simulateAllEmployers } from "@/lib/engine/simulation";
-import { captureError, flushMonitoring } from "@/lib/monitoring";
+import { captureError, flushMonitoring, maybePruneErrorLog } from "@/lib/monitoring";
+import { deliverPending } from "@/lib/notify";
 
 /** Constant-time bearer check on bytes (length compared in bytes, so non-ASCII input can't make timingSafeEqual throw). */
 function bearerOk(header: string | null, secret: string) {
@@ -28,6 +29,10 @@ const HH_SYNC_DEADLINE_MS = 280_000;
 /** Within this much of TIME_BUDGET_MS a cycle's package preparation is capped (PREPARE_MS per package). */
 const PREPARE_TAIL_MS = 90_000;
 const PREPARE_MS = 15_000;
+/** Catch-up sender (Telegram / Web Push notifications a request-time send didn't deliver): this slice, after the cycles. */
+const NOTIFY_BUDGET_MS = 20_000;
+/** Hard stop for anything that starts late in the run (maxDuration is 300 s; monitoring still flushes after it). */
+const HARD_DEADLINE_MS = 285_000;
 
 /**
  * Scheduler entrypoint (Vercel Cron / external). Runs one agent cycle per active campaign, least recently run first
@@ -39,6 +44,15 @@ export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (!secret || !bearerOk(req.headers.get("authorization"), secret)) return new Response("unauthorized", { status: 401 });
   const started = Date.now();
+  try {
+    return await tick(started);
+  } finally {
+    // Throttled occurrences of this run's errors are written before the function freezes — whatever happened above.
+    await flushMonitoring(2000).catch(() => undefined);
+  }
+}
+
+async function tick(started: number) {
   const now = new Date(started);
   // Fresh vacancies first, so this run's cycles already see them (src/lib/sources/**, rotated ATS boards).
   let ingest: Record<string, { added: number; errors: number }> | undefined;
@@ -65,6 +79,12 @@ export async function GET(req: Request) {
       if ("skipped" in r) { if (r.skipped === "expired") expired++; } else ran++;
     } catch (e) { failed++; console.error("[cron] tick failed", c.id, e); await captureError(e, { source: "cron", route: "/api/cron/tick", userId: c.userId, meta: { step: "tick", campaignId: c.id } }); }
   }
+  // Notifications a request-time delivery missed (timeout, Bot API hiccup, frozen function): retried within a small slice
+  // (after the cycles, so the notifications of this run's cycles that are still in flight are not raced twice).
+  let notified: { telegram: number; push: number; left: number } | undefined;
+  try {
+    notified = await deliverPending({ deadline: Math.min(Date.now() + NOTIFY_BUDGET_MS, started + HARD_DEADLINE_MS) });
+  } catch (e) { console.error("[cron] notification catch-up failed", e); await captureError(e, { source: "cron", route: "/api/cron/tick", meta: { step: "notify" } }); }
   // Simulation mode (src/lib/mode.ts): fictional employers answer applications that are due (no-op in live mode).
   let employers: { users: number; steps: number } | undefined;
   try {
@@ -81,6 +101,7 @@ export async function GET(req: Request) {
       try { await syncHhNegotiations(u.userId, { deadline: started + HH_SYNC_DEADLINE_MS }); hh.synced++; } catch (e) { hh.failed++; console.error("[cron] hh sync failed", u.userId, e); await captureError(e, { source: "cron", route: "/api/cron/tick", userId: u.userId, meta: { step: "hh-sync" } }); }
     }
   }
-  await flushMonitoring(2000); // throttled occurrences of this run's errors are written before the function freezes
-  return Response.json({ ran, expired, failed, deferred, ...(employers?.steps ? { employers } : {}), ...(hh ? { hh } : {}), ...(ingest ? { ingest } : {}) });
+  // ErrorLog retention (resolved > 30 days, client rows not seen for 30 days): at most once a day per instance.
+  await maybePruneErrorLog();
+  return Response.json({ ran, expired, failed, deferred, ...(employers?.steps ? { employers } : {}), ...(hh ? { hh } : {}), ...(ingest ? { ingest } : {}), ...(notified && (notified.telegram || notified.push || notified.left) ? { notified } : {}) });
 }

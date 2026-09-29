@@ -3,12 +3,15 @@ import { ArrowRight, CalendarClock, ClipboardCheck, MessageSquareText, TriangleA
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
-import { ROUND_CHAIN, ROUND_LABEL, ROUND_TONE, IV_STATUS_LABEL, IV_STATUS_TONE } from "@/lib/rounds";
+import { ROUND_CHAIN, ROUND_TONE, IV_STATUS_TONE } from "@/lib/rounds";
 import { interviewCounts, visibleInterviewScope, visibleLinkedScope } from "@/lib/ops-data";
-import { assessmentDeadline, count, plural } from "../../_components/ru";
-import { nowMs, relDays } from "./_components/format";
+import { getT } from "@/lib/i18n/server";
+import type { T } from "@/lib/i18n/translator";
+import { deadlineTextT, ivStatusName, nowMs, relDaysT, roundName } from "./_components/format";
 
-export const metadata = { title: "Интервью" };
+export async function generateMetadata() {
+  return { title: (await getT())("interviewsPage.metaTitle") };
+}
 
 type Row = Awaited<ReturnType<typeof load>>[number];
 const load = (userId: string) =>
@@ -18,12 +21,10 @@ const load = (userId: string) =>
     orderBy: { scheduledAt: "asc" },
   });
 
-const TZ = "Asia/Almaty";
-const day = (d: Date) => d.toLocaleDateString("ru-RU", { timeZone: TZ, weekday: "short", day: "numeric", month: "long" });
-const time = (d: Date) => d.toLocaleTimeString("ru-RU", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
+const day = (t: T, d: Date) => t.date(d, "weekdayDayMonth");
 
 export default async function InterviewsPage() {
-  const user = await requireUser();
+  const [user, t] = await Promise.all([requireUser(), getT()]);
   const all = await load(user.id);
   const now = nowMs();
   // One rule with interviewCounts (lib/ops-data): a round is upcoming only while its time is ahead; a passed round still
@@ -36,9 +37,9 @@ export default async function InterviewsPage() {
   const future = upcoming.filter((i) => !isPast(i));
   const past = [...all.filter((i) => i.status !== "upcoming"), ...expired].sort((a, b) => (b.scheduledAt?.getTime() ?? 0) - (a.scheduledAt?.getTime() ?? 0));
   const summary = [
-    ic.upcoming > 0 && `предстоит ${count(ic.upcoming, ["интервью", "интервью", "интервью"])}`,
-    ic.assessments > 0 && count(ic.assessments, ["тестовое задание", "тестовых задания", "тестовых заданий"]),
-    ic.awaitingDebrief > 0 && `${ic.awaitingDebrief} ${plural(ic.awaitingDebrief, ["ждёт", "ждут", "ждут"])} разбора`,
+    ic.upcoming > 0 && t("interviewsPage.list.summaryUpcoming", { n: ic.upcoming }),
+    ic.assessments > 0 && t("interviewsPage.list.summaryAssessments", { n: ic.assessments }),
+    ic.awaitingDebrief > 0 && t("interviewsPage.list.summaryDebrief", { n: ic.awaitingDebrief }),
   ].filter(Boolean).join(" · ");
   const next = future.find((i) => i.round !== "assessment") ?? future[0];
   const rest = future.filter((i) => i !== next);
@@ -51,17 +52,17 @@ export default async function InterviewsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Интервью"
-        title={<>Твои <Script>интервью</Script></>}
-        sub="Каждое приглашение — отдельная комната подготовки: обзор компании, вероятные вопросы, пробное интервью и разбор после звонка."
+        eyebrow={t("interviewsPage.list.eyebrow")}
+        title={t.rich("interviewsPage.list.title", {}, { s: (c) => <Script>{c}</Script> })}
+        sub={t("interviewsPage.list.sub")}
       />
       {summary && <p className="-mt-3 mb-6 text-[14px] text-ink-2">{summary.charAt(0).toUpperCase() + summary.slice(1)}.</p>}
 
       {all.length === 0 ? (
         <Empty
-          title="Интервью пока нет"
-          sub="Как только работодатель пригласит на звонок или тест, агент сам создаст Interview Room — письмо распознаётся во входящих."
-          action={<ButtonLink href="/app/inbox" variant="glass" size="sm" className="!h-10">Открыть входящие</ButtonLink>}
+          title={t("interviewsPage.list.emptyTitle")}
+          sub={t("interviewsPage.list.emptySub")}
+          action={<ButtonLink href="/app/inbox" variant="glass" size="sm" className="!h-10">{t("interviewsPage.list.openInbox")}</ButtonLink>}
         />
       ) : (
         <div className="flex flex-col gap-10">
@@ -73,8 +74,8 @@ export default async function InterviewsPage() {
             >
               <MessageSquareText className="size-5 shrink-0 text-green" strokeWidth={1.7} aria-hidden />
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className="text-[15px] font-medium text-head">Как прошло интервью с {iv.opportunity.job.company}?</span>
-                <span className="text-[13px] text-ink-3">Расскажи за минуту — получишь разбор, план подготовки и письмо после интервью.</span>
+                <span className="text-[15px] font-medium text-head">{t("interviewsPage.list.debriefPrompt", { company: iv.opportunity.job.company })}</span>
+                <span className="text-[13px] text-ink-3">{t("interviewsPage.list.debriefSub")}</span>
               </span>
               <ArrowRight className="size-4 shrink-0 text-green" strokeWidth={1.8} aria-hidden />
             </Link>
@@ -86,37 +87,42 @@ export default async function InterviewsPage() {
                 <p key={`${a.id}-${b.id}`} className="flex items-start gap-2.5">
                   <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber" strokeWidth={1.8} aria-hidden />
                   <span>
-                    <span className="font-medium text-head">Интервью пересекаются:</span> {a.opportunity.job.company} и {b.opportunity.job.company} — {day(a.scheduledAt!)}, <span className="num">{time(a.scheduledAt!)}</span>
-                    {time(a.scheduledAt!) !== time(b.scheduledAt!) && <> и <span className="num">{time(b.scheduledAt!)}</span></>}. Попроси одного из работодателей перенести звонок.
+                    <span className="font-medium text-head">{t("interviewsPage.list.conflictLabel")}</span>{" "}
+                    {t.rich(
+                      t.time(a.scheduledAt!) !== t.time(b.scheduledAt!) ? "interviewsPage.list.conflictTwo" : "interviewsPage.list.conflictSame",
+                      { a: a.opportunity.job.company, b: b.opportunity.job.company, day: day(t, a.scheduledAt!), time: t.time(a.scheduledAt!), time2: t.time(b.scheduledAt!) },
+                      { n: (c) => <span className="num">{c}</span> },
+                    )}{" "}
+                    {t("interviewsPage.list.conflictAsk")}
                   </span>
                 </p>
               ))}
             </div>
           )}
 
-          {next ? <NextUp iv={next} now={now} /> : null}
+          {next ? <NextUp t={t} iv={next} now={now} /> : null}
 
           {rest.length > 0 && (
             <section aria-labelledby="h-upcoming" className="animate-rise">
-              <SectionTitle id="h-upcoming" title="Предстоящие" count={rest.length} />
+              <SectionTitle id="h-upcoming" title={t("interviewsPage.list.upcoming")} count={rest.length} />
               <ul className="grid gap-3 md:grid-cols-2">
-                {rest.map((iv) => <UpcomingCard key={iv.id} iv={iv} now={now} />)}
+                {rest.map((iv) => <UpcomingCard key={iv.id} t={t} iv={iv} now={now} />)}
               </ul>
             </section>
           )}
 
           {!next && !needDebrief.length && (
-            <p className="glass px-5 py-6 text-[14px] text-ink-3">Сейчас нет запланированных интервью — агент продолжает подавать заявки.</p>
+            <p className="glass px-5 py-6 text-[14px] text-ink-3">{t("interviewsPage.list.nothingScheduled")}</p>
           )}
 
-          <section aria-label="Воронка раундов" className="animate-rise">
-            <SectionTitle id="h-chain" title="Путь до оффера" />
+          <section aria-label={t("interviewsPage.list.funnelAria")} className="animate-rise">
+            <SectionTitle id="h-chain" title={t("interviewsPage.list.funnelTitle")} />
             <ol className="glass grid grid-cols-3 gap-px overflow-hidden !p-0 sm:grid-cols-6">
               {(["assessment", ...ROUND_CHAIN, "offer"] as const).map((r) => {
                 const n = r === "offer" ? offers : reached(r);
                 return (
                   <li key={r} className="flex flex-col gap-1.5 bg-white/40 px-4 py-3.5">
-                    <span className="label !text-[11px]">{r === "offer" ? "Оффер" : ROUND_LABEL[r]}</span>
+                    <span className="label !text-[11px]">{roundName(t, r)}</span>
                     <span className={cx("num text-[26px] leading-none", n ? (r === "offer" ? "text-green" : "text-head") : "text-ink-4")}>{n}</span>
                   </li>
                 );
@@ -126,9 +132,9 @@ export default async function InterviewsPage() {
 
           {past.length > 0 && (
             <section aria-labelledby="h-past" className="animate-rise">
-              <SectionTitle id="h-past" title="Прошедшие" count={past.length} />
+              <SectionTitle id="h-past" title={t("interviewsPage.list.past")} count={past.length} />
               <ul className="glass divide-y divide-line overflow-hidden !p-0">
-                {past.map((iv) => <PastRow key={iv.id} iv={iv} />)}
+                {past.map((iv) => <PastRow key={iv.id} t={t} iv={iv} />)}
               </ul>
             </section>
           )}
@@ -148,40 +154,40 @@ function SectionTitle({ id, title, count }: { id: string; title: string; count?:
 }
 
 /** The next interview as a designed moment: date, countdown, one clear action. */
-function NextUp({ iv, now }: { iv: Row; now: number }) {
+function NextUp({ t, iv, now }: { t: T; iv: Row; now: number }) {
   const at = iv.scheduledAt;
   const isAssessment = iv.round === "assessment";
   const ms = at ? at.getTime() - now : null;
   const hours = ms != null ? Math.max(0, Math.round(ms / 3600000)) : null;
-  const big = hours == null ? null : hours < 48 ? { n: hours, u: plural(hours, ["час", "часа", "часов"]) } : { n: Math.round(hours / 24), u: plural(Math.round(hours / 24), ["день", "дня", "дней"]) };
+  const big = hours == null ? null : hours < 48 ? { n: hours, u: t("interviewsPage.format.hoursUnit", { n: hours }) } : { n: Math.round(hours / 24), u: t("interviewsPage.format.daysUnit", { n: Math.round(hours / 24) }) };
   return (
     <section aria-labelledby="h-next" className="animate-rise overflow-hidden rounded-[26px] bg-cta text-white shadow-(--shadow-cta)">
       <div className="grid gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-end">
         <div className="flex min-w-0 flex-col gap-4">
           <span className="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[.1em] text-white/55">
             <span aria-hidden className="size-1.5 rounded-full bg-[#7fe3b6] animate-pulse-dot" />
-            {isAssessment ? "Ближайший тест" : "Следующее интервью"}
+            {isAssessment ? t("interviewsPage.list.nextAssessment") : t("interviewsPage.list.nextInterview")}
           </span>
           <div className="flex flex-col gap-1.5">
             <h2 id="h-next" className="h-serif text-[clamp(34px,5vw,60px)] !text-white">{iv.opportunity.job.company}</h2>
             <p className="text-[16px] text-white/75">{iv.opportunity.job.title}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-white/10 px-3 py-1 font-mono text-[11px] uppercase tracking-[.06em] text-[#7fe3b6]">{isAssessment ? "Тест" : ROUND_LABEL[iv.round] ?? iv.round}</span>
+            <span className="rounded-full bg-white/10 px-3 py-1 font-mono text-[11px] uppercase tracking-[.06em] text-[#7fe3b6]">{roundName(t, iv.round)}</span>
             {at && (
               <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/85">
                 <CalendarClock className="size-3.5" strokeWidth={1.7} aria-hidden />
-                {isAssessment ? assessmentDeadline(at) : <>{day(at)}, <span className="num">{time(at)}</span></>}
+                {isAssessment ? deadlineTextT(t, at) : <>{day(t, at)}, <span className="num">{t.time(at)}</span></>}
               </span>
             )}
-            {iv._count.mocks > 0 && <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/70">{count(iv._count.mocks, ["пробное интервью", "пробных интервью", "пробных интервью"])}</span>}
+            {iv._count.mocks > 0 && <span className="rounded-full bg-white/10 px-3 py-1 text-[13px] text-white/70">{t("interviewsPage.list.mocks", { n: iv._count.mocks })}</span>}
           </div>
         </div>
         <div className="flex flex-col gap-4 lg:items-end">
           {big && (
             // Real spaces between the parts (flex gap is visual only), so copied/read text is «через 2 дн.», not «через2дн.».
             <p className="flex items-baseline gap-2 lg:justify-end">
-              <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/50">{isAssessment ? "осталось" : "через"}</span>{" "}
+              <span className="font-mono text-[11px] uppercase tracking-[.08em] text-white/50">{isAssessment ? t("interviewsPage.list.left") : t("interviewsPage.list.in")}</span>{" "}
               <span className="num text-[clamp(44px,6vw,72px)] leading-none">{big.n}</span>{"\u00a0"}
               <span className="text-[18px] text-white/70">{big.u}</span>
             </p>
@@ -190,7 +196,7 @@ function NextUp({ iv, now }: { iv: Row; now: number }) {
             href={`/app/interviews/${iv.id}`}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-white px-6 text-[15px] font-medium text-[#141414] transition hover:bg-white/90 focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-[#7fe3b6]"
           >
-            {isAssessment ? "Открыть тестовое задание" : "Подготовиться"}<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
+            {isAssessment ? t("interviewsPage.list.openAssessment") : t("interviewsPage.list.prepare")}<ArrowRight className="size-4" strokeWidth={1.8} aria-hidden />
           </Link>
         </div>
       </div>
@@ -198,7 +204,7 @@ function NextUp({ iv, now }: { iv: Row; now: number }) {
   );
 }
 
-function UpcomingCard({ iv, now }: { iv: Row; now: number }) {
+function UpcomingCard({ t, iv, now }: { t: T; iv: Row; now: number }) {
   const at = iv.scheduledAt;
   const isAssessment = iv.round === "assessment";
   const soon = at && at.getTime() - now < 2 * 86400000;
@@ -211,29 +217,29 @@ function UpcomingCard({ iv, now }: { iv: Row; now: number }) {
           </Link>
           <span className="truncate text-[13.5px] text-ink-3">{iv.opportunity.job.title}</span>
         </div>
-        <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{isAssessment ? "Тест" : ROUND_LABEL[iv.round] ?? iv.round}</Chip>
+        <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{roundName(t, iv.round)}</Chip>
       </div>
       <div className="flex items-end justify-between gap-3">
         <div className="flex items-center gap-2 text-[13.5px] text-ink-2">
           {isAssessment ? <ClipboardCheck className="size-4 text-amber" strokeWidth={1.7} aria-hidden /> : <CalendarClock className="size-4 text-teal" strokeWidth={1.7} aria-hidden />}
           {at ? (
             <span>
-              {isAssessment ? assessmentDeadline(at) : <>{day(at)}, <span className="num">{time(at)}</span></>}{" "}
-              <span className={soon ? "font-medium text-green" : "text-ink-3"}>· {relDays(at, now)}</span>
+              {isAssessment ? deadlineTextT(t, at) : <>{day(t, at)}, <span className="num">{t.time(at)}</span></>}{" "}
+              <span className={soon ? "font-medium text-green" : "text-ink-3"}>· {relDaysT(t, at, now)}</span>
             </span>
           ) : (
-            <span className="text-ink-3">Дата не назначена</span>
+            <span className="text-ink-3">{t("interviewsPage.format.noDate")}</span>
           )}
         </div>
         <span className="relative z-10 inline-flex items-center gap-1 text-[13px] font-medium text-head" aria-hidden>
-          Подготовиться<ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" strokeWidth={1.8} />
+          {t("interviewsPage.list.prepare")}<ArrowRight className="size-3.5 transition-transform group-hover:translate-x-0.5" strokeWidth={1.8} />
         </span>
       </div>
     </li>
   );
 }
 
-function PastRow({ iv }: { iv: Row }) {
+function PastRow({ t, iv }: { t: T; iv: Row }) {
   const perf = j<{ performance?: number }>(iv.debrief, {}).performance;
   return (
     <li className="relative flex flex-col gap-2 px-5 py-4 transition-colors hover:bg-white/60 sm:flex-row sm:items-center sm:gap-5">
@@ -241,15 +247,15 @@ function PastRow({ iv }: { iv: Row }) {
         <Link href={`/app/interviews/${iv.id}?tab=debrief`} className="-my-2.5 block min-w-0 truncate py-2.5 text-[15.5px] font-medium text-head after:absolute after:inset-0 focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:-outline-offset-2 focus-visible:after:outline-green">
           {iv.opportunity.job.company} <span className="font-normal text-ink-3">· {iv.opportunity.job.title}</span>
         </Link>
-        <span className="text-[12.5px] text-ink-3">{iv.scheduledAt ? day(iv.scheduledAt) : "—"}</span>
+        <span className="text-[12.5px] text-ink-3">{iv.scheduledAt ? day(t, iv.scheduledAt) : "—"}</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{ROUND_LABEL[iv.round] ?? iv.round}</Chip>
+        <Chip tone={ROUND_TONE[iv.round] ?? "neutral"}>{roundName(t, iv.round)}</Chip>
         {iv.status === "upcoming" ? (
           // An assessment whose deadline passed without a result.
-          <Chip tone="neutral">Срок истёк</Chip>
+          <Chip tone="neutral">{ivStatusName(t, "expired")}</Chip>
         ) : (
-          <Chip tone={IV_STATUS_TONE[iv.status] ?? "neutral"}>{IV_STATUS_LABEL[iv.status] ?? iv.status}</Chip>
+          <Chip tone={IV_STATUS_TONE[iv.status] ?? "neutral"}>{ivStatusName(t, iv.status)}</Chip>
         )}
         {typeof perf === "number" && <Chip tone="dark"><span className="num">{perf}</span>/100</Chip>}
       </div>

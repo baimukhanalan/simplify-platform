@@ -4,11 +4,12 @@ import type { Offer } from "@prisma/client";
 import { Field } from "@/components/ui";
 import { PendingButton, submitVia } from "../../interviews/_components/pending-button";
 import { addOffer, updateOffer, type OfferFormState } from "@/lib/actions/offer";
-import { WORK_MODE_RU } from "../../../_components/ru";
+import { useT } from "@/lib/i18n/client";
 
 const CURRENCIES = ["USD", "EUR", "GBP", "KZT", "CAD", "AED"];
 
 function TermsFields({ o }: { o?: Partial<Offer> }) {
+  const t = useT();
   const benefits = (() => {
     try {
       return (JSON.parse(o?.benefits ?? "[]") as string[]).join(", ");
@@ -19,35 +20,35 @@ function TermsFields({ o }: { o?: Partial<Offer> }) {
   return (
     <>
       <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
-        <Field label="Оклад в год" hint="Годовая сумма до налогов">
+        <Field label={t("offersPage.form.baseYear")} hint={t("offersPage.form.baseHint")}>
           <input name="base" type="number" inputMode="numeric" min={1000} step={500} required defaultValue={o?.base ?? ""} className="field num" placeholder="68000" />
         </Field>
-        <Field label="Валюта">
+        <Field label={t("offersPage.form.currency")}>
           <select name="currency" defaultValue={o?.currency ?? "USD"} className="field">
             {CURRENCIES.map((c) => <option key={c}>{c}</option>)}
           </select>
         </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Бонус в год"><input name="bonus" type="number" inputMode="numeric" min={0} defaultValue={o?.bonus ?? 0} className="field num" /></Field>
-        <Field label="Бонус за подписание"><input name="signingBonus" type="number" inputMode="numeric" min={0} defaultValue={o?.signingBonus ?? 0} className="field num" /></Field>
-        <Field label="Акции / опционы"><input name="equity" defaultValue={o?.equity ?? ""} className="field" placeholder="0.05%, 4 года" /></Field>
+        <Field label={t("offersPage.form.bonusYear")}><input name="bonus" type="number" inputMode="numeric" min={0} defaultValue={o?.bonus ?? 0} className="field num" /></Field>
+        <Field label={t("offersPage.form.signing")}><input name="signingBonus" type="number" inputMode="numeric" min={0} defaultValue={o?.signingBonus ?? 0} className="field num" /></Field>
+        <Field label={t("offersPage.form.equity")}><input name="equity" defaultValue={o?.equity ?? ""} className="field" placeholder={t("offersPage.form.equityPlaceholder")} /></Field>
       </div>
-      <Field label="Бонусы и льготы" hint="Через запятую">
-        <input name="benefits" defaultValue={benefits} className="field" placeholder="Медстраховка, бюджет на обучение" />
+      <Field label={t("offersPage.form.benefits")} hint={t("offersPage.form.benefitsHint")}>
+        <input name="benefits" defaultValue={benefits} className="field" placeholder={t("offersPage.form.benefitsPlaceholder")} />
       </Field>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Отпуск, дней"><input name="vacationDays" type="number" min={0} max={365} defaultValue={o?.vacationDays ?? 0} className="field num" /></Field>
-        <Field label="Испытательный срок, месяцев"><input name="probationMonths" type="number" min={0} max={24} defaultValue={o?.probationMonths ?? 0} className="field num" /></Field>
-        <Field label="Формат">
+        <Field label={t("offersPage.form.vacationDays")}><input name="vacationDays" type="number" min={0} max={365} defaultValue={o?.vacationDays ?? 0} className="field num" /></Field>
+        <Field label={t("offersPage.form.probationMonths")}><input name="probationMonths" type="number" min={0} max={24} defaultValue={o?.probationMonths ?? 0} className="field num" /></Field>
+        <Field label={t("offersPage.form.format")}>
           <select name="remote" defaultValue={o?.remote ?? "remote"} className="field">
-            {(["remote", "hybrid", "onsite"] as const).map((m) => <option key={m} value={m}>{WORK_MODE_RU[m]}</option>)}
+            {(["remote", "hybrid", "onsite"] as const).map((m) => <option key={m} value={m}>{t(`offersPage.workMode.${m}`)}</option>)}
           </select>
         </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Релокация"><input name="relocation" defaultValue={o?.relocation ?? ""} className="field" placeholder="Пакет, виза, билеты" /></Field>
-        <Field label="Срок уведомления"><input name="noticePeriod" defaultValue={o?.noticePeriod ?? ""} className="field" placeholder="2 недели" /></Field>
+        <Field label={t("offersPage.form.relocation")}><input name="relocation" defaultValue={o?.relocation ?? ""} className="field" placeholder={t("offersPage.form.relocationPlaceholder")} /></Field>
+        <Field label={t("offersPage.form.notice")}><input name="noticePeriod" defaultValue={o?.noticePeriod ?? ""} className="field" placeholder={t("offersPage.form.noticePlaceholder")} /></Field>
       </div>
     </>
   );
@@ -63,26 +64,27 @@ export function AddOfferForm({ opportunities }: { opportunities: { id: string; l
   const [state, action, pending] = useActionState<OfferFormState, FormData>(addOffer, undefined);
   const uid = useId();
   const form = useRef<HTMLFormElement>(null);
+  const t = useT();
   useEffect(() => {
     if (state?.ok) form.current?.reset();
   }, [state]);
   return (
     <form ref={form} onSubmit={submitVia(action, startTransition)} className="flex flex-col gap-4" aria-describedby={state?.error ? uid : undefined}>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Компания"><input name="company" required maxLength={120} className="field" placeholder="Brightwave Learning" /></Field>
-        <Field label="Должность"><input name="role" required maxLength={160} className="field" placeholder="Junior Data Analyst" /></Field>
+        <Field label={t("offersPage.form.company")}><input name="company" required maxLength={120} className="field" placeholder="Brightwave Learning" /></Field>
+        <Field label={t("offersPage.form.role")}><input name="role" required maxLength={160} className="field" placeholder="Junior Data Analyst" /></Field>
       </div>
       {opportunities.length > 0 && (
-        <Field label="Связать с вакансией" hint="Необязательно — тогда заявка перейдёт в статус «Оффер»">
+        <Field label={t("offersPage.form.link")} hint={t("offersPage.form.linkHint")}>
           <select name="opportunityId" defaultValue="" className="field">
-            <option value="">Не связывать</option>
+            <option value="">{t("offersPage.form.noLink")}</option>
             {opportunities.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
           </select>
         </Field>
       )}
       <TermsFields />
-      <Status state={state} okText="Оффер добавлен — он появился выше." id={uid} />
-      <div><PendingButton pending={pending} pendingText="Добавляем…">Добавить оффер</PendingButton></div>
+      <Status state={state} okText={t("offersPage.form.added")} id={uid} />
+      <div><PendingButton pending={pending} pendingText={t("offersPage.form.adding")}>{t("offersPage.form.add")}</PendingButton></div>
     </form>
   );
 }
@@ -90,12 +92,13 @@ export function AddOfferForm({ opportunities }: { opportunities: { id: string; l
 export function EditTermsForm({ offer }: { offer: Offer }) {
   const [state, action, pending] = useActionState<OfferFormState, FormData>(updateOffer, undefined);
   const uid = useId();
+  const t = useT();
   return (
     <form onSubmit={submitVia(action, startTransition)} className="mt-4 flex flex-col gap-4" aria-describedby={state?.error ? uid : undefined}>
       <input type="hidden" name="offerId" value={offer.id} />
       <TermsFields o={offer} />
-      <Status state={state} okText="Условия обновлены." id={uid} />
-      <div><PendingButton size="sm" pending={pending} pendingText="Сохраняем…" className="!h-10">Сохранить условия</PendingButton></div>
+      <Status state={state} okText={t("offersPage.form.updated")} id={uid} />
+      <div><PendingButton size="sm" pending={pending} pendingText={t("offersPage.form.saving")} className="!h-10">{t("offersPage.form.save")}</PendingButton></div>
     </form>
   );
 }

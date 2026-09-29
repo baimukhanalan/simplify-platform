@@ -1,8 +1,10 @@
 import "server-only";
 // Personal forwarding address → Inbox Intelligence. The user auto-forwards employer mail from Gmail / Outlook / Mail.ru /
 // Yandex to <alias>@<INBOUND_EMAIL_DOMAIN>; the provider (Postmark Inbound or a Cloudflare Email Worker) posts each
-// letter to /api/inbound/email and it goes through the engine's own ingestEmail — the same classification and pipeline
-// moves as every other employer reply. Forwarding-verification letters and non-employer mail never touch the pipeline.
+// letter to /api/inbound/email. A letter authenticated for its From domain (auth.ts), received through the user's own
+// mailbox and sent by the matched application's company goes through the engine's own ingestEmail — the same
+// classification and pipeline moves as every other employer reply. Everything else (forged or unauthenticated mail,
+// «Fwd:» by hand, non-employer mail) is only shown in the inbox; forwarding-verification letters feed the setup card.
 import { db, j, s } from "../db";
 import { ingestEmail } from "../engine/agent";
 import { classifyEmail, matchCompany } from "../engine/inbox";
@@ -10,11 +12,20 @@ import { APPLIED_OR_LATER } from "../engine/taxonomy";
 import { isSimulation } from "../mode";
 import { rateLimitUser } from "../rate-limit";
 import { aliasAddress, aliasesOf, makeAlias } from "./alias";
-import { isNonEmployer, senderNames } from "./filter";
+import { authVerdict, domainNamesCompany, forwardedFrom, isAtsDomain, normMailbox } from "./auth";
+import { INERT_SOURCES, isNonEmployer, senderNames, UNVERIFIED_SOURCE } from "./filter";
 import { BODY_MAX, type InboundLetter } from "./parse";
 import { detectForwardingVerification, senderAddress, type ForwardingVerification } from "./verify";
 
 export const SOURCE = "forward";
+/**
+ * A forwarded letter that is shown in the inbox (with its classification) but never moves the pipeline, creates an
+ * Interview / Offer or counts as interview evidence: not authenticated for its From domain, not received through the
+ * user's own mailbox, a sender that doesn't match the application, or forwarded by hand («Fwd:» in the body).
+ */
+export { INERT_SOURCES, UNVERIFIED_SOURCE };
+/** Every source of letters that came through the alias. */
+export const FORWARD_SOURCES = [SOURCE, UNVERIFIED_SOURCE];
 const PROVIDER = "inbound"; // Integration row holding the setup state (meta), one per user
 const MAX_USERS_PER_LETTER = 5;
 /** Letters accepted per alias: in-memory burst window + a durable daily cap (shared by all serverless instances). */
@@ -31,8 +42,12 @@ export const forwardingState = (): "simulated" | "live" | "off" => (isSimulation
 type Meta = {
   /** When the current alias was issued: letters before it belong to the old address. */
   aliasSince?: string;
-  verify?: ForwardingVerification & { at: string; alias: string };
+  /** The latest forwarding confirmation. `verified`: the provider's letter passed sender authentication. */
+  verify?: ForwardingVerification & { at: string; alias: string; verified?: boolean };
   verifyDismissedAt?: string;
+  /** Mailboxes named by authenticated forwarding confirmations (normalized, newest first, ≤ 5): the user's own
+   *  mailboxes that auto-forward to the alias. */
+  mailboxes?: string[];
 };
 
 async function readMeta(userId: string): Promise<Meta> {
@@ -121,7 +136,7 @@ export async function forwardingStatus(userId: string): Promise<ForwardingStatus
   const meta = await readMeta(userId);
   const since = meta.aliasSince ? new Date(meta.aliasSince) : new Date(0);
   const last = await db.inboxMessage.findFirst({
-    where: state === "simulated" ? { userId, simulated: true } : { userId, source: SOURCE, receivedAt: { gte: since } },
+    where: state === "simulated" ? { userId, simulated: true } : { userId, source: { in: FORWARD_SOURCES }, receivedAt: { gte: since } },
     orderBy: { receivedAt: "desc" },
     select: { receivedAt: true },
   });
@@ -137,13 +152,13 @@ export async function forwardingStatus(userId: string): Promise<ForwardingStatus
     state,
     address: aliasAddress(alias),
     lastAt: last?.receivedAt ?? null,
-    verification: verifyOpen && v && vAt ? { provider: v.provider, code: v.code, link: v.link, requester: v.requester, at: vAt } : null,
+    verification: verifyOpen && v && vAt ? { provider: v.provider, code: v.code, link: v.verified ? v.link : null, requester: v.verified ? v.requester : null, at: vAt } : null,
   };
 }
 
 // ——— Delivery ———
 
-export type DeliveryOutcome = "delivered" | "info" | "verification" | "duplicate" | "rate_limited" | "unknown_recipient";
+export type DeliveryOutcome = "delivered" | "info" | "unverified" | "verification" | "duplicate" | "rate_limited" | "unknown_recipient";
 
 // In-process lock per (user, Message-ID): a provider retry racing the original must not create two rows.
 const inflight = new Map<string, Promise<unknown>>();
@@ -173,14 +188,46 @@ export function unwrapManualForward(l: Pick<InboundLetter, "from" | "subject" | 
   return { ...l, from: from.slice(0, 320), subject: (subject || l.subject.replace(/^\s*(?:fwd?|пересл(?:ано)?|переслать)\s*:\s*/i, "")).slice(0, 300) };
 }
 
+/** Where a forwarding confirmation may go: authenticated always; unauthenticated only as a bare code, never over a
+ *  pending confirmation, and its link / requester are dropped. */
+async function storeVerification(userId: string, alias: string, v: ForwardingVerification, verified: boolean) {
+  await patchMeta(userId, (m) => {
+    const now = new Date().toISOString();
+    if (verified) {
+      const mailboxes = v.requester ? [normMailbox(v.requester), ...(m.mailboxes ?? []).filter((x) => x !== normMailbox(v.requester!))].slice(0, 5) : m.mailboxes;
+      return { ...m, verify: { ...v, at: now, alias, verified: true }, ...(mailboxes ? { mailboxes } : {}) };
+    }
+    const cur = m.verify;
+    const pending = cur && cur.alias === alias && Date.now() - new Date(cur.at).getTime() < 7 * 86400000 && (!m.verifyDismissedAt || new Date(m.verifyDismissedAt) < new Date(cur.at));
+    if (pending || !v.code) return m;
+    return { ...m, verify: { provider: v.provider, code: v.code, link: null, requester: null, at: now, alias, verified: false } };
+  });
+}
+
+/**
+ * May this letter move the pipeline? Authenticated for its From domain, received through the user's own mailbox (a
+ * confirmed forwarding mailbox or the account e-mail), and sent by the matched application's company (its own domain,
+ * or an ATS / job board sending on its behalf whose From line names the company).
+ */
+function authoritative(letter: InboundLetter, from: string, mailboxes: string[], company: string | null) {
+  const v = authVerdict(from, letter.authHeaders, letter.format);
+  if (!v.pass) return false;
+  if (!forwardedFrom(letter.headers, mailboxes)) return false;
+  if (!company) return true; // no application named: nothing to move anyway
+  const domain = senderAddress(from).split("@")[1] ?? "";
+  return domainNamesCompany(domain, company) || (isAtsDomain(domain) && senderNames(from, company));
+}
+
 async function deliverTo(userId: string, letter: InboundLetter, alias: string): Promise<DeliveryOutcome> {
-  const { from, subject } = unwrapManualForward(letter);
+  const unwrapped = unwrapManualForward(letter);
+  const byHand = unwrapped !== letter; // the employer's letter quoted in the body: its sender can't be verified
+  const { from, subject } = unwrapped;
   const body = letter.text.slice(0, BODY_MAX) || "(пустое письмо)";
 
   // Forwarding set-up letters: a code/link for the setup card, never an inbox message.
   const verification = detectForwardingVerification(letter.from, letter.subject, letter.text);
   if (verification) {
-    await patchMeta(userId, (m) => ({ ...m, verify: { ...verification, at: new Date().toISOString(), alias } }));
+    await storeVerification(userId, alias, verification, authVerdict(letter.from, letter.authHeaders, letter.format).pass);
     return "verification";
   }
 
@@ -188,21 +235,35 @@ async function deliverTo(userId: string, letter: InboundLetter, alias: string): 
 
   const burst = await rateLimitUser("inbound-alias", userId, ALIAS_LIMIT.perHour, 3600000);
   if (!burst.ok) return "rate_limited";
-  const today = await db.inboxMessage.count({ where: { userId, source: SOURCE, receivedAt: { gte: new Date(Date.now() - 86400000) } } });
+  const today = await db.inboxMessage.count({ where: { userId, source: { in: FORWARD_SOURCES }, receivedAt: { gte: new Date(Date.now() - 86400000) } } });
   if (today >= ALIAS_LIMIT.perDay) return "rate_limited";
 
   const opps = await db.opportunity.findMany({ where: { campaign: { userId }, status: { in: APPLIED_OR_LATER } }, include: { job: { select: { company: true, title: true } } } });
+  const targets = opps.map((o) => ({ id: o.id, company: o.job.company, title: o.job.title, status: o.status, updatedAt: o.updatedAt }));
   const matchesSender = opps.some((o) => senderNames(from, o.job.company));
   if (isNonEmployer({ from, subject, headers: letter.headers }, matchesSender)) {
     // Shown in the inbox, linked to an application when it names one — but it never moves the pipeline.
     const c = classifyEmail(subject, body);
-    const opportunityId = matchCompany(from, subject, body, opps.map((o) => ({ id: o.id, company: o.job.company, title: o.job.title, status: o.status, updatedAt: o.updatedAt })));
+    const opportunityId = matchCompany(from, subject, body, targets);
     await db.inboxMessage.create({
       data: { userId, opportunityId, fromAddr: from, subject: subject || "(без темы)", body, classification: c.cls === "unknown" ? "unknown" : "info", confidence: Math.min(c.confidence, 0.5), source: SOURCE, externalId: letter.messageId },
     });
     return "info";
   }
-  await ingestEmail(userId, { from: from || "unknown@sender", subject: subject || "(без темы)", body, source: SOURCE, ...(letter.messageId ? { externalId: letter.messageId } : {}) });
+
+  const opportunityId = matchCompany(from, subject, body, targets);
+  const company = opportunityId ? opps.find((o) => o.id === opportunityId)?.job.company ?? null : null;
+  const [meta, user] = await Promise.all([readMeta(userId), db.user.findUnique({ where: { id: userId }, select: { email: true } })]);
+  const mailboxes = [...(meta.mailboxes ?? []), ...(meta.verify?.verified && meta.verify.requester ? [meta.verify.requester] : []), ...(user?.email ? [user.email] : [])];
+  if (byHand || !authoritative(letter, from, mailboxes, company)) {
+    // Unverified: the user sees it (classified, linked to the application) — nothing else happens.
+    const c = classifyEmail(subject, body);
+    await db.inboxMessage.create({
+      data: { userId, opportunityId, fromAddr: from, subject: subject || "(без темы)", body, classification: c.cls, confidence: c.confidence, deadline: c.deadline, source: UNVERIFIED_SOURCE, externalId: letter.messageId },
+    });
+    return "unverified";
+  }
+  await ingestEmail(userId, { from: from || "unknown@sender", subject: subject || "(без темы)", body, source: SOURCE, ...(opportunityId ? { opportunityId } : {}), ...(letter.messageId ? { externalId: letter.messageId } : {}) });
   return "delivered";
 }
 

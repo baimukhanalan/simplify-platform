@@ -484,18 +484,29 @@ const CTA: Record<string, string> = { interview: "Prepare", assessment: "Prepare
 /** Only in-app paths are ever followed from a notification. */
 const safeAppHref = (href: string, type: string) => (/^\/app(\/[\w\-/]*)?$/.test(href) ? href : FALLBACK_HREF[type] ?? "/app");
 
-/** Company as the engine writes it into the notification body ("Company · Role" or "Assessment от Company"). */
+/** Company as the engine writes it into the notification body ("Company · Role"; older assessment rows: "Assessment от Company"). */
 function companyOf(type: string, body: string) {
-  if (type === "assessment") return body.replace(/^Assessment\s+от\s+/i, "").trim();
+  if (type === "assessment" && /^Assessment\s+от\s+/i.test(body)) return body.replace(/^Assessment\s+от\s+/i, "").trim();
   return body.split(" · ")[0]?.trim() ?? "";
+}
+
+/** Assessment notifications stored before the Russian wording: never show the raw «assessment» key. */
+function legacyAssessment(n: { type: string; title: string; body: string }) {
+  if (n.type !== "assessment") return n;
+  return {
+    ...n,
+    title: n.title === "Следующий этап: assessment" ? "Новое тестовое задание" : n.title,
+    body: n.body.replace(/^Assessment\s+от\s+/i, ""),
+  };
 }
 
 /** Resolve where a notification leads (the concrete Interview Room when one exists) and what to show on the moment. */
 export async function resolveNotification(n: { id: string; userId: string; type: string; title: string; body: string; href: string; createdAt: Date }): Promise<PushMoment> {
   const company = companyOf(n.type, n.body);
+  const shown = legacyAssessment(n);
   const base: PushMoment = {
-    id: n.id, type: n.type, title: n.title, body: n.body, company,
-    role: n.type === "assessment" ? "" : n.body.split(" · ").slice(1).join(" · "),
+    id: n.id, type: n.type, title: shown.title, body: shown.body, company,
+    role: n.body.split(" · ").slice(1).join(" · "),
     when: null, href: safeAppHref(n.href, n.type), cta: CTA[n.type] ?? "Открыть", createdAt: n.createdAt,
   };
   if ((n.type !== "interview" && n.type !== "assessment") || !company) return base;

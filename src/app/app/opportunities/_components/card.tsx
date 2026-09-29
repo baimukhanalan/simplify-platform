@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { Chip, cx, type Tone } from "@/components/ui";
 import { Glyph } from "@/components/glyph";
+import { useLocale, useT } from "@/lib/i18n/client";
 import { DecisionBar } from "./decision";
 import type { BlockKind } from "../_lib/fit";
 
@@ -16,7 +17,9 @@ export type CardView = {
   /** Interview probability; null outside the user's own filters (no judgement). */
   chance: { label: string; tone: Dot } | null;
   salary: string | null; place: string | null; posted: string;
-  why: string[]; dreamCall: boolean; risk: string | null;
+  why: string[]; dreamCall: boolean;
+  /** One risk line; `engine` = the engine's own (Russian) words, marked lang="ru" in other languages. */
+  risk: { text: string; engine: boolean } | null;
   /** Sent: the status chip and the link to the application instead of the decision buttons. */
   applied: { status: string; label: string; tone: Tone } | null;
   hold: string | null; queued: "now" | "tomorrow" | null;
@@ -25,19 +28,20 @@ export type CardView = {
 
 const TONE_TEXT = { green: "text-green", teal: "text-teal", amber: "text-amber", rose: "text-rose" } as const;
 const TONE_DOT = { green: "bg-green", teal: "bg-teal", amber: "bg-amber", rose: "bg-rose" } as const;
-/** One dream-company line for both engine paths (set aside as DREAM_DECISION, or blocked on a level line). */
-const DREAM_LINE = "Компания мечты, но уровень не совпадает с целью — агент сам не подаёт. Реши сам: Apply или Skip.";
 /** The mobile card shows this many "Why this fits" bullets; the rest sit behind «ещё». */
 const WHY_MOBILE = 2;
 
 export function OpportunityCard({ v }: { v: CardView }) {
+  const t = useT();
+  // Engine text (the blocking requirement, a soft gap) stays Russian for now.
+  const engine = useLocale() === "ru" ? undefined : "ru";
   const titleId = `opp-${v.id}`;
   return (
     <li className={cx("glass flex flex-col gap-3 p-4 transition-shadow hover:shadow-[0_8px_28px_rgb(0_0_0/.09)] sm:gap-4 sm:p-5", v.skipped && "opacity-80")} aria-labelledby={titleId}>
       {v.banner && (
         <p className="flex items-start gap-2 rounded-xl border border-rose/15 bg-rose-soft/60 px-3 py-2 text-[13px] text-rose">
           <b className="shrink-0 font-medium">{v.banner.headline}</b>
-          <span className="min-w-0 text-ink-2">· {v.banner.reason}</span>
+          <span className="min-w-0 text-ink-2">· <span lang={engine}>{v.banner.reason}</span></span>
         </p>
       )}
 
@@ -56,7 +60,7 @@ export function OpportunityCard({ v }: { v: CardView }) {
         {v.blocked ? (
           // Secondary: for a blocked role the number is the skills fit, not a chance.
           <div className="flex shrink-0 flex-col items-end gap-1 text-right">
-            <span className="label !text-[11px]">Совпадение навыков</span>
+            <span className="label !text-[11px]">{t("opps.skillsFit")}</span>
             <span className="num text-[20px] leading-none text-ink-3">{v.match}%</span>
           </div>
         ) : (
@@ -71,23 +75,23 @@ export function OpportunityCard({ v }: { v: CardView }) {
         {v.chance && (
           <span className="inline-flex items-center gap-1.5">
             <span className={cx("size-1.5 rounded-full", TONE_DOT[v.chance.tone])} aria-hidden />
-            Interview probability: <b className={cx("num font-medium", TONE_TEXT[v.chance.tone])}>{v.chance.label}</b>
+            {t("opps.interviewProbability")}: <b className={cx("num font-medium", TONE_TEXT[v.chance.tone])}>{v.chance.label}</b>
           </span>
         )}
-        {v.salary ? <span className="num text-head">{v.salary}</span> : <span className="hidden text-ink-3 sm:inline">зарплата не указана</span>}
+        {v.salary ? <span className="num text-head">{v.salary}</span> : <span className="hidden text-ink-3 sm:inline">{t("opps.salaryNone")}</span>}
         {v.place && (
           <span className="inline-flex min-w-0 items-center gap-1 text-ink-3">
             <Glyph name="map-pin" className="size-3.5 shrink-0 text-ink-4" />
             <span className="truncate">{v.place}</span>
           </span>
         )}
-        <span className="hidden text-ink-3 sm:inline">опубликована {v.posted}</span>
+        <span className="hidden text-ink-3 sm:inline">{t("opps.posted", { ago: v.posted })}</span>
       </div>
 
       {v.why.length > 0 && (
         // Phone: the first WHY_MOBILE bullets, the rest behind «ещё N» (a CSS-only toggle — each bullet is rendered once).
         <div className="group/why flex flex-col gap-1.5 sm:gap-2">
-          <span className="label !text-[11px]">Why this fits</span>
+          <span className="label !text-[11px]">{t("opps.whyThisFits")}</span>
           <ul className="grid gap-x-4 gap-y-1.5 text-[13.5px] text-ink-2 sm:grid-cols-2">
             {v.why.map((w, i) => (
               <li key={w} className={cx("min-w-0 items-start gap-2", i < WHY_MOBILE ? "flex" : "hidden group-has-[:checked]/why:flex sm:flex")}><Glyph name="check" className="mt-0.5 size-3.5 shrink-0 text-green" strokeWidth={2.2} /><span>{w}</span></li>
@@ -95,22 +99,23 @@ export function OpportunityCard({ v }: { v: CardView }) {
           </ul>
           {v.why.length > WHY_MOBILE && (
             <label className="inline-flex min-h-10 w-fit cursor-pointer items-center gap-1 text-[12.5px] text-teal has-[:focus-visible]:rounded has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-green sm:hidden">
-              <input type="checkbox" className="sr-only" aria-label={`Все причины: ещё ${v.why.length - WHY_MOBILE}`} />
-              <span className="group-has-[:checked]/why:hidden">ещё {v.why.length - WHY_MOBILE}</span>
-              <span className="hidden group-has-[:checked]/why:inline">свернуть</span>
+              <input type="checkbox" className="sr-only" aria-label={t("opps.allReasons", { n: v.why.length - WHY_MOBILE })} />
+              <span className="group-has-[:checked]/why:hidden">{t("opps.moreN", { n: v.why.length - WHY_MOBILE })}</span>
+              <span className="hidden group-has-[:checked]/why:inline">{t("opps.collapseLower")}</span>
               <Glyph name="chevron-down" className="size-3.5 transition-transform group-has-[:checked]/why:rotate-180" />
             </label>
           )}
         </div>
       )}
-      {v.dreamCall && <p className="text-[12.5px] leading-snug text-amber">{DREAM_LINE}</p>}
-      {v.risk && <p className="text-[12.5px] text-amber">Учти: {v.risk}</p>}
+      {/* One dream-company line for both engine paths (set aside as DREAM_DECISION, or blocked on a level line). */}
+      {v.dreamCall && <p className="text-[12.5px] leading-snug text-amber">{t("opps.dreamLine")}</p>}
+      {v.risk && <p className="text-[12.5px] text-amber">{t("opps.consider")} <span lang={v.risk.engine ? engine : undefined}>{v.risk.text}</span></p>}
 
       <div className="mt-auto flex flex-wrap items-end justify-between gap-2 border-t border-line pt-3 sm:gap-3 sm:pt-4">
         {v.applied ? (
           <div className="flex flex-wrap items-center gap-2">
             <Chip tone={v.applied.tone}>{v.applied.label}</Chip>
-            <Link href={`/app/applications/${v.id}`} className="inline-flex min-h-10 items-center gap-1 text-[13px] text-teal hover:text-head">Открыть заявку<Glyph name="arrow-right" className="size-3.5" /></Link>
+            <Link href={`/app/applications/${v.id}`} className="inline-flex min-h-10 items-center gap-1 text-[13px] text-teal hover:text-head">{t("opps.openApplication")}<Glyph name="arrow-right" className="size-3.5" /></Link>
           </div>
         ) : (
           <div className="flex flex-col gap-2">
@@ -118,15 +123,15 @@ export function OpportunityCard({ v }: { v: CardView }) {
             {v.queued && (
               <span className="inline-flex items-center gap-1.5 text-[12.5px] text-green">
                 <span className="size-1.5 rounded-full bg-green animate-pulse-dot" aria-hidden />
-                {v.queued === "tomorrow" ? "В очереди — агент подаст завтра" : "В очереди — агент подаст в следующем цикле"}
+                {t(v.queued === "tomorrow" ? "opps.queuedTomorrow" : "opps.queuedNow")}
               </span>
             )}
             <DecisionBar id={v.id} company={v.company} decision={v.decision} status={v.status} blocked={v.blocked} blockedBy={v.blockedBy} pending={v.pending} override={v.override} forceEnable={v.dreamCall} userDecision={v.dreamCall} />
           </div>
         )}
         {/* On a phone the title is the way in; the extra row would only make the card taller. */}
-        <Link href={`/app/opportunities/${v.id}`} className="hidden min-h-10 items-center gap-1 text-[12.5px] text-ink-3 hover:text-head sm:inline-flex" aria-label={`Подробнее: ${v.title}, ${v.company}`}>
-          Подробнее<Glyph name="arrow-right" className="size-3" />
+        <Link href={`/app/opportunities/${v.id}`} className="hidden min-h-10 items-center gap-1 text-[12.5px] text-ink-3 hover:text-head sm:inline-flex" aria-label={t("opps.moreAria", { title: v.title, company: v.company })}>
+          {t("opps.more")}<Glyph name="arrow-right" className="size-3" />
         </Link>
       </div>
     </li>

@@ -8,7 +8,10 @@ import { logEvent } from "../engine/agent";
 import { ROLE_FAMILIES, REGIONS, SENIORITY, SENIORITY_LABEL, classifyRole, fmtMoney, seniorityFromYears } from "../engine/taxonomy";
 import { marketRange } from "../engine/market";
 import { TO_USD, fromUSD, toUSD, usdToGoalAmount } from "../engine/fx";
-import { rateLimitUser, retryText } from "../rate-limit";
+import { rateLimitUser, retryMinutes } from "../rate-limit";
+import { actionT } from "../i18n/action";
+import type { NsKey } from "../i18n/translator";
+import type { Params } from "../i18n/message";
 import { confirmSeniority, syncSeniorityFromYears, syncYearsFromFacts } from "../onboarding";
 
 /** Result shape for forms driven by useActionState. */
@@ -47,8 +50,10 @@ const list = (v: string, maxItems = 40, maxLen = 60) => {
   return out;
 };
 const cleanUrl = (v: string) => (v && !/^https?:\/\//i.test(v) ? `https://${v}` : v).slice(0, 200);
-const done = (message = "Сохранено"): FormState => ({ ok: true, message, at: Date.now() });
-const fail = (error: string): FormState => ({ ok: false, error, at: Date.now() });
+/** Messages in the request's language (actionMsg.*; Russian outside a request). */
+type Msg = NsKey<"actionMsg">;
+const done = async (key: Msg = "saved", params?: Params): Promise<FormState> => ({ ok: true, message: (await actionT())(`actionMsg.${key}`, params), at: Date.now() });
+const fail = async (key: Msg, params?: Params): Promise<FormState> => ({ ok: false, error: (await actionT())(`actionMsg.${key}`, params), at: Date.now() });
 const refresh = () => revalidatePath("/app", "layout");
 
 async function ownFact(userId: string, id: string) {
@@ -59,7 +64,7 @@ async function ownFact(userId: string, id: string) {
 export async function updateBasics(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const name = str(form, "name", 80);
-  if (name.length < 2) return fail("Введи имя — минимум 2 символа.");
+  if (name.length < 2) return fail("needName");
   const years = Number(str(form, "yearsExperience", 6).replace(",", "."));
   const city = str(form, "city", 80);
   const data = {
@@ -78,7 +83,7 @@ export async function updateBasics(_: FormState, form: FormData): Promise<FormSt
   await db.profile.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
   await syncSeniorityFromYears(user.id, data.yearsExperience); // unless the user set the goal level themselves
   refresh();
-  return done("Сохранено");
+  return done();
 }
 
 /** "Ограничения": work authorization, sponsorship, relocation, format, minimum salary. Keeps profile and goal in sync. */
@@ -87,7 +92,7 @@ export async function updateConstraints(_: FormState, form: FormData): Promise<F
   // Citizenship is a two-letter country code. Anything else is an error, never a silent «KZ»
   // (the sponsorship / eligibility checks depend on it).
   const rawCitizenship = str(form, "citizenship", 10).toUpperCase();
-  if (!/^[A-Z]{2}$/.test(rawCitizenship)) return fail("Укажи гражданство — выбери страну из списка.");
+  if (!/^[A-Z]{2}$/.test(rawCitizenship)) return fail("needCitizenship");
   const citizenship = rawCitizenship;
   const picked = form.getAll("workAuth").map((v) => String(v).toUpperCase()).filter((c) => c === "EU" || /^[A-Z]{2}$/.test(c));
   const workAuth = [...new Set([citizenship, ...picked.flatMap((c) => (c === "EU" ? REGIONS.EU.countries : [c]))])];
@@ -113,7 +118,7 @@ export async function updateConstraints(_: FormState, form: FormData): Promise<F
   });
   await logEvent(user.id, "profile_constraints", "Ограничения профиля обновлены");
   refresh();
-  return done("Сохранено");
+  return done();
 }
 
 /* ───────────── Skills ───────────── */
@@ -146,7 +151,7 @@ export async function saveFact(_: FormState, form: FormData): Promise<FormState>
   const user = await requireUser();
   const id = str(form, "id", 40);
   const title = str(form, "title", 160);
-  if (title.length < 2) return fail("Укажи название: должность, проект, диплом или сертификат.");
+  if (title.length < 2) return fail("needFactTitle");
   const teamRaw = str(form, "teamSize", 6);
   const data = {
     kind: oneOf(str(form, "kind", 20), FACT_KINDS, "employment"),
@@ -162,7 +167,7 @@ export async function saveFact(_: FormState, form: FormData): Promise<FormState>
   };
   if (id) {
     const existing = await ownFact(user.id, id);
-    if (!existing) return fail("Факт не найден.");
+    if (!existing) return fail("factNotFound");
     await db.fact.update({ where: { id }, data });
     await logEvent(user.id, "fact_updated", `Факт обновлён: ${title}`);
   } else {
@@ -170,7 +175,7 @@ export async function saveFact(_: FormState, form: FormData): Promise<FormState>
     await logEvent(user.id, "fact_added", `Добавлен факт: ${title}`);
   }
   refresh();
-  return done(id ? "Факт обновлён" : "Факт добавлен");
+  return done(id ? "factUpdated" : "factAdded");
 }
 
 export async function deleteFact(form: FormData) {
@@ -192,22 +197,22 @@ export async function saveStory(_: FormState, form: FormData): Promise<FormState
   const task = str(form, "task", 1500);
   const action = str(form, "action", 2000);
   const result = str(form, "result", 1500);
-  if (title.length < 2) return fail("Дай истории короткое название.");
-  if (!situation || !task || !action || !result) return fail("Заполни все четыре части STAR: Situation, Task, Action, Result.");
+  if (title.length < 2) return fail("needStoryTitle");
+  if (!situation || !task || !action || !result) return fail("needStar");
   const factId = str(form, "factId", 40);
   const fact = factId ? await ownFact(user.id, factId) : null;
   const tags = form.getAll("tags").map(String).filter((t): t is StoryTag => (STORY_TAGS as string[]).includes(t));
   const data = { title, situation, task, action, result, metric: str(form, "metric", 200), tags: s(tags), factId: fact?.id ?? null };
   if (id) {
     const existing = await db.story.findFirst({ where: { id, userId: user.id } });
-    if (!existing) return fail("История не найдена.");
+    if (!existing) return fail("storyNotFound");
     await db.story.update({ where: { id }, data });
   } else {
     await db.story.create({ data: { ...data, userId: user.id, verified: true } });
     await logEvent(user.id, "story_added", `Добавлена STAR-история: ${title}`);
   }
   refresh();
-  return done(id ? "История обновлена" : "История добавлена");
+  return done(id ? "storyUpdated" : "storyAdded");
 }
 
 export async function deleteStory(form: FormData) {
@@ -223,9 +228,9 @@ export async function deleteStory(form: FormData) {
 export async function reparseCV(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const text = noNul(String(form.get("cvText") ?? "")).trim().slice(0, 30000);
-  if (text.length < 200) return fail("Вставь полный текст CV — минимум 200 символов.");
+  if (text.length < 200) return fail("needCvText");
   const rl = await rateLimitUser("cv-parse-user", user.id, 10, 60 * 60 * 1000, { eventTypes: ["cv_parsed", "cv_reparsed"] });
-  if (!rl.ok) return fail(retryText(rl.retryAfter));
+  if (!rl.ok) return fail("tooOften", { n: retryMinutes(rl.retryAfter) });
   const { data: parsed, by } = await parseCV(text);
   const existing = await db.fact.findMany({ where: { userId: user.id }, select: { kind: true, title: true, org: true } });
   const key = (f: { kind: string; title: string; org: string }) => `${f.kind}|${f.title.trim().toLowerCase()}|${f.org.trim().toLowerCase()}`;
@@ -244,7 +249,7 @@ export async function reparseCV(_: FormState, form: FormData): Promise<FormState
   await syncSeniorityFromYears(user.id, years);
   await logEvent(user.id, "cv_reparsed", `CV разобран заново (${by === "claude" ? "Claude" : "движок"}): новых фактов — ${fresh.length}`);
   refresh();
-  return done(fresh.length ? `Добавлено новых позиций: ${fresh.length}. Проверь их в разделе «Опыт».` : "Нового не нашлось — всё уже есть в профиле.");
+  return done(fresh.length ? "reparsed" : "nothingNew", { n: fresh.length });
 }
 
 /* ───────────── Goal ───────────── */
@@ -252,11 +257,11 @@ export async function reparseCV(_: FormState, form: FormData): Promise<FormState
 export async function saveGoal(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const primaryRole = str(form, "primaryRole", 80);
-  if (primaryRole.length < 2) return fail("Укажи основную роль — например, Data Analyst.");
+  if (primaryRole.length < 2) return fail("needPrimaryRole");
   const regions = form.getAll("countries").map(String).filter((r) => r in REGIONS);
-  if (!regions.length) return fail("Выбери хотя бы один регион.");
+  if (!regions.length) return fail("needRegion");
   const workModes = form.getAll("workModes").map(String).filter((m) => (WORK_MODES as readonly string[]).includes(m));
-  if (!workModes.length) return fail("Выбери хотя бы один формат работы.");
+  if (!workModes.length) return fail("needWorkMode");
   const extraRoles = form.getAll("extraRoles").map((r) => String(r).trim().slice(0, 60)).filter((r) => r && r.toLowerCase() !== primaryRole.toLowerCase()).slice(0, 6);
   const industries = [...new Set(form.getAll("industries").map((r) => String(r).trim().slice(0, 40)).filter(Boolean))].slice(0, 12);
   const data = {
@@ -275,14 +280,14 @@ export async function saveGoal(_: FormState, form: FormData): Promise<FormState>
     companySize: oneOf(str(form, "companySize", 10), COMPANY_SIZES, "any"),
     mode: oneOf(str(form, "mode", 12), MODES, "autonomous"),
   };
-  if (data.mode === "target" && data.dreamCompanies === "[]") return fail("Target Mode работает только по компаниям мечты — добавь хотя бы одну.");
+  if (data.mode === "target" && data.dreamCompanies === "[]") return fail("targetNeedsDream");
   await db.goal.upsert({ where: { userId: user.id }, update: data, create: { userId: user.id, ...data } });
   await confirmSeniority(user.id, data.seniority);
   await logEvent(user.id, "goal_updated", `Цель обновлена: ${primaryRole} · ${SENIORITY_LABEL[data.seniority] ?? data.seniority}`);
   refresh();
   // The goal page edits in a separate mode; send it back to the read view.
   if (str(form, "after", 20) === "goal") redirect("/app/goal?saved=1");
-  return done("Цель сохранена. Readiness пересчитан.");
+  return done("goalSaved");
 }
 
 /* ───────────── Readiness one-click fixes ───────────── */

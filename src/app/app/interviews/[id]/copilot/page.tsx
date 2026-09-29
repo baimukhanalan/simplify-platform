@@ -6,10 +6,14 @@ import { readAutonomy } from "@/lib/engine/autonomy";
 import { latestEmployment } from "@/lib/engine/interview";
 import { salaryTarget, userFloorUsd } from "@/lib/engine/salary";
 import { regionsFor } from "@/lib/regions";
-import { ROUND_LABEL } from "@/lib/rounds";
+import { ROUNDS, type Round } from "@/lib/rounds";
+import { getT } from "@/lib/i18n/server";
+import { I18nScope } from "@/lib/i18n/scope";
 import { Copilot } from "./_components/copilot";
 
-export const metadata = { title: "Copilot" };
+export async function generateMetadata() {
+  return { title: (await getT())("interviewPractice.copilotTitle") };
+}
 
 export default async function CopilotPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -41,13 +45,18 @@ export default async function CopilotPage({ params }: { params: Promise<{ id: st
   };
   const blocked = !iv.copilotAllowed ? "employer" : iv.round === "assessment" ? "assessment" : consents.copilot === false ? "consent" : null;
 
+  const t = await getT();
+  const round = (ROUNDS as readonly string[]).includes(iv.round) ? t(`interviewPractice.rounds.${iv.round as Round}`) : iv.round;
+
   return (
-    <Copilot
-      interviewId={iv.id}
-      blocked={blocked}
-      title={job.company}
-      round={ROUND_LABEL[iv.round] ?? iv.round}
-      ctx={ctx}
-    />
+    <I18nScope ns={["interviewPractice"]}>
+      <Copilot
+        interviewId={iv.id}
+        blocked={blocked}
+        title={job.company}
+        round={round}
+        ctx={ctx}
+      />
+    </I18nScope>
   );
 }

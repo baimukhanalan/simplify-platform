@@ -1,75 +1,57 @@
-import { count } from "../../../../_components/ru";
+// Online assessment: test format, topics, preparation plan and practice questions (pure). Returns message keys and
+// params; assessment-tab.tsx renders them in the interface language («interviewPractice.assessment.*»).
 
-// Тестовое задание: test format, topics, preparation plan and practice questions (pure).
-
-export type AssessmentTopic = { key: string; label: string; short: string; weight: number; have: boolean };
-export type PracticeQ = { topic: string; q: string; a: string };
+/** Topic label keys: «interviewPractice.assessment.topic.<labelKey>» / «….short.<labelKey>». */
+export type TopicKey = "sql" | "python" | "excel" | "stats" | "viz" | "analytics" | "analyticsCase" | "logic";
+export type AssessmentTopic = { key: string; labelKey: TopicKey; weight: number; have: boolean };
+/** A practice task: «interviewPractice.assessment.practice.<id>.q/.a», topic «….practiceTopic.<topic>». */
+export type PracticeQ = { id: PracticeId; topic: PracticeTopic };
+export type PracticeTopic = "sql" | "analytics" | "logic" | "numbers" | "excel" | "python" | "stats" | "viz";
+export type PracticeId = "sql1" | "sql2" | "sql3" | "analytics1" | "analytics2" | "logic1" | "logic2" | "logic3" | "excel1" | "excel2" | "python1" | "python2" | "stats1" | "stats2" | "viz1";
 
 const PLATFORMS = ["TestGorilla", "HackerRank", "Codility", "CodeSignal", "SHL", "Pymetrics", "Criteria", "Maki", "Mettl", "Alooba", "Glider"];
 
-const TOPIC_OF: [RegExp, string, string, string][] = [
-  [/sql|postgres|mysql|bigquery|clickhouse|snowflake/i, "sql", "SQL", "SQL"],
-  [/python|pandas|numpy|\br\b/i, "python", "Python", "Python"],
-  [/excel|google sheets|spreadsheet/i, "excel", "Excel / таблицы", "Excel"],
-  [/a\/b|experiment|statistic/i, "stats", "Статистика и A/B", "Статистика"],
-  [/tableau|power bi|looker|metabase|visuali/i, "viz", "Визуализация данных", "Визуализация"],
-  [/google analytics|amplitude|mixpanel/i, "analytics", "Продуктовая аналитика", "Аналитика"],
+const TOPIC_OF: [RegExp, TopicKey][] = [
+  [/sql|postgres|mysql|bigquery|clickhouse|snowflake/i, "sql"],
+  [/python|pandas|numpy|\br\b/i, "python"],
+  [/excel|google sheets|spreadsheet/i, "excel"],
+  [/a\/b|experiment|statistic/i, "stats"],
+  [/tableau|power bi|looker|metabase|visuali/i, "viz"],
+  [/google analytics|amplitude|mixpanel/i, "analytics"],
 ];
 
-/** Sample dates in the practice tasks use the current year, never a stale one. */
-const Y = new Date().getFullYear();
+/** Sample dates in the practice tasks use the current year, never a stale one (params {year} / {next}). */
+export const PRACTICE_YEAR = new Date().getFullYear();
 
+const q = (id: PracticeId, topic: PracticeTopic): PracticeQ => ({ id, topic });
 export const PRACTICE: Record<string, PracticeQ[]> = {
-  sql: [
-    { topic: "SQL", q: `Таблица orders(user_id, amount, created_at). Выручка по месяцам за ${Y} год.`, a: `SELECT date_trunc('month', created_at) AS m, SUM(amount) FROM orders WHERE created_at >= '${Y}-01-01' AND created_at < '${Y + 1}-01-01' GROUP BY 1 ORDER BY 1;` },
-    { topic: "SQL", q: "Найди пользователей, у которых больше 3 заказов.", a: "SELECT user_id FROM orders GROUP BY user_id HAVING COUNT(*) > 3; — HAVING фильтрует после агрегации, WHERE — до." },
-    { topic: "SQL", q: "Второй по величине заказ каждого пользователя.", a: "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rn, затем WHERE rn = 2. Учти ничьи: DENSE_RANK." },
-  ],
-  analytics: [
-    { topic: "Аналитика", q: "Конверсия в покупку упала с 4% до 3% за неделю. Твои первые три шага?", a: "1) Проверить данные и трекинг (релизы, баги). 2) Сегментировать: платформа, канал, страна, новый/старый. 3) Найти шаг воронки с падением и сопоставить с изменениями продукта/маркетинга." },
-    { topic: "Аналитика", q: "Как посчитать retention D7?", a: "Когорта = пользователи с первым действием в день X. D7 = доля когорты, активная на 7-й день. Считать по когортам, сравнивать одинаковые дни." },
-  ],
-  logic: [
-    { topic: "Логика", q: "Ряд: 2, 6, 12, 20, 30, … Следующее число?", a: "42 — разности растут на 2 (4, 6, 8, 10, 12); или n·(n+1)." },
-    { topic: "Логика", q: "Цена выросла на 20%, затем упала на 20%. Итог относительно исходной?", a: "−4%: 1.2 × 0.8 = 0.96." },
-    { topic: "Числа", q: "Из 800 посетителей 5% оформили заказ, средний чек $40. Выручка?", a: "800 × 0.05 = 40 заказов × $40 = $1 600." },
-  ],
-  excel: [
-    { topic: "Excel", q: "Подтянуть цену товара из другого листа по артикулу.", a: "XLOOKUP(A2; Prices!A:A; Prices!B:B) или INDEX/MATCH; VLOOKUP — только если ключ в первом столбце." },
-    { topic: "Excel", q: "Сумма продаж по региону «North» за март.", a: `SUMIFS(Sales; Region; "North"; Date; ">="&DATE(${Y};3;1); Date; "<"&DATE(${Y};4;1)).` },
-  ],
-  python: [
-    { topic: "Python", q: "pandas: средний чек по стране из df(country, amount).", a: "df.groupby('country')['amount'].mean().sort_values(ascending=False)" },
-    { topic: "Python", q: "Удалить дубликаты по user_id, оставив последнюю запись.", a: "df.sort_values('created_at').drop_duplicates('user_id', keep='last')" },
-  ],
-  stats: [
-    { topic: "Статистика", q: "p-value = 0.03 при α = 0.05. Что это значит?", a: "Если бы эффекта не было, такой или более сильный результат встречался бы в 3% случаев. Отвергаем H0 — но это не «вероятность, что гипотеза верна»." },
-    { topic: "Статистика", q: "Почему нельзя останавливать A/B-тест, как только стало значимо?", a: "Подглядывание в результаты (peeking) раздувает ошибку I рода. Размер выборки фиксируют заранее или используют последовательные методы." },
-  ],
-  viz: [
-    { topic: "Визуализация", q: "Какой график для доли каналов в выручке по месяцам?", a: "Столбцы с накоплением (100%) по месяцам; круговая диаграмма — только для одного периода и 3–5 категорий." },
-  ],
+  sql: [q("sql1", "sql"), q("sql2", "sql"), q("sql3", "sql")],
+  analytics: [q("analytics1", "analytics"), q("analytics2", "analytics")],
+  logic: [q("logic1", "logic"), q("logic2", "logic"), q("logic3", "numbers")],
+  excel: [q("excel1", "excel"), q("excel2", "excel")],
+  python: [q("python1", "python"), q("python2", "python")],
+  stats: [q("stats1", "stats"), q("stats2", "stats")],
+  viz: [q("viz1", "viz")],
 };
 
-/** What to drill first for the main topic of the test. */
-const DRILL: Record<string, string> = {
-  sql: "агрегаты, JOIN, фильтры",
-  python: "pandas: groupby, merge, фильтры",
-  excel: "XLOOKUP, SUMIFS, сводные таблицы",
-  stats: "p-value, доверительные интервалы, размер выборки",
-  viz: "выбор графика под вопрос",
-  analytics: "воронки, retention, падение метрики",
-};
+/** What to drill first for the main topic of the test: «….drill.<key>». */
+export type DrillKey = "sql" | "python" | "excel" | "stats" | "viz" | "analytics" | "default";
+const DRILL = new Set<string>(["sql", "python", "excel", "stats", "viz", "analytics"]);
+
+export type PlanWhen = "now30" | "then20" | "hourBefore" | "day1" | "day2";
+export type PlanStep =
+  | { when: PlanWhen; what: "cheatSheet" | "drill" | "gap"; topic: TopicKey | "keySkill"; drill?: DrillKey }
+  | { when: PlanWhen; what: "timed" | "setup" | "cases" | "logic" | "rules" }
+  | { when: PlanWhen; what: "rehearsal"; min: number };
 
 export type AssessmentInfo = {
   platform: string | null;
-  kind: string;
   durationMin: number;
   deadline: Date | null;
   hoursLeft: number | null;
   topics: AssessmentTopic[];
-  difficulty: { level: 1 | 2 | 3; label: string; why: string };
-  plan: { when: string; what: string }[];
+  difficulty: { level: 1 | 2 | 3; senior: boolean; gaps: number; massHiring: boolean };
+  plan: PlanStep[];
   practice: PracticeQ[];
 };
 
@@ -83,47 +65,38 @@ export function assessmentInfo(i: { technologies: string[]; skills: string[]; se
   const topics = new Map<string, AssessmentTopic>();
   for (const t of i.technologies) {
     const hit = TOPIC_OF.find(([re]) => re.test(t));
-    if (hit && !topics.has(hit[1])) topics.set(hit[1], { key: hit[1], label: hit[2], short: hit[3], weight: 0, have: have.has(t.toLowerCase()) });
+    if (hit && !topics.has(hit[1])) topics.set(hit[1], { key: hit[1], labelKey: hit[1], weight: 0, have: have.has(t.toLowerCase()) });
   }
-  if (/analyst|data|product/.test(i.roleFamily) && !topics.has("analytics")) topics.set("analytics", { key: "analytics", label: "Аналитика / кейс", short: "Аналитика", weight: 0, have: true });
+  if (/analyst|data|product/.test(i.roleFamily) && !topics.has("analytics")) topics.set("analytics", { key: "analytics", labelKey: "analyticsCase", weight: 0, have: true });
   const main = [...topics.values()].slice(0, 4);
-  const list = [...main, { key: "logic", label: "Логика и числовые задачи", short: "Логика", weight: 0, have: true }];
+  const list: AssessmentTopic[] = [...main, { key: "logic", labelKey: "logic", weight: 0, have: true }];
   list.forEach((t) => (t.weight = t.key === "logic" ? (main.length ? 20 : 100) : Math.round(80 / Math.max(1, main.length))));
 
   const gaps = list.filter((t) => !t.have).length;
   const senior = ["middle", "senior", "lead"].includes(i.seniority);
   const score = (senior ? 2 : 1) + (gaps ? 1 : 0) + (i.massHiring ? -1 : 0);
   const level = (Math.max(1, Math.min(3, score)) as 1 | 2 | 3);
-  const difficulty = {
-    level,
-    label: ["", "лёгкая", "средняя", "высокая"][level],
-    why: [
-      senior ? "уровень роли выше начального" : "начальный уровень роли",
-      gaps ? `${count(gaps, ["тема", "темы", "тем"])} вне твоего профиля` : "все темы есть в твоём профиле",
-      i.massHiring ? "массовый найм — обычно стандартный тест" : "",
-    ].filter(Boolean).join(" · "),
-  };
+  const difficulty = { level, senior, gaps, massHiring: i.massHiring };
 
   const hoursLeft = i.deadline ? Math.round((i.deadline.getTime() - i.now) / 3600000) : null;
-  const first = main[0]?.label ?? "Ключевой навык";
-  const drill = DRILL[main[0]?.key ?? ""] ?? "типовые задачи";
-  const weak = list.find((t) => !t.have)?.label;
-  const plan =
+  const first = main[0]?.labelKey ?? "keySkill";
+  const drill: DrillKey = main[0] && DRILL.has(main[0].key) ? (main[0].key as DrillKey) : "default";
+  const weak = list.find((t) => !t.have)?.labelKey;
+  const plan: PlanStep[] =
     hoursLeft != null && hoursLeft <= 24
       ? [
-          { when: "Сейчас · 30 мин", what: `Повтори шпаргалку по ${first}: синтаксис и 3 типовые задачи` },
-          { when: "Затем · 20 мин", what: "Реши практические вопросы ниже на время" },
-          { when: "За час до теста", what: "Тихое место, стабильный интернет, калькулятор и черновик под рукой" },
+          { when: "now30", what: "cheatSheet", topic: first },
+          { when: "then20", what: "timed" },
+          { when: "hourBefore", what: "setup" },
         ]
       : [
-          { when: "День 1", what: `${first}: 5–6 задач на время — ${drill}` },
-          { when: "День 1", what: weak ? `Закрой пробел: ${weak} — базовые задачи и шпаргалка` : "Аналитика: разбор 2 кейсов «почему упала метрика»" },
-          { when: "День 2", what: "Логика и числа: 15 минут задач на проценты и последовательности" },
-          { when: "День 2", what: `Полная репетиция: ${durationMin} минут без пауз на практических вопросах ниже` },
-          { when: "За час до теста", what: "Прочитай правила платформы: можно ли возвращаться к вопросам, есть ли штраф за ошибки" },
+          { when: "day1", what: "drill", topic: first, drill },
+          weak ? { when: "day1", what: "gap", topic: weak } : { when: "day1", what: "cases" },
+          { when: "day2", what: "logic" },
+          { when: "day2", what: "rehearsal", min: durationMin },
+          { when: "hourBefore", what: "rules" },
         ];
 
   const practice = [...main.flatMap((t) => (PRACTICE[t.key] ?? []).slice(0, 2)).slice(0, 6), ...PRACTICE.logic.slice(0, 2)];
-  const kind = `Онлайн-тест · ${list.map((t) => t.short).join(" / ")}`;
-  return { platform, kind, durationMin, deadline: i.deadline, hoursLeft, topics: list, difficulty, plan, practice };
+  return { platform, durationMin, deadline: i.deadline, hoursLeft, topics: list, difficulty, plan, practice };
 }

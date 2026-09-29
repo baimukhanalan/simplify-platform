@@ -32,7 +32,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang={locale} className={`${inter.variable} ${pinyon.variable} ${serifCyr.variable} ${monoCyr.variable} ${scriptCyr.variable}`}>
       <body>
         <a href="#main-content" className="skip-link">{t("common.skipLink")}</a>
-        <I18nScope ns={["common", "switcher"]}>{children}</I18nScope>
+        <I18nScope ns={["common", "switcher", "legalChrome"]}>{children}</I18nScope>
       </body>
     </html>
   );

@@ -8,7 +8,7 @@ import { readAutonomy, readStoredAutonomy } from "../engine/autonomy";
 import { isSimulation } from "../mode";
 import { QUEUE_MATCH, blockingQuestions, currentEligibility, duplicateOf, logEvent, prepare, settleSharedAnswers, submit } from "../engine/agent";
 import { blockerKind } from "../engine/matching";
-import { count } from "../ru";
+import { actionT } from "../i18n/action";
 import { captureError } from "../monitoring";
 
 export type DecisionState = {
@@ -42,24 +42,25 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
   const user = await requireUser();
   const id = String(form.get("id") ?? "");
   const decision = String(form.get("decision") ?? "");
-  if (!DECISIONS.has(decision)) return { error: "Неизвестное действие." };
+  const t = await actionT();
+  if (!DECISIONS.has(decision)) return { error: t("actionMsg.unknownAction") };
   const opp = await db.opportunity.findFirst({
     where: { id, campaign: { userId: user.id } },
     include: { job: true, campaign: { select: { status: true, autoSubmit: true, userId: true, allocation: true, plan: true } } },
   });
-  if (!opp) return { error: "Вакансия не найдена." };
+  if (!opp) return { error: t("actionMsg.jobNotFound") };
   const applied = APPLIED_OR_LATER.includes(opp.status);
   const who = `${opp.job.title} — ${opp.job.company}`;
 
   if (decision === "skip") {
-    if (applied) return { error: "Заявка уже отправлена — её нельзя пропустить. Статус меняется в Applications." };
+    if (applied) return { error: t("actionMsg.cantSkipApplied") };
     await db.opportunity.update({ where: { id }, data: { decision: "skip", status: "skipped" } });
     await db.approval.updateMany({ where: { opportunityId: id, status: "pending" }, data: { status: "rejected", resolvedAt: new Date() } });
     // Same shape as a manual status move, so rerank() treats it as the user's skip and never undoes it.
     await logEvent(user.id, "status_change", `Пропущено: ${who}`, id, { from: opp.status, to: "skipped", by: "user", decision: "skip" });
     await settleSharedAnswers(user.id); // a package that waited for this role's standing question now asks it itself
     refresh(id);
-    return { ok: true, message: "Пропущено. Агент больше не вернётся к этой вакансии." };
+    return { ok: true, message: t("actionMsg.skipped") };
   }
 
   if (decision === "reset") {
@@ -67,10 +68,10 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
     await db.opportunity.update({ where: { id }, data: { decision: "", status } });
     if (status !== opp.status) await logEvent(user.id, "status_change", `Возвращено в работу: ${who}`, id, { from: opp.status, to: status, by: "user" });
     refresh(id);
-    return { ok: true, message: "Решение снято — агент снова оценивает вакансию сам." };
+    return { ok: true, message: t("actionMsg.reset") };
   }
 
-  if (applied) return { ok: true, message: "Заявка уже отправлена.", href: `/app/applications/${id}`, hrefLabel: "Открыть заявку" };
+  if (applied) return { ok: true, message: t("actionMsg.alreadySent"), href: `/app/applications/${id}`, hrefLabel: t("actionMsg.openApplication") };
   // Goal settings may have changed since the last cycle (stop-list, countries, salary floor, level…): judge the role as it
   // is now, with the user's pick (level lines the user may override — «Уровень ниже цели», a dream company's level — become
   // notes, exactly isOverridable). Whatever is still blocked stops the Apply / Auto here, before anything is prepared.
@@ -78,11 +79,11 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
   if (fresh.eligibility === "blocked") {
     const filterOnly = fresh.blockers.every((b) => blockerKind(b) === "filter");
     refresh(id);
-    return { error: filterOnly ? "Вакансия вне твоих настроек поиска — агент не может подать. Измени настройки, если хочешь её рассмотреть." : "Эта вакансия не проходит по требованиям — агент не может подать." };
+    return { error: t(filterOnly ? "actionMsg.blockedFilter" : "actionMsg.blockedRequirement") };
   }
   // One application per role in a campaign: the same company + title from another location is already prepared or sent.
   const dup = await duplicateOf(opp);
-  if (dup) return { error: `На эту роль в ${opp.job.company} уже есть заявка${dup.job.location ? ` (${dup.job.location})` : ""} — второй раз агент не подаёт.`, href: `/app/opportunities/${dup.id}`, hrefLabel: "Открыть" };
+  if (dup) return { error: dup.job.location ? t("actionMsg.duplicateAt", { company: opp.job.company, location: dup.job.location }) : t("actionMsg.duplicate", { company: opp.job.company }), href: `/app/opportunities/${dup.id}`, hrefLabel: t("actionMsg.open") };
   // A previously skipped role comes back into the queue when the user changes their mind.
   const revived = opp.status === "skipped" || opp.status === "found" ? "qualified" : opp.status;
 
@@ -92,11 +93,11 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
     // Campaign.autoSubmit is the auto-submit consent: without it the agent never sends anything on its own.
     if (!opp.campaign.autoSubmit) {
       refresh(id);
-      return { ok: true, message: "Отмечено Auto, но автоподача выключена в «Настройках» (согласие). Агент подготовит пакет — отправить можно кнопкой Apply.", href: "/app/settings", hrefLabel: "Настройки" };
+      return { ok: true, message: t("actionMsg.autoNoConsent"), href: "/app/settings", hrefLabel: t("actionMsg.settings") };
     }
     if (opp.campaign.status !== "active" && opp.campaign.status !== "paused") {
       refresh(id);
-      return { ok: true, message: "Отмечено, но кампания завершена — агент больше не подаёт сам. Отправить можно кнопкой Apply." };
+      return { ok: true, message: t("actionMsg.autoCampaignOver") };
     }
     // Its own question cards and a standing question asked on another role both hold it (answered in Подтверждения).
     const pending = await blockingQuestions(id);
@@ -104,12 +105,12 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
     if (revived === "prepared" && opp.campaign.status === "active" && !pending) {
       const r = await submit(id);
       refresh(id);
-      if (r.ok) return { ok: true, message: "Агент отправил заявку.", href: `/app/applications/${id}`, hrefLabel: "Открыть заявку" };
-      if (r.reason === "handoff") return { ok: true, message: "Пакет готов. Живая вакансия — отправка через официальную форму.", href: `/app/opportunities/${id}`, hrefLabel: "Открыть" };
+      if (r.ok) return { ok: true, message: t("actionMsg.agentSent"), href: `/app/applications/${id}`, hrefLabel: t("actionMsg.openApplication") };
+      if (r.reason === "handoff") return { ok: true, message: t("actionMsg.autoHandoff"), href: `/app/opportunities/${id}`, hrefLabel: t("actionMsg.open") };
     }
     refresh(id);
-    if (pending) return { ok: true, message: `Агент подаст сам, как только ты ответишь на ${count(pending, ["вопрос", "вопроса", "вопросов"])}.`, href: "/app/approvals", hrefLabel: "Ответить" };
-    return { ok: true, message: opp.campaign.status === "active" ? "Агент подаст сам в ближайшем цикле." : "Отмечено. Агент подаст, когда кампания снова будет активна." };
+    if (pending) return { ok: true, message: t("actionMsg.autoAfterQuestions", { n: pending }), href: "/app/approvals", hrefLabel: t("actionMsg.answer") };
+    return { ok: true, message: t(opp.campaign.status === "active" ? "actionMsg.autoNextCycle" : "actionMsg.autoWhenActive") };
   }
 
   // decision === "apply": the user explicitly confirmed this role.
@@ -121,24 +122,24 @@ export async function decideOpportunity(_prev: DecisionState, form: FormData): P
       const p = await prepare(id);
       if (p.duplicate) {
         refresh(id);
-        return { error: `На эту роль в ${opp.job.company} уже есть заявка — второй раз агент не подаёт.` };
+        return { error: t("actionMsg.duplicate", { company: opp.job.company }) };
       }
     }
     const pending = await blockingQuestions(id);
     if (pending) {
       refresh(id);
-      return { ok: true, message: `Пакет готов. ${count(pending, ["вопрос ждёт", "вопроса ждут", "вопросов ждут"])} твоего ответа — после этого заявка уйдёт.`, href: "/app/approvals", hrefLabel: "Ответить" };
+      return { ok: true, message: t("actionMsg.applyPending", { n: pending }), href: "/app/approvals", hrefLabel: t("actionMsg.answer") };
     }
     const r = await submit(id);
     refresh(id);
-    if (r.ok) return { ok: true, message: "Заявка отправлена.", href: `/app/applications/${id}`, hrefLabel: "Открыть заявку" };
-    if (r.reason === "handoff") return { ok: true, message: "Пакет готов. Это живая вакансия — отправь его через официальную форму.", href: `/app/opportunities/${id}`, hrefLabel: "Как отправить" };
-    return { ok: true, message: "Пакет готов, отправка ждёт.", href: `/app/opportunities/${id}`, hrefLabel: "Открыть" };
+    if (r.ok) return { ok: true, message: t("actionMsg.applySent"), href: `/app/applications/${id}`, hrefLabel: t("actionMsg.openApplication") };
+    if (r.reason === "handoff") return { ok: true, message: t("actionMsg.applyHandoff"), href: `/app/opportunities/${id}`, hrefLabel: t("actionMsg.howToSend") };
+    return { ok: true, message: t("actionMsg.applyWaiting"), href: `/app/opportunities/${id}`, hrefLabel: t("actionMsg.open") };
   } catch (e) {
     console.error("apply failed", e);
     await captureError(e, { source: "action", userId: user.id, meta: { step: "apply", opportunityId: id } });
     refresh(id);
-    return { error: "Не удалось подготовить заявку. Попробуй ещё раз." };
+    return { error: t("actionMsg.applyFailed") };
   }
 }
 

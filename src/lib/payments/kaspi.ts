@@ -8,6 +8,7 @@ import { offerAcceptance } from "../legal";
 import { logEvent, notify } from "../engine/agent";
 import { announceGuarantee, applyGuaranteeWith, settleGuarantees, type GuaranteeResult } from "../engine/guarantee";
 import { assessReadinessFor } from "./readiness-snapshot";
+import { withKeyLock } from "./lock";
 import { announceDeferredCredit, applyDeferredReferralCredit, markReferralPaid, referralOfferFor, referralPrice, rewardReferrer } from "../referral";
 
 /**
@@ -212,33 +213,52 @@ export async function mockPaidLast24h(userId: string) {
   return db.payment.count({ where: { userId, provider: MOCK_PROVIDER, status: "paid", paidAt: { gte: new Date(Date.now() - 86_400_000) } } });
 }
 
+/** Thrown by createInvoice when `beforeCreate` refuses a new invoice (e.g. the per-user invoice rate limit). */
+export class InvoiceRefused extends Error {}
+
 /**
  * Creates (or reuses) an invoice. Partner attribution comes only from user.referredByCode (set at signup) —
  * client-supplied codes are ignored so nobody can assign revenue share to an arbitrary partner at checkout.
+ * Find-or-create is serialized per user (in-process mutex + a user row lock in the transaction), so a burst of
+ * requests (double clicks, several tabs) always gets the same single open invoice per plan. `beforeCreate` runs only
+ * when a new invoice is really about to be created (the route's rate limit): reusing the open one never counts.
  */
-export async function createInvoice(userId: string, planKey: string) {
+export async function createInvoice(userId: string, planKey: string, opts: { beforeCreate?: () => Promise<boolean> } = {}) {
   const plan = PLANS[planKey as keyof typeof PLANS];
   if (!plan) throw new Error("unknown plan");
   const provider = mockEnabled() ? MOCK_PROVIDER : LIVE_PROVIDER;
-  // Reuse a still-open invoice for the same plan instead of piling up duplicates on double-clicks.
-  const open = await db.payment.findFirst({ where: { userId, provider, status: "pending", plan: plan.key }, orderBy: { createdAt: "desc" } });
-  if (open && !isExpired(open)) return open;
-  const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { referredByCode: true } });
-  const code = (user.referredByCode ?? "").trim().toUpperCase();
-  const partner = code ? await db.partner.findUnique({ where: { code } }) : null;
-  // «Приведи друга»: −10% on the invited user's first campaign (src/lib/referral.ts). Revenue share follows the amount charged.
-  const offer = await referralOfferFor(userId);
-  const price = offer ? referralPrice(plan.priceKzt) : { amount: plan.priceKzt, discountKzt: 0 };
-  const referral = offer ? { referral: { fullKzt: plan.priceKzt, discountKzt: price.discountKzt, pct: offer.pct, from: offer.referrerName } } : {};
-  return db.payment.create({
-    data: {
-      userId, amount: price.amount, currency: "KZT", provider, status: "pending", plan: plan.key,
-      externalId: `KSP-${randomBytes(16).toString("hex").toUpperCase()}`, // 128 bits: invoice ids are unguessable
-      // Built-in gateway payments move no money (any mode): attribution is kept, no revenue share is owed.
-      partnerCode: partner?.code ?? null, partnerCut: partner && provider !== MOCK_PROVIDER ? Math.round(price.amount * partner.revShare) : 0,
-      // Offer acceptance: the checkout screens say «Оплачивая, ты принимаешь условия публичной оферты» — the version shown is recorded.
-      meta: s({ expiresAt: new Date(Date.now() + INVOICE_TTL_MS).toISOString(), ...referral, offer: offerAcceptance() }),
-    },
+  const openInvoice = async (c: Tx | typeof db) => {
+    const open = await c.payment.findFirst({ where: { userId, provider, status: "pending", plan: plan.key }, orderBy: { createdAt: "desc" } });
+    return open && !isExpired(open) ? open : null;
+  };
+  return withKeyLock(`invoice:${userId}`, async () => {
+    // Reuse a still-open invoice for the same plan instead of piling up duplicates on double-clicks.
+    const reuse = await openInvoice(db);
+    if (reuse) return reuse;
+    if (opts.beforeCreate && !(await opts.beforeCreate())) throw new InvoiceRefused("invoice refused");
+    const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { referredByCode: true } });
+    const code = (user.referredByCode ?? "").trim().toUpperCase();
+    const partner = code ? await db.partner.findUnique({ where: { code } }) : null;
+    // «Приведи друга»: −10% on the invited user's first campaign (src/lib/referral.ts). Revenue share follows the amount charged.
+    const offer = await referralOfferFor(userId);
+    const price = offer ? referralPrice(plan.priceKzt) : { amount: plan.priceKzt, discountKzt: 0 };
+    const referral = offer ? { referral: { fullKzt: plan.priceKzt, discountKzt: price.discountKzt, pct: offer.pct, from: offer.referrerName } } : {};
+    // Another instance (Postgres, serverless) may have created one meanwhile: re-check under the user row lock.
+    return db.$transaction(async (tx) => {
+      await lockUser(tx, userId);
+      const raced = await openInvoice(tx);
+      if (raced) return raced;
+      return tx.payment.create({
+        data: {
+          userId, amount: price.amount, currency: "KZT", provider, status: "pending", plan: plan.key,
+          externalId: `KSP-${randomBytes(16).toString("hex").toUpperCase()}`, // 128 bits: invoice ids are unguessable
+          // Built-in gateway payments move no money (any mode): attribution is kept, no revenue share is owed.
+          partnerCode: partner?.code ?? null, partnerCut: partner && provider !== MOCK_PROVIDER ? Math.round(price.amount * partner.revShare) : 0,
+          // Offer acceptance: the checkout screens say «Оплачивая, ты принимаешь условия публичной оферты» — the version shown is recorded.
+          meta: s({ expiresAt: new Date(Date.now() + INVOICE_TTL_MS).toISOString(), ...referral, offer: offerAcceptance() }),
+        },
+      });
+    }, TX_OPTS);
   });
 }
 
@@ -268,6 +288,8 @@ const pushTx = (meta: Meta, tx: string) => ({ ...meta, txIds: [...(meta.txIds ??
 const seen = (meta: Meta, tx: string) => (meta.txIds ?? []).includes(tx) || meta.transactionId === tx;
 
 type Tx = Prisma.TransactionClient;
+/** Waiting for the connection / running the transaction: generous enough for a burst on SQLite, bounded everywhere. */
+const TX_OPTS = { maxWait: 15_000, timeout: 20_000 };
 
 /**
  * Serializes payment bookkeeping per user until the transaction ends. Postgres: a row lock (SELECT … FOR UPDATE).
@@ -296,6 +318,10 @@ export async function handleWebhook(evt: WebhookEvent, source: EventSource): Pro
   // stops retrying and the refund is on record — a 4xx here would leave a real charge with no trace.
   if (!p.userId) return settleOrphan(p.id, evt);
   const meta = j<Meta>(p.meta, {});
+  // A redelivery of the transaction that already settled this invoice: answer from the row, no transaction.
+  if (seen(meta, evt.transactionId) && p.status === "paid" && (p.campaignId || activationBlocked(meta))) {
+    return { ok: true, status: 200, duplicate: true, campaignId: p.campaignId, ...(activationBlocked(meta) ? { refundDue: true } : {}) };
+  }
 
   if (evt.event === "payment.failed") {
     if (seen(meta, evt.transactionId) || p.status === "paid") return { ok: true, status: 200, duplicate: true, campaignId: p.campaignId };
@@ -337,7 +363,7 @@ async function settleOrphan(paymentId: string, evt: WebhookEvent): Promise<Webho
       data: { status: "paid", paidAt: new Date(), meta: s(withRefund({ ...base, transactionId: evt.transactionId }, evt.transactionId, "account_deleted")) },
     });
     return { duplicate: false, refund: true };
-  });
+  }, TX_OPTS);
   if (r.refund) console.warn("[kaspi] payment for a deleted account — refund due", { paymentId, transactionId: evt.transactionId });
   return { ok: true, status: 200, duplicate: r.duplicate, campaignId: null, refundDue: r.refund };
 }
@@ -363,6 +389,13 @@ export async function activatePaid(paymentId: string, charge?: Charge): Promise<
   const found = await db.payment.findUniqueOrThrow({ where: { id: paymentId }, select: { userId: true } });
   if (!found.userId) return { claimed: false, duplicateCharge: false, kind: "not_paid" };
   const userId = found.userId;
+  // The same user's activations queue in-process first — the transaction AND its follow-up writes (events,
+  // notifications) — so a burst of deliveries never piles up competing writers (SQLite has a single writer and starves
+  // them into timeouts). lockUser inside the transaction still serializes them across instances.
+  return withKeyLock(`pay:${userId}`, () => activateLocked(paymentId, userId, charge));
+}
+
+async function activateLocked(paymentId: string, userId: string, charge?: Charge): Promise<ActivateResult> {
   const readiness = await assessReadinessFor(userId).catch(() => 0);
 
   type Inner = ActivateResult & { externalId?: string | null; planLabel?: string; days?: number; late?: boolean; newlyBlocked?: boolean; referralId?: string | null; referralDays?: number; guarantees?: { id: string; r: GuaranteeResult }[] };
@@ -410,7 +443,8 @@ export async function activatePaid(paymentId: string, charge?: Charge): Promise<
     const plan = PLANS[p.plan as keyof typeof PLANS] ?? PLANS.local;
     const campaign = await tx.campaign.create({
       data: {
-        userId, plan: plan.key, priceKzt: plan.priceKzt, status: "active", mode: user.goal?.mode ?? "autonomous", readiness,
+        // What was actually charged (a friend's invite discounts the first campaign), not the list price.
+        userId, plan: plan.key, priceKzt: p.amount > 0 ? p.amount : plan.priceKzt, status: "active", mode: user.goal?.mode ?? "autonomous", readiness,
         dailyLimit: plan.dailyLimit, autoSubmit: j<{ autoSubmit?: boolean }>(user.consents, {}).autoSubmit !== false, startedAt: now, endsAt: new Date(now.getTime() + plan.days * 86400000),
       },
     });
@@ -426,7 +460,7 @@ export async function activatePaid(paymentId: string, charge?: Charge): Promise<
       await tx.payment.update({ where: { id: o.id }, data: { status: "expired", meta: s({ ...j<Meta>(o.meta, {}), expiredReason: "campaign_started", expiredAt: now.toISOString() }) } });
     }
     return { ...base, kind: "created", campaignId: campaign.id, planLabel: plan.label, days: plan.days, referralId, referralDays };
-  });
+  }, TX_OPTS);
 
   for (const g of r.guarantees ?? []) await announceGuarantee(g.r, g.id);
   if (r.duplicateCharge) await logEvent(userId, "payment_refund_due", `Повторное списание по счёту ${r.externalId} (${charge?.tx}) — будет возвращено`);

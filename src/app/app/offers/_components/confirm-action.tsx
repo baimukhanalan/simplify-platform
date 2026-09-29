@@ -7,10 +7,10 @@ type Tone = "accept" | "decline";
 
 /**
  * Two-step irreversible action: a trigger reveals an inline confirmation with the real form.
- * Focus moves into the confirmation, Escape / "Отмена" return it to the trigger,
+ * Focus moves into the confirmation, Escape / Cancel return it to the trigger,
  * and the submit button locks on the first submit (pending + a ref guard against double clicks).
  */
-export function ConfirmAction({ action, offerId, tone, trigger, title, children, confirmLabel, pendingLabel, onDark = tone === "accept" }: {
+export function ConfirmAction({ action, offerId, tone, trigger, title, children, confirmLabel, pendingLabel, cancelLabel, onDark = tone === "accept" }: {
   action: (form: FormData) => void | Promise<void>;
   offerId: string;
   tone: Tone;
@@ -19,6 +19,7 @@ export function ConfirmAction({ action, offerId, tone, trigger, title, children,
   children: ReactNode;
   confirmLabel: string;
   pendingLabel: string;
+  cancelLabel: string;
   /** Rendered on the dark decision block: the quiet trigger needs light text. */
   onDark?: boolean;
 }) {
@@ -84,7 +85,7 @@ export function ConfirmAction({ action, offerId, tone, trigger, title, children,
           >
             <input type="hidden" name="offerId" value={offerId} />
             <ConfirmSubmit tone={tone} pendingLabel={pendingLabel}>{confirmLabel}</ConfirmSubmit>
-            <CancelButton tone={tone} onClick={close} />
+            <CancelButton tone={tone} onClick={close} label={cancelLabel} />
           </form>
         </div>
       )}
@@ -110,7 +111,7 @@ function ConfirmSubmit({ tone, pendingLabel, children }: { tone: Tone; pendingLa
   );
 }
 
-function CancelButton({ tone, onClick }: { tone: Tone; onClick: () => void }) {
+function CancelButton({ tone, onClick, label }: { tone: Tone; onClick: () => void; label: string }) {
   const { pending } = useFormStatus();
   return (
     <button
@@ -122,7 +123,7 @@ function CancelButton({ tone, onClick }: { tone: Tone; onClick: () => void }) {
         tone === "accept" ? "text-white/75 hover:bg-white/10 hover:text-white focus-visible:outline-[#7fe3b6]" : "text-ink-2 hover:bg-white/60 focus-visible:outline-green",
       )}
     >
-      Отмена
+      {label}
     </button>
   );
 }

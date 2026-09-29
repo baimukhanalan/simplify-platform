@@ -1,5 +1,6 @@
 // Admin analytics — pure helpers (no DB): periods, Almaty day/week buckets, medians, the signup→HIRED funnel.
 import { APP_TZ } from "../time";
+import { campaignDay as appCampaignDay } from "../campaign-day";
 
 export const DAY = 86400000;
 
@@ -193,11 +194,14 @@ export function buildCohorts(users: Iterable<StepTimes>, maxWeeks = 12): CohortR
 
 /* ——— Campaign day ——— */
 
-/** «день X из Y» of a campaign: Y from its dates (plan days + bonus days), X clamped into 1..Y. */
+/** «день X из Y» of a started campaign — the app's formula (src/lib/campaign-day.ts: day 1 is the start day); null before the start. */
 export function campaignDay(c: { startedAt: Date | null; endsAt: Date | null; bonusDays?: number }, now = Date.now(), planDays = 60) {
   if (!c.startedAt) return null;
-  const start = c.startedAt.getTime();
-  const total = c.endsAt ? Math.max(1, Math.round((c.endsAt.getTime() - start) / DAY)) : planDays + (c.bonusDays ?? 0);
-  const day = Math.min(total, Math.max(1, Math.ceil((now - start) / DAY)));
-  return { day, total };
+  return appCampaignDay(c, now, planDays);
+}
+
+/** Bonus days split by origin: the interview guarantee adds GUARANTEE_DAYS once (guaranteeStatus "extended"); the rest are referral rewards. */
+export function bonusBreakdown(c: { bonusDays: number; guaranteeStatus: string }, guaranteeDays = 30) {
+  const guarantee = c.guaranteeStatus === "extended" ? Math.min(guaranteeDays, Math.max(0, c.bonusDays)) : 0;
+  return { total: c.bonusDays, guarantee, referral: Math.max(0, c.bonusDays - guarantee) };
 }

@@ -2,6 +2,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import { Bell, BellOff, BellRing } from "lucide-react";
+import { useT } from "@/lib/i18n/client";
 
 type Item = { id: string; type: string; title: string; body: string };
 type Perm = NotificationPermission | "unsupported";
@@ -22,6 +23,7 @@ const POLL_MS = 30_000;
  * and, when the user allowed it, fire a system notification. Items already unread at page load are only shown in-app.
  */
 export function Notifier() {
+  const t = useT();
   const permission = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const router = useRouter();
   const seen = useRef<Set<string> | null>(null);
@@ -64,17 +66,17 @@ export function Notifier() {
   if (permission === "unsupported") return null;
   if (permission === "granted") {
     return (
-      <span className="inline-flex h-9 items-center gap-1.5 px-2 text-[12px] text-ink-3" title="Системные уведомления включены: интервью, assessment и офферы">
+      <span className="inline-flex h-9 items-center gap-1.5 px-2 text-[12px] text-ink-3" title={t("shell.notifier.grantedTitle")}>
         <BellRing className="size-4 text-green" strokeWidth={1.7} aria-hidden />
-        <span className="sr-only sm:not-sr-only">Уведомления включены</span>
+        <span className="sr-only sm:not-sr-only">{t("shell.notifier.granted")}</span>
       </span>
     );
   }
   if (permission === "denied") {
     return (
-      <span className="inline-flex h-9 items-center gap-1.5 px-2 text-[12px] text-ink-3" title="Уведомления заблокированы в настройках браузера">
+      <span className="inline-flex h-9 items-center gap-1.5 px-2 text-[12px] text-ink-3" title={t("shell.notifier.denied")}>
         <BellOff className="size-4" strokeWidth={1.7} aria-hidden />
-        <span className="sr-only">Уведомления заблокированы в настройках браузера</span>
+        <span className="sr-only">{t("shell.notifier.denied")}</span>
       </span>
     );
   }
@@ -88,7 +90,7 @@ export function Notifier() {
       className="inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[12.5px] text-teal transition-colors hover:bg-white/70 hover:text-head focus-visible:outline-2 focus-visible:outline-green"
     >
       <Bell className="size-4" strokeWidth={1.7} aria-hidden />
-      Сообщать об интервью
+      {t("shell.notifier.enable")}
     </button>
   );
 }

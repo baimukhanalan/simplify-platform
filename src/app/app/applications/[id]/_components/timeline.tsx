@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { Activity, ArrowRightLeft, BadgeDollarSign, CalendarClock, CheckCheck, ClipboardList, FileText, Hourglass, Mail, Mic, Send, ShieldCheck, XCircle } from "lucide-react";
-import { fmtDateTime } from "@/lib/ops";
 import { cx } from "@/components/ui";
 
 export type Step = { at: Date | null; kind: string; title: string; detail?: string; href?: string; tag?: string; upcoming?: boolean };
@@ -18,8 +17,11 @@ const ACCENT: Record<string, string> = {
   rejection: "border-stroke bg-[#f6e7e7] text-rose",
 };
 
-/** The story of one application, oldest first; an optional last "upcoming" step shows what the agent is waiting for. */
-export function Timeline({ steps }: { steps: Step[] }) {
+/**
+ * The story of one application, oldest first; an optional last "upcoming" step shows what the agent is waiting for.
+ * `next` labels that step («дальше»); `time` formats a step's moment in the interface language.
+ */
+export function Timeline({ steps, next, time }: { steps: Step[]; next: string; time: (d: Date) => string }) {
   return (
     <ol className="relative flex flex-col gap-4 before:absolute before:bottom-3 before:left-[13px] before:top-3 before:w-px before:bg-line">
       {steps.map((s, i) => {
@@ -32,9 +34,9 @@ export function Timeline({ steps }: { steps: Step[] }) {
             </span>
             <div className="flex min-w-0 flex-col gap-0.5 pt-0.5">
               {s.at ? (
-                <time dateTime={s.at.toISOString()} className="font-mono text-[11px] uppercase tracking-[.06em] text-ink-3">{fmtDateTime(s.at)}</time>
+                <time dateTime={s.at.toISOString()} className="font-mono text-[11px] uppercase tracking-[.06em] text-ink-3">{time(s.at)}</time>
               ) : (
-                <span className="font-mono text-[11px] uppercase tracking-[.06em] text-ink-3">{s.upcoming ? "дальше" : "—"}</span>
+                <span className="font-mono text-[11px] uppercase tracking-[.06em] text-ink-3">{s.upcoming ? next : "—"}</span>
               )}
               {s.href ? <Link href={s.href} className="inline-flex min-h-10 w-fit items-center rounded hover:underline focus-visible:outline-2 focus-visible:outline-green">{title}</Link> : title}
               {s.detail && <span className="break-words text-[12.5px] leading-snug text-ink-3">{s.detail}</span>}

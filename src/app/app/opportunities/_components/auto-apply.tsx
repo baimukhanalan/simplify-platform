@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ShieldCheck } from "lucide-react";
 import { cx } from "@/components/ui";
 import { setAutoApply } from "@/lib/actions/opportunities";
+import { useT } from "@/lib/i18n/client";
 
 /**
  * Global "Auto-apply all jobs above N% match" switch = User.autonomy.submitApplications (the Agent screen writes the
@@ -22,6 +23,7 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
   const [on, setOn] = useOptimistic(saved);
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
+  const t = useT();
 
   const toggle = () => {
     const next = !on;
@@ -31,9 +33,9 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
       try {
         const r = await setAutoApply(next);
         setSaved(r.enabled);
-        if (!r.ok) setError("Не удалось сохранить — переключатель вернулся в прежнее положение. Попробуй ещё раз.");
+        if (!r.ok) setError(t("opps.autoSaveFailed"));
       } catch {
-        setError("Не удалось сохранить — переключатель вернулся в прежнее положение. Попробуй ещё раз.");
+        setError(t("opps.autoSaveFailed"));
       }
     });
   };
@@ -59,22 +61,18 @@ export function AutoApplyToggle({ enabled, min, consent }: { enabled: boolean; m
         </button>
         <div className="flex min-w-0 flex-col gap-0.5">
           <label id="auto-apply-label" htmlFor="auto-apply-switch" className="-my-2.5 cursor-pointer py-2.5 text-[14px] font-medium leading-snug text-head">
-            Автоподача на все вакансии с Match от <span className="num">{min}%</span>
+            {t.rich("opps.autoLabel", { min }, { n: (c) => <span className="num">{c}</span> })}
           </label>
           <span className="text-[12.5px] text-ink-3" aria-live="polite">
-            {!consent
-              ? "Автоподача выключена в настройках — агент готовит пакеты, но сам ничего не отправляет. Подать можно кнопкой Apply."
-              : on
-                ? `Включено — агент сам подаёт на вакансии с Match ≥ ${min}% и на отмеченные Auto`
-                : "Выключено — агент подаёт только на отмеченные Apply / Auto"}
+            {!consent ? t("opps.autoNoConsent") : on ? t("opps.autoOnHint", { min }) : t("opps.autoOffHint")}
           </span>
-          {!consent && <Link href="/app/settings" className="inline-flex min-h-10 items-center text-[12.5px] text-teal underline-offset-2 hover:underline sm:min-h-0">Включить автоподачу</Link>}
-          <Link href="/app/agent" className="inline-flex min-h-10 items-center text-[12px] text-ink-3 underline-offset-2 hover:text-head hover:underline sm:min-h-0">Порог Match — в настройках агента</Link>
+          {!consent && <Link href="/app/settings" className="inline-flex min-h-10 items-center text-[12.5px] text-teal underline-offset-2 hover:underline sm:min-h-0">{t("opps.enableAuto")}</Link>}
+          <Link href="/app/agent" className="inline-flex min-h-10 items-center text-[12px] text-ink-3 underline-offset-2 hover:text-head hover:underline sm:min-h-0">{t("opps.thresholdLink")}</Link>
         </div>
       </div>
       <p id="auto-apply-hint" className="flex items-start gap-1.5 text-[12px] leading-snug text-ink-3">
         <ShieldCheck className="mt-px size-3.5 shrink-0 text-teal" aria-hidden />
-        Чувствительные вопросы (визы, юридические, самоидентификация) всё равно придут тебе на подтверждение.
+        {t("opps.sensitiveNote")}
       </p>
       {error && <p role="alert" className="text-[12.5px] text-rose">{error}</p>}
     </div>

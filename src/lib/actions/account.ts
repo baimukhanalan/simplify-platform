@@ -7,6 +7,7 @@ import { logEvent } from "../engine/agent";
 import { loadCareer } from "../career";
 import { startOfToday } from "../time";
 import type { FormState } from "./profile";
+import { actionT } from "../i18n/action";
 
 export type Consents = { terms?: boolean; autoSubmit?: boolean; emailScan?: boolean; copilot?: boolean; analytics?: boolean; at?: string };
 const CONSENT_KEYS = ["autoSubmit", "emailScan", "copilot", "analytics"] as const;
@@ -27,7 +28,8 @@ export async function updateConsents(_: FormState, form: FormData): Promise<Form
   await db.campaign.updateMany({ where: { userId: user.id, status: { in: ["active", "paused"] } }, data: { autoSubmit: Boolean(next.autoSubmit) } });
   if (changed.length) await logEvent(user.id, "consents_updated", `Согласия изменены — ${changed.join(", ")}`);
   revalidatePath("/app", "layout");
-  return { ok: true, message: changed.length ? "Согласия обновлены" : "Без изменений", at: Date.now() };
+  const t = await actionT();
+  return { ok: true, message: changed.length ? t("settingsPage.err.consentsUpdated") : t("settingsPage.err.noChanges"), at: Date.now() };
 }
 
 export async function setCareerMode(form: FormData) {
@@ -52,7 +54,7 @@ export async function recordSnapshot() {
 export async function deleteAccount(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const typed = String(form.get("confirmEmail") ?? "").trim().toLowerCase();
-  if (typed !== user.email.toLowerCase()) return { ok: false, error: "Email не совпадает — аккаунт не удалён.", at: Date.now() };
+  if (typed !== user.email.toLowerCase()) return { ok: false, error: (await actionT())("settingsPage.err.emailMismatch"), at: Date.now() };
   // Every user-owned relation cascades (profile, facts, campaigns → opportunities, events, …).
   await db.user.delete({ where: { id: user.id } });
   await destroySession();

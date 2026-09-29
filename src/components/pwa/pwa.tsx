@@ -4,6 +4,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { Share, SquarePlus, X } from "lucide-react";
 import { installEvent, isIos, isStandalone, store, swRegistration } from "@/lib/push-client";
 import { isPushHiddenOn } from "@/lib/push";
+import { useT } from "@/lib/i18n/client";
 
 const SESSIONS_KEY = "simplify:pwa:sessions";
 const SESSION_FLAG = "simplify:pwa:session";
@@ -52,6 +53,7 @@ export function Pwa() {
 type Mode = "prompt" | "ios" | null;
 
 function InstallPrompt() {
+  const t = useT();
   const pathname = usePathname();
   const deferred = useSyncExternalStore(installEvent.subscribe, installEvent.get, installEvent.getServer);
   const [eligible, setEligible] = useState<"prompt" | "ios" | "wait" | null>(null);
@@ -88,27 +90,29 @@ function InstallPrompt() {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/icons/icon-192.png" alt="" width={44} height={44} className="size-11 shrink-0 rounded-[12px]" />
       <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <h2 id="pwa-install-h" className="h-serif pr-8 text-[18px]">Установить Simplify</h2>
+        <h2 id="pwa-install-h" className="h-serif pr-8 text-[18px]">{t("pwa.installTitle")}</h2>
         {mode === "prompt" ? (
           <>
-            <p className="text-[13.5px] text-ink-3">Иконка на экране, отдельное окно и уведомления об интервью и офферах — без магазина приложений.</p>
+            <p className="text-[13.5px] text-ink-3">{t("pwa.installText")}</p>
             <div className="mt-1.5 flex flex-wrap gap-2">
               <button type="button" onClick={install} className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-cta px-4 text-[13px] font-medium text-[#fcfcfc] shadow-(--shadow-cta) transition-all hover:bg-[#2f2c2c] focus-visible:outline-2 focus-visible:outline-offset-3 focus-visible:outline-green active:scale-[.98]">
-                Установить
+                {t("pwa.install")}
               </button>
               <button type="button" onClick={dismiss} className="inline-flex h-10 items-center rounded-full px-4 text-[13px] font-medium text-head transition-colors hover:bg-white/60 focus-visible:outline-2 focus-visible:outline-green">
-                Не сейчас
+                {t("pwa.notNow")}
               </button>
             </div>
           </>
         ) : (
           <p className="text-[13.5px] text-ink-3">
-            Нажми <Share className="inline size-4 -translate-y-px text-head" strokeWidth={1.8} aria-label="«Поделиться»" /> «Поделиться», затем{" "}
-            <SquarePlus className="inline size-4 -translate-y-px text-head" strokeWidth={1.8} aria-hidden /> «На экран Домой». Так Simplify откроется как приложение и сможет присылать уведомления.
+            {t.rich("pwa.iosText", {}, {
+              share: () => <Share className="inline size-4 -translate-y-px text-head" strokeWidth={1.8} aria-label={t("pwa.shareAria")} />,
+              plus: () => <SquarePlus className="inline size-4 -translate-y-px text-head" strokeWidth={1.8} aria-hidden />,
+            })}
           </p>
         )}
       </div>
-      <button type="button" onClick={dismiss} aria-label="Закрыть" className="absolute right-2 top-2 grid size-10 place-items-center rounded-full text-ink-3 transition-colors hover:bg-white/70 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
+      <button type="button" onClick={dismiss} aria-label={t("pwa.close")} className="absolute right-2 top-2 grid size-10 place-items-center rounded-full text-ink-3 transition-colors hover:bg-white/70 hover:text-head focus-visible:outline-2 focus-visible:outline-green">
         <X className="size-4" strokeWidth={1.8} aria-hidden />
       </button>
     </aside>

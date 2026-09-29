@@ -3,6 +3,11 @@
 // next to a company name must not reject anything. Pure (no DB).
 import { senderAddress } from "./verify";
 
+/** InboxMessage.source of a forwarded letter that is shown but never authoritative (see service.ts). */
+export const UNVERIFIED_SOURCE = "forward-unverified";
+/** InboxMessage sources that never move the pipeline or count as interview evidence. */
+export const INERT_SOURCES = [UNVERIFIED_SOURCE];
+
 const SPAM = /^(?:yes|true)\b/i;
 const BULK_PRECEDENCE = /^(?:bulk|list|junk)\b/i;
 const BOUNCE_SENDER = /^(?:mailer-daemon|postmaster)@/i;

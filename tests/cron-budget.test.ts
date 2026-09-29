@@ -136,6 +136,7 @@ describe("cron time budget", () => {
     const c = await db.campaign.findUniqueOrThrow({ where: { id: p.id } });
     assert.equal(c.status, "paused");
     assert.equal(c.guaranteeStatus, "extended");
-    assert.equal(c.endsAt!.getTime() - endsAt.getTime(), 30 * 86400000);
+    // 30 real days from the moment of the extension (max(endsAt, now)), never from an end already in the past.
+    assert.ok(Math.abs(c.endsAt!.getTime() - (realNow() + 30 * 86400000)) < 60_000);
   });
 });

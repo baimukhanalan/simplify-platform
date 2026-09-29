@@ -2,30 +2,30 @@ import type { Fact, Story } from "@prisma/client";
 import { Mic, TrendingUp } from "lucide-react";
 import { Card, Chip } from "@/components/ui";
 import { j } from "@/lib/db";
-import type { StoryTag } from "@/lib/actions/profile";
-import { STORY_TAGS, STORY_TAG_RU } from "@/lib/ru";
+import { STORY_TAGS } from "@/lib/ru";
+import { getT } from "@/lib/i18n/server";
 import { AddStory, EditStory } from "./editors";
 
-/** Tags and their labels from one map (lib STORY_TAG_RU) — the Interview Room's STAR library reads the same. */
-const TAGS: { key: StoryTag; label: string }[] = STORY_TAGS.map((key) => ({ key, label: STORY_TAG_RU[key] }));
+/** Story tag keys from one list (lib STORY_TAGS) — the Interview Room's STAR library reads the same; labels: profilePage.tags. */
+const isTag = (k: string): k is (typeof STORY_TAGS)[number] => (STORY_TAGS as readonly string[]).includes(k);
 
-const TAG_LABEL: Record<string, string> = Object.fromEntries(TAGS.map((t) => [t.key, t.label]));
-
-export function Stories({ stories, facts }: { stories: (Story & { fact: Fact | null })[]; facts: Pick<Fact, "id" | "title" | "org">[] }) {
+export async function Stories({ stories, facts }: { stories: (Story & { fact: Fact | null })[]; facts: Pick<Fact, "id" | "title" | "org">[] }) {
+  const t = await getT();
+  const tagLabel = (k: string) => (isTag(k) ? t(`profilePage.tags.${k}`) : k);
   const covered = new Set(stories.flatMap((s) => j<string[]>(s.tags, [])));
-  const missing = TAGS.filter((t) => !covered.has(t.key));
+  const missing = STORY_TAGS.filter((k) => !covered.has(k));
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start gap-3 rounded-2xl border border-teal/15 bg-teal/5 px-4 py-3 text-[13.5px] text-ink-2">
         <Mic className="mt-0.5 size-4 shrink-0 text-teal" strokeWidth={1.7} aria-hidden />
         <p>
-          <span className="font-medium text-head">Материал для интервью.</span> Из этих историй агент собирает подсказки и готовит тебя к поведенческим вопросам.
-          {missing.length > 0 && <> Не покрыты темы: {missing.map((t) => t.label.toLowerCase()).join(", ")}.</>}
+          {t.rich("profilePage.stories.intro", {}, { b: (c) => <span className="font-medium text-head">{c}</span> })}
+          {missing.length > 0 && <> {t("profilePage.stories.uncovered", { topics: missing.map((k) => tagLabel(k).toLocaleLowerCase(t.locale)).join(", ") })}</>}
         </p>
       </div>
 
       {stories.length === 0 && (
-        <Card className="text-center text-[14px] text-ink-3">Историй пока нет. Агент подготовит их из твоего опыта перед первым интервью — или начни с самого измеримого результата.</Card>
+        <Card className="text-center text-[14px] text-ink-3">{t("profilePage.stories.empty")}</Card>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -34,10 +34,10 @@ export function Stories({ stories, facts }: { stories: (Story & { fact: Fact | n
           return (
             <Card key={s.id} className="flex animate-rise flex-col gap-3" style={{ animationDelay: `${i * 50}ms` }}>
               <div className="flex flex-wrap gap-1.5">
-                {tags.map((t) => <Chip key={t} tone="teal">{TAG_LABEL[t] ?? t}</Chip>)}
+                {tags.map((k) => <Chip key={k} tone="teal">{tagLabel(k)}</Chip>)}
               </div>
               <h3 className="h-serif text-[19px]">{s.title}</h3>
-              {s.fact && <div className="label !normal-case !tracking-normal !text-[12px]">Основано на факте: {s.fact.title}{s.fact.org ? ` · ${s.fact.org}` : ""}</div>}
+              {s.fact && <div className="label !normal-case !tracking-normal !text-[12px]">{t("profilePage.stories.basedOn", { fact: s.fact.org ? `${s.fact.title} · ${s.fact.org}` : s.fact.title })}</div>}
               <dl className="grid gap-2 text-[13.5px]">
                 {([["S", s.situation], ["T", s.task], ["A", s.action], ["R", s.result]] as const).map(([k, v]) => (
                   <div key={k} className="grid grid-cols-[22px_1fr] gap-2">

@@ -14,6 +14,8 @@ export type PushPayload = { title: string; body: string; url: string; tag?: stri
 export type SendResult = { sent: number; removed: number; failed: number };
 
 const SEND_TIMEOUT_MS = 10_000;
+/** Engine notifications: delivered after the response / detached, so a short bound (the cron catch-up retries). */
+const DELIVER_TIMEOUT_MS = 4_000;
 const MAX_DEVICES = 10;
 
 const defaultSender: PushSender = async (sub, payload, opts) => {
@@ -151,17 +153,17 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 /** Sends to the given subscriptions in parallel; gone ones (404/410) are deleted. Never throws. */
-async function sendTo(subs: { id: string; endpoint: string; p256dh: string; auth: string }[], payload: PushPayload, send: PushSender): Promise<SendResult> {
+async function sendTo(subs: { id: string; endpoint: string; p256dh: string; auth: string }[], payload: PushPayload, send: PushSender, timeoutMs = SEND_TIMEOUT_MS): Promise<SendResult> {
   const cfg = vapidConfig();
   const res: SendResult = { sent: 0, removed: 0, failed: 0 };
   if (!cfg || !subs.length) return res;
   const body = JSON.stringify(payload);
-  const opts: PushSendOptions = { TTL: 24 * 3600, urgency: "high", timeout: SEND_TIMEOUT_MS, vapidDetails: cfg };
+  const opts: PushSendOptions = { TTL: 24 * 3600, urgency: "high", timeout: timeoutMs, vapidDetails: cfg };
   const gone: { id: string; endpoint: string }[] = [];
   await Promise.all(
     subs.map(async (s) => {
       try {
-        await withTimeout(send({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, opts), SEND_TIMEOUT_MS + 2000);
+        await withTimeout(send({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, body, opts), timeoutMs + 1000);
         res.sent++;
       } catch (e) {
         const code = (e as { statusCode?: number }).statusCode;
@@ -210,11 +212,13 @@ export async function deliverWebPush(n: OutgoingNotification, deps: { send?: Pus
     if (!(await pushPrefOn(n.userId))) return;
     const subs = await db.pushSubscription.findMany({ where: { userId: n.userId } });
     if (!subs.length) return;
-    const claim = await db.notification.updateMany({ where: { id: n.id, userId: n.userId, pushSentAt: null }, data: { pushSentAt: new Date() } });
+    const claimedAt = new Date();
+    const claim = await db.notification.updateMany({ where: { id: n.id, userId: n.userId, pushSentAt: null }, data: { pushSentAt: claimedAt } });
     if (!claim.count) return;
     const payload: PushPayload = { title: n.title.slice(0, 120) || "Simplify", body: n.body.slice(0, 300), url: pushUrl(n.href), tag: n.id };
-    const r = await sendTo(subs, payload, deps.send ?? defaultSender);
-    if (!r.sent) await db.notification.updateMany({ where: { id: n.id }, data: { pushSentAt: null } });
+    const r = await sendTo(subs, payload, deps.send ?? defaultSender, DELIVER_TIMEOUT_MS);
+    // Release only our own claim (a later dispatch may have claimed and sent it meanwhile).
+    if (!r.sent) await db.notification.updateMany({ where: { id: n.id, pushSentAt: claimedAt }, data: { pushSentAt: null } });
   } catch (e) {
     console.error("[webpush] deliver failed", e);
   }

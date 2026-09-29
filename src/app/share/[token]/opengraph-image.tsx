@@ -1,25 +1,27 @@
 import { ImageResponse } from "next/og";
 import { notFound } from "next/navigation";
-import { headline, loadShare } from "./data";
-import { plural } from "../../_components/ru";
+import { getT } from "@/lib/i18n/server";
+import { loadShare, ogTitle } from "./data";
 
-export const alt = "HIRED. — история поиска с Simplify";
+// `alt` must be a static export (generateImageMetadata would move the image URL to …/opengraph-image/<id>), so it is
+// language-neutral. The card text follows the `locale` cookie (getT); crawlers without one get ru.
+export const alt = "HIRED. · Simplify";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default async function Image({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const d = await loadShare(token);
+  const [d, t] = await Promise.all([loadShare(token), getT()]);
   if (!d) notFound();
-  const title = d ? headline(d).replace(/:\s*HIRED\.\s*/, " · ").replace(/:\s*HIRED\.$/, "") : "Новая работа вместе с Simplify";
+  const title = d ? ogTitle(t, d) : t("sharePage.ogFallback");
   // Role/company are clamped in loadShare; long (e.g. Kazakh) titles still get a smaller size to stay inside the card.
-  // Default next/og font (Geist) covers Cyrillic incl. Kazakh letters, so names/roles render without transliteration.
+  // Default next/og font (Geist) covers Cyrillic incl. Kazakh letters (әғқңөұүһі), so kk copy and names render as is.
   const titleSize = title.length > 110 ? 30 : title.length > 70 ? 34 : 40;
   const stats = d
     ? [
-        [String(d.applications), plural(d.applications, ["заявка", "заявки", "заявок"])],
-        [String(d.interviews), "интервью"],
-        ...(d.daysToOffer != null ? [[String(d.daysToOffer), `${plural(d.daysToOffer, ["день", "дня", "дней"])} до оффера`]] : []),
+        [String(d.applications), t("sharePage.applications", { n: d.applications })],
+        [String(d.interviews), t("sharePage.interviews", { n: d.interviews })],
+        ...(d.daysToOffer != null ? [[String(d.daysToOffer), t("sharePage.daysToOffer", { n: d.daysToOffer })]] : []),
       ]
     : [];
 

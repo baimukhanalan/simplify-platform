@@ -9,17 +9,22 @@ export type ForwardingVerification = {
   provider: VerifyProvider;
   /** Numeric confirmation code (Gmail), or null. */
   code: string | null;
-  /** Confirmation link on the provider's own domain (never any other host), or null. */
+  /** Confirmation link in the provider's exact confirmation-URL shape (Gmail only), or null. */
   link: string | null;
   /** The mailbox that asked to forward (e.g. name@gmail.com), when the letter names it. */
   requester: string | null;
 };
 
-const PROVIDERS: { provider: VerifyProvider; sender: RegExp; linkHost: RegExp }[] = [
-  { provider: "gmail", sender: /@(?:[\w-]+\.)*google\.com$/, linkHost: /^(?:mail-settings|mail|accounts)\.google\.com$/ },
-  { provider: "yandex", sender: /@(?:[\w-]+\.)*yandex\.(?:ru|kz|com|by|ua|com\.tr)$|@ya\.ru$/, linkHost: /^(?:[\w-]+\.)*yandex\.(?:ru|kz|com|by|ua|com\.tr)$/ },
-  { provider: "mailru", sender: /@(?:[\w-]+\.)*(?:mail\.ru|corp\.mail\.ru|vk\.team)$/, linkHost: /^(?:[\w-]+\.)*mail\.ru$/ },
-  { provider: "outlook", sender: /@(?:[\w-]+\.)*(?:microsoft\.com|outlook\.com|live\.com|hotmail\.com)$/, linkHost: /^(?:[\w-]+\.)*(?:live\.com|outlook\.com|microsoft\.com|office\.com)$/ },
+/**
+ * `link`: the exact shape of the provider's confirmation URL. Only Gmail's is known for certain
+ * (https://mail-settings.google.com/mail/vf-… , older letters: https://mail.google.com/mail/vf-…); for the others the card
+ * shows the numeric code only — a letter can be forged, and the card must never offer an arbitrary link.
+ */
+const PROVIDERS: { provider: VerifyProvider; sender: RegExp; link: RegExp | null }[] = [
+  { provider: "gmail", sender: /@(?:[\w-]+\.)*google\.com$/, link: /^https:\/\/(?:mail-settings|mail)\.google\.com\/mail\/(?:u\/\d\/)?vf-[A-Za-z0-9%_.~-]{1,1500}$/ },
+  { provider: "yandex", sender: /@(?:[\w-]+\.)*yandex\.(?:ru|kz|com|by|ua|com\.tr)$|@ya\.ru$/, link: null },
+  { provider: "mailru", sender: /@(?:[\w-]+\.)*(?:mail\.ru|corp\.mail\.ru|vk\.team)$/, link: null },
+  { provider: "outlook", sender: /@(?:[\w-]+\.)*(?:microsoft\.com|outlook\.com|live\.com|hotmail\.com)$/, link: null },
 ];
 
 const FORWARD = /forward|пересыл|переадрес/i;
@@ -45,15 +50,13 @@ export function detectForwardingVerification(from: string, subject: string, text
     null;
 
   let link: string | null = null;
-  for (const m of head.matchAll(/https:\/\/[^\s<>"')\]]+/g)) {
-    try {
-      const u = new URL(m[0].replace(/[.,;]+$/, ""));
-      if (u.protocol === "https:" && !u.username && !u.password && p.linkHost.test(u.hostname.toLowerCase()) && u.href.length <= 2000) {
-        link = u.href;
+  if (p.link) {
+    for (const m of head.matchAll(/https:\/\/[^\s<>"')\]]+/g)) {
+      const candidate = m[0].replace(/[.,;]+$/, "");
+      if (p.link.test(candidate)) {
+        link = candidate;
         break;
       }
-    } catch {
-      /* not a URL */
     }
   }
   if (!code && !link) return null;

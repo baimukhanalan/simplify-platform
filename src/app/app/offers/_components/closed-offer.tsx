@@ -2,24 +2,26 @@ import Link from "next/link";
 import type { Offer } from "@prisma/client";
 import { ArrowUpRight } from "lucide-react";
 import { Chip } from "@/components/ui";
+import { getT } from "@/lib/i18n/server";
 import { compBreakdown } from "./comp";
 
 /** Accepted / declined offers: one compact row each. */
-export function ClosedOffer({ offer: o }: { offer: Offer }) {
-  const c = compBreakdown(o);
+export async function ClosedOffer({ offer: o }: { offer: Offer }) {
+  const t = await getT();
+  const c = compBreakdown(o, t);
   const accepted = o.status === "accepted";
   return (
     <li className="glass flex flex-col gap-3 !rounded-2xl px-4 py-3.5 sm:flex-row sm:items-center sm:gap-5 sm:px-5">
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate text-[15px] font-medium text-head">{o.company}</span>
-          <Chip tone={accepted ? "green" : "neutral"}>{accepted ? "Принят" : "Отклонён"}</Chip>
+          <Chip tone={accepted ? "green" : "neutral"}>{t(accepted ? "offersPage.status.accepted" : "offersPage.status.declined")}</Chip>
         </div>
-        <span className="truncate text-[13px] text-ink-3">{o.role} · {o.createdAt.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "numeric", month: "short", year: "numeric" })}</span>
+        <span className="truncate text-[13px] text-ink-3">{o.role} · {t.date(o.createdAt, "dayMonthYear")}</span>
       </div>
       <div className="flex items-center justify-between gap-5 sm:justify-end">
         <div className="flex flex-col sm:items-end">
-          <span className="label !text-[11px]">Оклад</span>
+          <span className="label !text-[11px]">{t("offersPage.comp.base")}</span>
           <span className="num text-[18px] leading-tight text-head">{c.money(c.base)}</span>
         </div>
         {accepted && (

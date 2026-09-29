@@ -9,29 +9,32 @@ import { startOfToday } from "@/lib/time";
 import { isSimulation, visibleOpportunities } from "@/lib/mode";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
-import { LANE, salaryLabel, statusTone } from "@/lib/ops";
+import { LANE, statusTone } from "@/lib/ops";
 import { DREAM_DECISION, blockerRu, fitVerdict } from "@/lib/engine/matching";
 import { ButtonLink, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
-import { breakdown, discoverySentence } from "../_components/today-data";
-import { decisionsWaiting, needsYouCached } from "../../_components/global-needs";
-import { handoffsWaiting, placeWithFormat, questionsWaiting, statusRu } from "../../_components/ru";
+import { breakdown, todaySentenceT, type Breakdown } from "../_components/today-data";
+import { needsYouCached } from "../../_components/global-needs";
+import { getT } from "@/lib/i18n/server";
+import { I18nScope } from "@/lib/i18n/scope";
+import type { T } from "@/lib/i18n/translator";
 import { matchTone } from "./_components/bits";
 import { OpportunityCard, type CardView } from "./_components/card";
 import { AutoApplyToggle } from "./_components/auto-apply";
 import { Announcer } from "./_components/announcer";
 import { fitCandidate } from "./_lib/candidate";
-import { interviewChance, isDreamCompany, overrideNote, plural, risks, whyFits, type FitCandidate, type Reason } from "./_lib/fit";
-import { agoRu } from "./_lib/when";
+import { blockedHeadline, interviewChance, isDreamCompany, overrideNote, risks, whyFits, type FitCandidate, type Reason } from "./_lib/fit";
+import { agoT, placeT, salaryT, statusT } from "./_lib/labels";
+import { decisionsWaitingT, handoffsWaitingT, questionsWaitingT } from "./_lib/needs";
 
 export const metadata = { title: "Opportunities" };
 
 const PER_PAGE = 24;
 const OPEN = ["found", "qualified", "prepared"];
 const TABS = [
-  { key: "strong", label: "Ждут решения" },
-  { key: "all", label: "Все" },
-  { key: "skipped", label: "Пропущенные" },
+  { key: "strong", label: "tabStrong" },
+  { key: "all", label: "tabAll" },
+  { key: "skipped", label: "tabSkipped" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
 /** Simulation mode: the agent decides every role itself, so there is no «Ждут решения» tab — the feed opens on «Все». */
@@ -52,16 +55,17 @@ function href(tab: Tab, q: string, page = 1) {
 
 export default async function OpportunitiesPage({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
-  const user = await requireUser();
+  const [user, t] = await Promise.all([requireUser(), getT()]);
   const campaign = await currentCampaign(user.id);
+  const title = t.rich("opps.title", {}, { s: (c) => <Script>{c}</Script> });
   if (!campaign) {
     return (
       <>
-        <PageHeader eyebrow="Opportunities" title={<>Что агент <Script>нашёл</Script></>} />
+        <PageHeader eyebrow="Opportunities" title={title} />
         <Empty
-          title="Агент ещё не начал поиск"
-          sub="После запуска кампании агент каждый день собирает вакансии, проверяет Match и требования и подаёт на сильные сам. Здесь ты увидишь, что он нашёл."
-          action={<ButtonLink href="/app/campaign">Начать кампанию</ButtonLink>}
+          title={t("opps.noCampaignTitle")}
+          sub={t("opps.noCampaignSub")}
+          action={<ButtonLink href="/app/campaign">{t("opps.startCampaign")}</ButtonLink>}
         />
       </>
     );
@@ -118,25 +122,29 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     fitCandidate(user),
   ]);
   const pages = Math.max(1, Math.ceil(total / PER_PAGE));
-  const when = foundToday ? "Сегодня" : foundWeek ? "За неделю" : "За кампанию";
+  const whenKey: When = foundToday ? "today" : foundWeek ? "week" : "campaign";
+  const when = t(whenKey === "today" ? "opps.whenToday" : whenKey === "week" ? "opps.whenWeek" : "opps.whenCampaign");
   const found = breakdown(windowOpps);
   const queued = new Set(queue.ids);
   // Reasons that hold every card for the same account-level cause are said once above the feed, not on each card.
   const pageHold = rows.map((o) => (queued.has(o.id) ? null : holdKind(o, queue))).find((r): r is PageHold => r != null && PAGE_HOLD.includes(r as PageHold));
-  const queueNote = QUEUE_NOTE[queue.reason] ?? (pageHold ? PAGE_HOLD_NOTE[pageHold](threshold) : undefined);
+  const queueNote = queue.reason === "no-consent" ? t("opps.queueNoConsent") : queue.reason === "inactive" ? t("opps.queueInactive")
+    : pageHold === "below-threshold" ? t("opps.holdBelowThreshold", { min: threshold }) : pageHold === "auto-apply-off" ? t("opps.holdAutoApplyOff") : undefined;
   // Cards waiting for Apply / Auto / Skip are optional work on this very screen: the status line names them instead of
   // claiming «Здесь ничего не нужно» right above them.
   // The count is needsYou.applyDecisions — the same number Today, Applications and Inbox show.
   const waitingHere = waiting.applyDecisions;
-  const here = waitingHere ? `${decisionsWaiting(waitingHere)} — ${tab === "strong" ? "ниже" : "во вкладке «Ждут решения»"}.` : undefined;
+  const here = waitingHere ? t(tab === "strong" ? "opps.hereBelow" : "opps.hereInTab", { what: decisionsWaitingT(t, waitingHere) }) : undefined;
   const needs: Need[] = [
-    ...(waiting.questions ? [{ text: `${questionsWaiting(waiting.questions)} — без этого часть заявок не уйдёт`, href: "/app/approvals" }] : []),
-    ...(waiting.handoffs ? [{ text: handoffsWaiting(waiting.handoffs), href: "/app/approvals#kind-handoff" }] : []),
+    ...(waiting.questions ? [{ text: t("opps.needQuestions", { what: questionsWaitingT(t, waiting.questions) }), href: "/app/approvals" }] : []),
+    ...(waiting.handoffs ? [{ text: handoffsWaitingT(t, waiting.handoffs), href: "/app/approvals#kind-handoff" }] : []),
   ];
+  const num = { n: (c: React.ReactNode) => <N>{c}</N> };
 
   return (
+    <I18nScope ns={["opps", "work"]}>
     <div className="flex flex-col gap-5">
-      <PageHeader eyebrow="Opportunities" title={<>Что агент <Script>нашёл</Script></>} />
+      <PageHeader eyebrow="Opportunities" title={title} />
 
       <AgentStatus
         needs={needs}
@@ -144,7 +152,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         here={here}
         hereNeeds={Boolean(waitingHere)}
         skip={["decisions"]}
-        working={here ? undefined : campaign.status === "active" ? "Агент ищет вакансии и подаёт на сильные сам." : campaign.status === "paused" ? "Кампания на паузе — агент не ищет и не подаёт." : "Кампания завершена — новые вакансии не ищутся."}
+        working={here ? undefined : t(campaign.status === "active" ? "opps.workingActive" : campaign.status === "paused" ? "opps.workingPaused" : "opps.workingDone")}
         className="-mt-3"
       />
 
@@ -153,98 +161,109 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
         <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-[20px] px-4 py-2.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green sm:px-5 [&::-webkit-details-marker]:hidden">
           <span className="flex min-w-0 flex-col gap-0.5">
             <span className="text-[14px] leading-snug text-head">
-              {when}: найдено <N v={found.found} />{found.qualified > 0 && <> · {plural(found.qualified, ["подходит", "подходят", "подходят"])} <N v={found.qualified} /></>}{submitted > 0 && <> · отправлено <N v={submitted} /></>}
+              {t.rich("opps.summaryFound", { when, found: found.found }, num)}
+              {found.qualified > 0 && t.rich("opps.summaryQualified", { n: found.qualified }, num)}
+              {submitted > 0 && t.rich("opps.summarySent", { n: submitted }, num)}
             </span>
             <span className="text-[12.5px] text-ink-3">
-              Автоподача{" "}
-              {!campaign.autoSubmit ? "выключена в настройках" : autonomy.submitApplications ? <>включена · Match от <span className="num">{threshold}%</span></> : "по Match выключена"}
+              {!campaign.autoSubmit ? t("opps.autoOffSettings") : autonomy.submitApplications ? t.rich("opps.autoOn", { min: threshold }, { n: (c) => <span className="num">{c}</span> }) : t("opps.autoOffMatch")}
             </span>
           </span>
           <span className="inline-flex min-h-10 shrink-0 items-center gap-1 text-[12.5px] text-teal group-hover:text-head">
             {/* Phone: the chevron alone (the whole row is the toggle); the words from sm up. */}
-            <span className="sr-only sm:not-sr-only group-open:hidden">Подробнее</span>
-            <span className="hidden sm:group-open:inline">Свернуть</span>
+            <span className="sr-only sm:not-sr-only group-open:hidden">{t("opps.more")}</span>
+            <span className="hidden sm:group-open:inline">{t("opps.collapse")}</span>
             <ChevronDown className="size-4 transition-transform group-open:rotate-180 sm:size-3.5" aria-hidden />
           </span>
         </summary>
         <div className="flex flex-col gap-4 border-t border-line px-4 py-4 sm:px-5">
           {/* The same sentence as Today (discoverySentence: zero parts hidden); submissions said separately. */}
           <p className="text-[14.5px] leading-relaxed text-ink-2">
-            {discoverySentence(found, when)}
-            {submitted > 0 && <>{" "}<N v={submitted} /> {plural(submitted, ["заявка уже отправлена", "заявки уже отправлены", "заявок уже отправлены"])}.</>}
+            {discoverySentenceT(t, found, whenKey)}
+            {submitted > 0 && <>{" "}{t.rich("opps.sentAlready", { n: submitted }, num)}</>}
           </p>
           {!isSimulation() && <AutoApplyToggle enabled={autonomy.submitApplications} min={threshold} consent={campaign.autoSubmit} />}
           {queueNote && <p className="text-[12.5px] text-ink-3">{queueNote}</p>}
           <Link href="/app/applications" className="inline-flex min-h-10 w-fit items-center gap-1.5 text-[13px] text-teal underline-offset-4 hover:text-head hover:underline">
-            Смотреть заявки <ArrowRight className="size-3.5" aria-hidden />
+            {t("opps.seeApplications")} <ArrowRight className="size-3.5" aria-hidden />
           </Link>
         </div>
       </details>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <nav aria-label="Фильтр вакансий" className="glass inline-flex w-fit gap-1 !rounded-full p-1">
-          {tabs.map((t, i) => (
+        <nav aria-label={t("opps.filterAria")} className="glass inline-flex w-fit max-w-full gap-1 overflow-x-auto !rounded-full p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {tabs.map((x, i) => (
             <Link
-              key={t.key}
-              href={href(t.key, q)}
-              aria-current={tab === t.key ? "page" : undefined}
+              key={x.key}
+              href={href(x.key, q)}
+              aria-current={tab === x.key ? "page" : undefined}
               className={cx(
                 "inline-flex h-10 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-[13px] transition-colors sm:px-3.5 focus-visible:outline-2 focus-visible:outline-green",
-                tab === t.key ? "bg-cta text-white" : "text-ink-2 hover:bg-white/70 hover:text-head",
+                tab === x.key ? "bg-cta text-white" : "text-ink-2 hover:bg-white/70 hover:text-head",
               )}
             >
-              {t.label}
-              <span className={cx("num text-[11.5px]", tab === t.key ? "text-white/70" : "text-ink-3")}>{counts[i]}</span>
+              {t(`opps.${x.label}`)}
+              <span className={cx("num text-[11.5px]", tab === x.key ? "text-white/70" : "text-ink-3")}>{counts[i]}</span>
             </Link>
           ))}
         </nav>
         <form method="get" action="/app/opportunities" role="search" className="relative w-full sm:w-72">
           {tab !== defaultTab() && <input type="hidden" name="tab" value={tab} />}
-          <label htmlFor="opp-q" className="sr-only">Поиск по роли, компании или городу</label>
+          <label htmlFor="opp-q" className="sr-only">{t("opps.searchLabel")}</label>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-4" aria-hidden />
-          <input id="opp-q" name="q" type="search" defaultValue={q} placeholder="Роль, компания, город" className="field !h-10 min-h-10 !rounded-full !py-2 !pl-10 !text-[14px]" />
+          <input id="opp-q" name="q" type="search" defaultValue={q} placeholder={t("opps.searchPlaceholder")} className="field !h-10 min-h-10 !rounded-full !py-2 !pl-10 !text-[14px]" />
         </form>
       </div>
 
       {rows.length === 0 ? (
-        <EmptyFeed tab={tab} q={q} />
+        <EmptyFeed t={t} tab={tab} q={q} />
       ) : (
         <>
         <GlyphSprite names={["check", "map-pin", "arrow-right", "chevron-down"]} />
-        <ul className="grid gap-3 lg:grid-cols-2" aria-label="Вакансии">
+        <ul className="grid gap-3 lg:grid-cols-2" aria-label={t("opps.jobsAria")}>
           {rows.map((o) => (
-            <OpportunityCard key={o.id} v={cardView(o, { candidate, queued: queued.has(o.id) ? queue.when : null, hold: queued.has(o.id) ? null : holdReason(o, queue), holdKind: queued.has(o.id) ? null : holdKind(o, queue), dream: isDreamCompany(o.job.company, dreamCompanies), userDecision: queue.notQueued[o.id] === "dream-decision" })} />
+            <OpportunityCard key={o.id} v={cardView(t, o, { candidate, queued: queued.has(o.id) ? queue.when : null, hold: queued.has(o.id) ? null : holdReason(t, o, queue), holdKind: queued.has(o.id) ? null : holdKind(o, queue), dream: isDreamCompany(o.job.company, dreamCompanies), userDecision: queue.notQueued[o.id] === "dream-decision" })} />
           ))}
         </ul>
         </>
       )}
 
       {pages > 1 && (
-        <nav className="flex items-center justify-between gap-3" aria-label="Страницы">
-          {page > 1 ? <ButtonLink href={href(tab, q, page - 1)} variant="glass" size="sm"><ArrowLeft className="size-4" aria-hidden />Назад</ButtonLink> : <span />}
+        <nav className="flex items-center justify-between gap-3" aria-label={t("opps.pagesAria")}>
+          {page > 1 ? <ButtonLink href={href(tab, q, page - 1)} variant="glass" size="sm"><ArrowLeft className="size-4" aria-hidden />{t("opps.back")}</ButtonLink> : <span />}
           <span className="num text-[13px] text-ink-3">{page} / {pages}</span>
-          {page < pages ? <ButtonLink href={href(tab, q, page + 1)} variant="glass" size="sm">Дальше<ArrowRight className="size-4" aria-hidden /></ButtonLink> : <span />}
+          {page < pages ? <ButtonLink href={href(tab, q, page + 1)} variant="glass" size="sm">{t("opps.next")}<ArrowRight className="size-4" aria-hidden /></ButtonLink> : <span />}
         </nav>
       )}
 
       <Announcer />
     </div>
+    </I18nScope>
   );
 }
 
-/** Why the agent will not submit anything on its next cycle (one line above the feed). */
-const QUEUE_NOTE: Partial<Record<NextCycle["reason"], string>> = {
-  "no-consent": "Автоподача выключена в настройках — агент готовит пакеты, но сам ничего не отправляет.",
-  inactive: "Кампания не активна — агент сейчас не подаёт заявки.",
-};
+type When = "today" | "week" | "campaign";
 
-const N = ({ v }: { v: number }) => <span className="num text-[0.92em] text-head">{v}</span>;
+/**
+ * discoverySentence() in the interface language: today's wording is Today's own (todaySentenceT); the week and the
+ * whole campaign only change the head of the sentence.
+ */
+function discoverySentenceT(t: T, b: Breakdown, when: When) {
+  if (when === "today") return todaySentenceT(t, b);
+  if (!b.found) return t(when === "week" ? "opps.foundNoneWeek" : "opps.foundNoneCampaign");
+  const today = todaySentenceT(t, b);
+  const head = t("today.foundHead", { n: b.found });
+  const own = t(when === "week" ? "opps.foundHeadWeek" : "opps.foundHeadCampaign", { n: b.found });
+  return today.startsWith(head) ? own + today.slice(head.length) : today;
+}
 
-function EmptyFeed({ tab, q }: { tab: Tab; q: string }) {
-  if (q) return <Empty title="Ничего не найдено" sub={`По запросу «${q}» вакансий нет.`} action={<ButtonLink href={href(tab, "")} variant="glass" size="sm">Сбросить поиск</ButtonLink>} />;
-  if (tab === "strong") return <Empty title="Сейчас ничего не ждёт решения" sub="Агент продолжает искать каждый день. Всё, что он уже нашёл, — во вкладке «Все»." action={<ButtonLink href={href("all", "")} variant="glass" size="sm">Показать все</ButtonLink>} />;
-  if (tab === "skipped") return <Empty title="Пропущенных нет" sub="Сюда попадают пропущенные вакансии и роли, по требованиям которых ты не проходишь." />;
-  return <Empty title="Вакансий пока нет" sub="Агент ещё не нашёл вакансий. Первый цикл обычно занимает несколько минут." />;
+const N = ({ children }: { children: React.ReactNode }) => <span className="num text-[0.92em] text-head">{children}</span>;
+
+function EmptyFeed({ t, tab, q }: { t: T; tab: Tab; q: string }) {
+  if (q) return <Empty title={t("opps.emptySearchTitle")} sub={t("opps.emptySearchSub", { q })} action={<ButtonLink href={href(tab, "")} variant="glass" size="sm">{t("opps.resetSearch")}</ButtonLink>} />;
+  if (tab === "strong") return <Empty title={t("opps.emptyStrongTitle")} sub={t("opps.emptyStrongSub")} action={<ButtonLink href={href("all", "")} variant="glass" size="sm">{t("opps.showAll")}</ButtonLink>} />;
+  if (tab === "skipped") return <Empty title={t("opps.emptySkippedTitle")} sub={t("opps.emptySkippedSub")} />;
+  return <Empty title={t("opps.emptyTitle")} sub={t("opps.emptySub")} />;
 }
 
 type Row = {
@@ -262,48 +281,45 @@ function holdKind(o: Row, queue: NextCycle): NotQueuedReason | null {
   if (o.eligibility === "blocked" || !OPEN.includes(o.status) || o.decision === "skip") return null;
   return queue.notQueued[o.id] ?? null;
 }
-function holdReason(o: Row, queue: NextCycle): string | null {
+function holdReason(t: T, o: Row, queue: NextCycle): string | null {
   const kind = holdKind(o, queue);
   if (!kind || (PAGE_HOLD as readonly string[]).includes(kind) || kind === "no-consent" || kind === "inactive") return null;
-  return queue.reasons[o.id] ?? null;
+  // The engine's reason (NOT_QUEUED_LABEL), by its key, in the interface language.
+  return queue.reasons[o.id] ? t(`opps.hold.${kind}`) : null;
 }
 
 /** Card-level holds that are really one page-level fact (said once, in the note above the feed). */
 const PAGE_HOLD = ["below-threshold", "auto-apply-off"] as const;
 type PageHold = (typeof PAGE_HOLD)[number];
-const PAGE_HOLD_NOTE: Record<PageHold, (min: number) => string> = {
-  "below-threshold": (min) => `У части вакансий Match ниже порога автоподачи (${min}%) — агент подаёт на них только после Apply или Auto.`,
-  "auto-apply-off": () => "Автоподача по Match выключена — агент подаёт только на вакансии с отметкой Apply или Auto.",
-};
 
 /**
  * Everything one card shows, computed here on the server: the client card (./_components/card.tsx) gets these few
  * strings and flags instead of a pre-rendered element tree — the RSC payload of a 24-card page shrinks accordingly.
  */
-function cardView(o: Row, { candidate, queued, hold, holdKind: kind, dream, userDecision }: { candidate: FitCandidate; queued: NextCycle["when"]; hold: string | null; holdKind: NotQueuedReason | null; dream: boolean; userDecision: boolean }): CardView {
+function cardView(t: T, o: Row, { candidate, queued, hold, holdKind: kind, dream, userDecision }: { candidate: FitCandidate; queued: NextCycle["when"]; hold: string | null; holdKind: NotQueuedReason | null; dream: boolean; userDecision: boolean }): CardView {
   const fitOpp = { match: o.match, eligibility: o.eligibility, pInterview: o.pInterview, reasons: j<Reason[]>(o.matchReasons, []), blockers: j<string[]>(o.blockers, []).map(blockerRu), softGaps: j<string[]>(o.softGaps, []).map(blockerRu) };
-  const chance = interviewChance(o);
+  const chance = interviewChance(o, t);
   const applied = APPLIED_OR_LATER.includes(o.status);
   // A hard-blocked role can still score Match 100 (skills fit): the verdict and its reason go first (src/lib/engine/matching.ts).
   const verdict = fitVerdict({ eligibility: o.eligibility, match: o.match, blockers: fitOpp.blockers, pInterview: o.pInterview });
-  const override = overrideNote(o.eligibility, o.blockers, dream);
+  const override = overrideNote(t, o.eligibility, o.blockers, dream);
   // Dream company + level off-goal: one treatment whichever path the engine took — the dream line and Apply / Skip.
   const dreamCall = !applied && ((userDecision || fitOpp.softGaps.includes(DREAM_DECISION)) || (dream && verdict.blocked && Boolean(override))) && o.decision !== "apply" && o.decision !== "auto";
   const blocked = verdict.blocked;
   // One risk line, never a repeat of what the card already says (the dream line, the stale hold).
-  const risk = risks(fitOpp, o.job, candidate).find((r) => r !== DREAM_DECISION && !(kind === "stale" && /больше месяца/.test(r)));
-  const lane = o.lane === "standard" ? null : LANE[o.lane] ?? null;
+  const risk = risks(t, fitOpp, o.job, candidate).find((r) => r.text !== DREAM_DECISION && !(kind === "stale" && r.old));
+  const lane = o.lane === "standard" || !LANE[o.lane] ? null : { label: t(`work.lane.${o.lane as "target" | "mass"}`), tone: LANE[o.lane].tone };
   return {
     id: o.id, company: o.job.company, title: o.job.title, lane, match: o.match, matchTone: matchTone(o.match), skipped: o.status === "skipped",
-    banner: blocked && !dreamCall ? { headline: verdict.headline, reason: verdict.reason } : null,
+    banner: blocked && !dreamCall ? { headline: blockedHeadline(t, verdict.kind), reason: verdict.reason } : null,
     blocked, blockedBy: verdict.kind ?? undefined,
     chance: verdict.pInterview !== null ? { label: chance.label, tone: chance.tone } : null,
-    salary: salaryLabel(o.job.salaryMin, o.job.salaryMax, o.job.currency) || null,
-    place: placeWithFormat(o.job.location, o.job.remote) || null,
-    posted: agoRu(o.job.postedAt),
-    why: verdict.showWhyFits && !dreamCall ? whyFits(fitOpp, o.job, candidate) : [],
-    dreamCall, risk: !blocked && !dreamCall && !applied && risk ? risk : null,
-    applied: applied ? { status: o.status, label: statusRu(o.status), tone: statusTone(o.status) } : null,
+    salary: salaryT(t, o.job.salaryMin, o.job.salaryMax, o.job.currency) || null,
+    place: placeT(t, o.job.location, o.job.remote) || null,
+    posted: agoT(t, o.job.postedAt),
+    why: verdict.showWhyFits && !dreamCall ? whyFits(t, fitOpp, o.job, candidate) : [],
+    dreamCall, risk: !blocked && !dreamCall && !applied && risk ? { text: risk.text, engine: risk.engine } : null,
+    applied: applied ? { status: o.status, label: statusT(t, o.status), tone: statusTone(o.status) } : null,
     hold: hold && !dreamCall ? hold : null, queued,
     decision: o.decision, status: o.status, pending: o.approvals.length, override: dreamCall ? null : override,
   };

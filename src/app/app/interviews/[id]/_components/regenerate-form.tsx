@@ -3,6 +3,7 @@ import { useState, useTransition, type FormEvent } from "react";
 import { Sparkles } from "lucide-react";
 import { cx } from "@/components/ui";
 import { regeneratePack, regeneratePackForm } from "@/lib/actions/interview";
+import { useT } from "@/lib/i18n/client";
 import { PendingButton } from "../../_components/pending-button";
 
 type Props = {
@@ -23,6 +24,7 @@ type Props = {
  * An unchanged stamp means the hourly limit stopped the run.
  */
 export function RegenerateForm({ id, aiOn, by, stamp, pendingText, className }: Props) {
+  const t = useT();
   const [pending, start] = useTransition();
   // Stamp at the moment of submit; `undefined` = never submitted in this view.
   const [sentFrom, setSentFrom] = useState<string | null | undefined>(undefined);
@@ -48,18 +50,18 @@ export function RegenerateForm({ id, aiOn, by, stamp, pendingText, className }: 
 
   let msg: { text: string; tone: "ok" | "muted" | "warn" } | null = null;
   if (!pending && sentFrom !== undefined) {
-    if (failed) msg = { text: "Не удалось обновить. Проверь соединение и попробуй ещё раз.", tone: "warn" };
-    else if (result?.limited) msg = { text: "Лимит обновлений на этот час исчерпан — попробуй позже.", tone: "warn" };
-    else if ((result?.by ?? by) === "claude") msg = { text: "Готово — Claude обновил материалы.", tone: "ok" };
-    else msg = { text: "AI недоступен — показана версия движка.", tone: "muted" };
+    if (failed) msg = { text: t("interviewsPage.regen.failed"), tone: "warn" };
+    else if (result?.limited) msg = { text: t("interviewsPage.regen.limited"), tone: "warn" };
+    else if ((result?.by ?? by) === "claude") msg = { text: t("interviewsPage.regen.doneClaude"), tone: "ok" };
+    else msg = { text: t("interviewsPage.regen.engine"), tone: "muted" };
   }
 
   return (
     <div className={cx("flex flex-col items-start gap-1.5 sm:items-end", className)}>
       <form action={regeneratePackForm} onSubmit={onSubmit}>
         <input type="hidden" name="id" value={id} />
-        <PendingButton pending={pending} pendingText={aiOn ? pendingText : "Обновляем…"} size="sm" variant="glass" className="!h-10">
-          <Sparkles className="size-3.5" strokeWidth={1.7} aria-hidden />Обновить с AI
+        <PendingButton pending={pending} pendingText={aiOn ? pendingText : t("interviewsPage.regen.updating")} size="sm" variant="glass" className="!h-10">
+          <Sparkles className="size-3.5" strokeWidth={1.7} aria-hidden />{t("interviewsPage.regen.button")}
         </PendingButton>
       </form>
       <p role="status" aria-live="polite" className={cx("min-h-0 text-[12.5px]", msg?.tone === "ok" ? "text-green" : msg?.tone === "warn" ? "text-amber" : "text-ink-3")}>
