@@ -8,10 +8,12 @@ import { toUSD } from "../engine/fx";
  * The Readiness page and the campaign's "Readiness на старте" read the same input, so they show the same score.
  */
 export async function readinessInputFor(userId: string): Promise<ReadinessInput | null> {
-  const u = await db.user.findUniqueOrThrow({ where: { id: userId }, include: { profile: true, goal: true, facts: true, _count: { select: { stories: true } } } });
+  const [u, mocks] = await Promise.all([
+    db.user.findUniqueOrThrow({ where: { id: userId }, include: { profile: true, goal: true, facts: true, _count: { select: { stories: true } } } }),
+    db.mockSession.findMany({ where: { interview: { userId } }, select: { feedback: true } }),
+  ]);
   const p = u.profile, g = u.goal;
   if (!p || !g) return null;
-  const mocks = await db.mockSession.findMany({ where: { interview: { userId } }, select: { feedback: true } });
   const mockScores = mocks.map((m) => j<{ overall?: unknown }>(m.feedback, {}).overall).filter((v): v is number => typeof v === "number" && Number.isFinite(v));
   return {
     profile: { yearsExperience: p.yearsExperience, skills: j(p.skills, []), englishLevel: p.englishLevel, cvText: p.cvText, summary: p.summary, workAuth: j(p.workAuth, []), needsSponsorship: p.needsSponsorship, linkedin: p.linkedin, github: p.github, portfolio: p.portfolio },

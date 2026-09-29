@@ -1,5 +1,6 @@
 // Agent C — shared read-side queries for the campaign operating screens.
 import "server-only";
+import { cache } from "react";
 import type { Prisma } from "@prisma/client";
 import { db } from "./db";
 import { agentMaySubmit, readAutonomy, type Autonomy } from "./engine/autonomy";
@@ -17,25 +18,35 @@ import { isPushHiddenOn, PUSH_EXCLUDED_ROUTES } from "./push";
 export const isOverdue = (c: { status: string; endsAt: Date | null }, now = new Date()) =>
   (c.status === "active" || c.status === "paused") && c.endsAt != null && c.endsAt <= now;
 
-/** The campaign the operating screens show: the latest non-draft one (active, paused, hired or expired). */
-export async function currentCampaign(userId: string) {
+/**
+ * settleGuarantees once per rendered request (React cache): the app layout, currentCampaign and runningCampaign all ask
+ * for it on one navigation, and the check is the same indexed query each time. Outside a render (server actions, route
+ * handlers, the agent cycle) React cache does not memoize, so every call there still settles.
+ */
+export const settleGuaranteesOnce = cache((userId: string) => settleGuarantees(userId));
+
+/**
+ * The campaign the operating screens show: the latest non-draft one (active, paused, hired or expired).
+ * Memoized per rendered request (layout + page read it once).
+ */
+export const currentCampaign = cache(async (userId: string) => {
   let c = await db.campaign.findFirst({ where: { userId, status: { not: "draft" } }, orderBy: { createdAt: "desc" } });
   // Interview guarantee first (src/lib/engine/guarantee.ts): an overdue campaign without interviews is extended, not over.
   // Re-read even when this call didn't win the extension: a concurrent caller (the layout, a tick) may have.
-  if (c && isOverdue(c) && c.guaranteeStatus === "") { await settleGuarantees(userId); c = await db.campaign.findUnique({ where: { id: c.id } }); }
+  if (c && isOverdue(c) && c.guaranteeStatus === "") { await settleGuaranteesOnce(userId); c = await db.campaign.findUnique({ where: { id: c.id } }); }
   // Show a campaign that ran out by date as expired right away; the next agent cycle persists it.
   return c && isOverdue(c) ? { ...c, status: "expired" } : c;
-}
+});
 
 /** Prisma filter for a campaign the agent can still work on: active or paused, and not past its end date. */
 export const runningCampaignWhere = (now = new Date()) => ({ status: { in: ["active", "paused"] }, OR: [{ endsAt: null }, { endsAt: { gt: now } }] });
 
 /** The campaign the agent can still work on (active or paused, and not past its end date). */
-export async function runningCampaign(userId: string) {
+export const runningCampaign = cache(async (userId: string) => {
   // An overdue campaign the interview guarantee is about to extend counts as running (settleGuarantees is a no-op otherwise).
-  await settleGuarantees(userId);
+  await settleGuaranteesOnce(userId);
   return db.campaign.findFirst({ where: { userId, ...runningCampaignWhere() }, orderBy: { createdAt: "desc" } });
-}
+});
 
 /**
  * The exception queue that still matters: only items of the running campaign. Questions of a finished (HIRED / expired)
@@ -272,39 +283,58 @@ const STALE_DAYS = 30;
  * under agentMaySubmit + the daily limit + one application per role. New finds of that cycle can still outrank these,
  * so the UI should say "в очереди на следующий цикл", not promise a time. `notQueued` explains every other fitting role.
  */
-export async function nextCycleQueue(
+export function nextCycleQueue(
+  campaign: { id: string; status: string; autoSubmit: boolean; dailyLimit: number },
+  autonomy: Pick<Autonomy, "submitApplications" | "autoApplyMinMatch" | "personalizeCv">,
+): Promise<NextCycle> {
+  // Keyed by plain values so Today / Opportunities and needsYou on the same rendered request share one computation.
+  return nextCycleQueueMemo(campaign.id, campaign.status, campaign.autoSubmit, campaign.dailyLimit, autonomy.submitApplications, autonomy.autoApplyMinMatch, autonomy.personalizeCv);
+}
+
+/** nextCycleQueue memoized per rendered request (React cache; outside a render every call computes). */
+const nextCycleQueueMemo = cache((id: string, status: string, autoSubmit: boolean, dailyLimit: number, submitApplications: boolean, autoApplyMinMatch: number, personalizeCv: boolean) =>
+  computeNextCycleQueue({ id, status, autoSubmit, dailyLimit }, { submitApplications, autoApplyMinMatch, personalizeCv }));
+
+async function computeNextCycleQueue(
   campaign: { id: string; status: string; autoSubmit: boolean; dailyLimit: number },
   autonomy: Pick<Autonomy, "submitApplications" | "autoApplyMinMatch" | "personalizeCv">,
 ): Promise<NextCycle> {
   // Every fitting role not sent yet — the cards the user sees as "waiting".
   // Dream-company decisions (DREAM_DECISION) are the user's call whatever their Match, so they are listed too.
-  const fitting = await db.opportunity.findMany({
-    where: { campaignId: campaign.id, ...visibleScope(), status: { in: ["found", "qualified", "prepared"] }, eligibility: { not: "blocked" }, OR: [{ match: { gte: STRONG_MATCH } }, { status: "qualified", softGaps: { contains: DREAM_DECISION } }] },
-    select: { id: true, status: true, decision: true, match: true, softGaps: true, job: { select: { source: true, postedAt: true } }, pkg: { select: { answers: true } }, approvals: { where: { status: "pending" }, select: { kind: true } } },
-  });
+  const active = campaign.status === "active";
+  const sending = active && campaign.autoSubmit;
+  const since = startOfToday();
+  // The same reads as before, started together instead of one after another (the later ones only when they're used).
+  const [fitting, used, takenRows, ready] = await Promise.all([
+    db.opportunity.findMany({
+      where: { campaignId: campaign.id, ...visibleScope(), status: { in: ["found", "qualified", "prepared"] }, eligibility: { not: "blocked" }, OR: [{ match: { gte: STRONG_MATCH } }, { status: "qualified", softGaps: { contains: DREAM_DECISION } }] },
+      select: { id: true, status: true, decision: true, match: true, softGaps: true, job: { select: { source: true, postedAt: true } }, pkg: { select: { answers: true } }, approvals: { where: { status: "pending" }, select: { kind: true } } },
+    }),
+    active ? dailyUsage(campaign.id, since) : 0,
+    sending ? db.opportunity.findMany({ where: { campaignId: campaign.id, status: { in: ["prepared", ...APPLIED_OR_LATER] } }, select: { id: true, job: { select: { company: true, title: true } } } }) : [],
+    sending
+      ? db.opportunity.findMany({
+          where: { campaignId: campaign.id, ...visibleScope(), status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } },
+          orderBy: [{ decision: "desc" }, { priority: "desc" }],
+          select: { id: true, decision: true, match: true, updatedAt: true, job: { select: { source: true } }, pkg: { select: { answers: true } } },
+        })
+      : [],
+  ]);
   const notQueued: Record<string, NotQueuedReason> = {};
   const explainAll = (r: NotQueuedReason) => { for (const o of fitting) notQueued[o.id] = r; };
   const base = { ids: [] as string[], dailyLimit: campaign.dailyLimit };
   const labels = () => Object.fromEntries(Object.entries(notQueued).map(([id, r]) => [id, NOT_QUEUED_LABEL[r]]));
-  if (campaign.status !== "active") { explainAll("inactive"); return { ...base, when: null, reason: "inactive", left: 0, notQueued, reasons: labels(), awaiting: { kind: "none" } }; }
-  const since = startOfToday();
-  const used = await dailyUsage(campaign.id, since);
+  if (!active) { explainAll("inactive"); return { ...base, when: null, reason: "inactive", left: 0, notQueued, reasons: labels(), awaiting: { kind: "none" } }; }
   const left = Math.max(0, campaign.dailyLimit - used);
   if (!campaign.autoSubmit) { explainAll("no-consent"); return { ...base, when: null, reason: "no-consent", left, notQueued, reasons: labels(), awaiting: { kind: "no-consent" } }; }
   const when = left > 0 ? "now" : "tomorrow";
   let budget = left > 0 ? left : campaign.dailyLimit;
   const ids: string[] = [];
-  const takenRows = await db.opportunity.findMany({ where: { campaignId: campaign.id, status: { in: ["prepared", ...APPLIED_OR_LATER] } }, select: { id: true, job: { select: { company: true, title: true } } } });
   const taken = new Set(takenRows.map((o) => roleKey(o.job.company, o.job.title)));
   const why = (id: string, r: NotQueuedReason) => { notQueued[id] ??= r; };
   const permission = (o: { decision: string; match: number }): NotQueuedReason | null =>
     agentMaySubmit(o, autonomy) ? null : o.decision === "skip" ? "user-skip" : !autonomy.submitApplications ? "auto-apply-off" : "below-threshold";
 
-  const ready = await db.opportunity.findMany({
-    where: { campaignId: campaign.id, ...visibleScope(), status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } },
-    orderBy: [{ decision: "desc" }, { priority: "desc" }],
-    select: { id: true, decision: true, match: true, updatedAt: true, job: { select: { source: true } }, pkg: { select: { answers: true } } },
-  });
   for (const o of ready) {
     // Waits for a standing answer asked on another role (one card for the same question): not sendable yet.
     if (hasOpenAnswers(o.pkg?.answers)) { why(o.id, "needs-answers"); continue; }
@@ -383,7 +413,7 @@ export type InterviewCounts = {
 };
 
 /** THE interview numbers. «В процессе» only when a future round exists — never for a round that already happened. */
-export async function interviewCounts(userId: string, now = new Date()): Promise<InterviewCounts> {
+export const interviewCounts = cache(async (userId: string, now = new Date()): Promise<InterviewCounts> => {
   const [upcoming, active, finished, awaitingDebrief, assessments] = await Promise.all([
     db.interview.count({ where: upcomingRoundWhere(userId, now) }),
     db.interview.findMany({ where: upcomingRoundWhere(userId, now), select: { opportunityId: true }, distinct: ["opportunityId"] }),
@@ -392,7 +422,7 @@ export async function interviewCounts(userId: string, now = new Date()): Promise
     db.interview.count({ where: openAssessmentWhere(userId, now) }),
   ]);
   return { upcoming, activeRounds: active.length, completed: finished + awaitingDebrief, awaitingDebrief, assessments };
-}
+});
 
 // ——— «Нужно тебе»: one source for every screen and the agent-cycle line ———
 
@@ -445,8 +475,9 @@ export async function needsYouFor(
 }
 
 /** What waits on the user right now: the running campaign's queue plus offers and near rounds. */
-export async function needsYou(userId: string, now = new Date()): Promise<NeedsYou> {
-  const [user, campaign] = await Promise.all([db.user.findUnique({ where: { id: userId }, select: { autonomy: true } }), runningCampaign(userId)]);
+export async function needsYou(userId: string, now = new Date(), autonomy?: string | null): Promise<NeedsYou> {
+  // `autonomy`: the caller already has the user's row (the rendered page's currentUser) — no second read of it.
+  const [user, campaign] = await Promise.all([autonomy === undefined ? db.user.findUnique({ where: { id: userId }, select: { autonomy: true } }) : { autonomy }, runningCampaign(userId)]);
   return needsYouFor(campaign, userId, readAutonomy(user?.autonomy), now);
 }
 
@@ -525,20 +556,33 @@ export async function resolveNotification(n: { id: string; userId: string; type:
  * Returns how many were closed.
  */
 export async function expirePastInterviewPushes(userId: string, now = new Date()) {
-  const unread = await db.notification.findMany({ where: { userId, readAt: null, type: { in: ["interview", "assessment"] } }, take: 50 });
+  return (await closePastInterviewPushes(userId, now)).length;
+}
+
+/** expirePastInterviewPushes, returning the ids it closed. */
+async function closePastInterviewPushes(userId: string, now = new Date()): Promise<string[]> {
+  const unread = await db.notification.findMany({ where: { userId, readAt: null, type: { in: ["interview", "assessment"] } }, take: 50, select: { id: true, type: true, body: true } });
+  const withCompany = unread.map((n) => ({ ...n, company: companyOf(n.type, n.body) })).filter((n) => n.company);
+  if (!withCompany.length) return [];
+  // One query for every company named (was one per notification): the newest round per company and kind
+  // (assessment vs interview round) — the same row the per-notification findFirst picked.
+  const rounds = await db.interview.findMany({
+    where: { userId, opportunity: { job: { company: { in: [...new Set(withCompany.map((n) => n.company))] } } } },
+    orderBy: { createdAt: "desc" },
+    select: { round: true, scheduledAt: true, status: true, opportunity: { select: { job: { select: { company: true } } } } },
+  });
+  const latest = new Map<string, { scheduledAt: Date | null; status: string }>();
+  for (const r of rounds) {
+    const key = `${r.round === "assessment" ? "assessment" : "interview"}|${r.opportunity.job.company}`;
+    if (!latest.has(key)) latest.set(key, r);
+  }
   const stale: string[] = [];
-  for (const n of unread) {
-    const company = companyOf(n.type, n.body);
-    if (!company) continue;
-    const iv = await db.interview.findFirst({
-      where: { userId, round: n.type === "assessment" ? "assessment" : { not: "assessment" }, opportunity: { job: { company } } },
-      orderBy: { createdAt: "desc" },
-      select: { scheduledAt: true, status: true },
-    });
+  for (const n of withCompany) {
+    const iv = latest.get(`${n.type === "assessment" ? "assessment" : "interview"}|${n.company}`);
     if (iv && ((iv.scheduledAt && iv.scheduledAt <= now) || iv.status !== "upcoming")) stale.push(n.id);
   }
   if (stale.length) await db.notification.updateMany({ where: { id: { in: stale }, userId, readAt: null }, data: { readAt: now } });
-  return stale.length;
+  return stale;
 }
 
 /**
@@ -546,9 +590,18 @@ export async function expirePastInterviewPushes(userId: string, now = new Date()
  * src/lib/push.ts) nothing is shown. `items` = up to 10 raw rows (for the notifier), `top` = the newest resolved.
  */
 export async function unreadPushes(userId: string, opts: { currentPath?: string | null; excludeRoutes?: RegExp[] } = {}) {
-  await expirePastInterviewPushes(userId);
-  if (isPushHiddenOn(opts.currentPath, opts.excludeRoutes ?? PUSH_EXCLUDED_ROUTES)) return { top: null, more: 0, items: [], hidden: true };
-  const all = await db.notification.findMany({ where: { userId, readAt: null }, orderBy: { createdAt: "desc" }, take: 20 });
+  if (isPushHiddenOn(opts.currentPath, opts.excludeRoutes ?? PUSH_EXCLUDED_ROUTES)) {
+    await expirePastInterviewPushes(userId);
+    return { top: null, more: 0, items: [], hidden: true };
+  }
+  // Closing past-interview pushes and reading the unread list run together: the rows it closes (at most 50) are dropped
+  // from the list here, so the newest 20 are the same as reading after the close.
+  const [closed, rows] = await Promise.all([
+    closePastInterviewPushes(userId),
+    db.notification.findMany({ where: { userId, readAt: null }, orderBy: { createdAt: "desc" }, take: 70 }),
+  ]);
+  const gone = new Set(closed);
+  const all = rows.filter((n) => !gone.has(n.id)).slice(0, 20);
   // A push is quiet on the screen that already shows its news (offer → Offer Desk, hired → HIRED): src/lib/push.ts.
   const unread = all.filter((n) => !isPushHiddenOn(opts.currentPath, opts.excludeRoutes ?? PUSH_EXCLUDED_ROUTES, n.type));
   if (!unread.length) return { top: null, more: 0, items: [], hidden: false };

@@ -2,9 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { isSimulation } from "@/lib/mode";
 import { logout } from "@/lib/actions/auth";
-import { currentCampaign, interviewCounts, unreadMoments, visibleLinkedScope } from "@/lib/ops-data";
-import { settleGuarantees } from "@/lib/engine/guarantee";
-import { needsYouCached } from "../_components/global-needs";
+import { currentCampaign, interviewCounts, pendingQueueCount, runningCampaign, settleGuaranteesOnce, unreadMoments, visibleLinkedScope } from "@/lib/ops-data";
 import { Nav } from "./nav";
 import { PushMoment } from "./_components/push-moment";
 import { Notifier } from "./_components/notifier";
@@ -21,11 +19,14 @@ const DAY = 86400000;
 async function shellData(userId: string) {
   // Interview guarantee (src/lib/engine/guarantee.ts): an overdue campaign without interviews is extended before any
   // number below reads it, so it never flashes «Завершена» between its end time and the next agent cycle.
-  await settleGuarantees(userId);
+  // One indexed query when nothing is due (the common case); memoized for the page's currentCampaign / runningCampaign.
+  await settleGuaranteesOnce(userId);
   const since = new Date(Date.now() - 3 * DAY);
-  const [waiting, responses, interviews, offers, openOffers, campaign, moments] = await Promise.all([
-    // needsYou: the same numbers as every «Нужно от тебя» block; the badge = everything on the «Подтверждения» screen.
-    needsYouCached(userId),
+  const [approvals, responses, interviews, offers, openOffers, campaign, moments] = await Promise.all([
+    // The badge = everything on the «Подтверждения» screen: needsYou.questions + needsYou.handoffs, i.e. the whole pending
+    // queue of the running campaign (pendingQueueWhere) — without the rest of needsYou (the next-cycle simulation), which
+    // the nav doesn't show. Simulation mode: needsYou reports 0 for both (the agent answers everything itself).
+    isSimulation() ? 0 : pendingQueueCount(userId),
     db.inboxMessage.count({ where: { userId, receivedAt: { gte: since }, classification: { in: ["interview", "assessment", "offer"] }, ...visibleLinkedScope() } }),
     // Upcoming interview rounds in the future — the same number as Today, Applications and Interviews (interviewCounts).
     interviewCounts(userId).then((c) => c.upcoming),
@@ -35,6 +36,8 @@ async function shellData(userId: string) {
     db.offer.count({ where: { userId, status: { in: ["received", "negotiating"] }, ...visibleLinkedScope() } }),
     currentCampaign(userId),
     unreadMoments(userId),
+    // Not shown here: warms the per-request memo for the page's needsYou / runningCampaign (one indexed query).
+    runningCampaign(userId),
   ]);
   let clock: { status: string; day: number | null; total: number } | null = null;
   if (campaign) {
@@ -43,7 +46,6 @@ async function shellData(userId: string) {
     const day = ["active", "paused"].includes(campaign.status) ? Math.min(total, Math.max(1, Math.floor((Date.now() - start) / DAY) + 1)) : null;
     clock = { status: campaign.status, day, total };
   }
-  const approvals = waiting.questions + waiting.handoffs;
   return { counts: { approvals, responses, interviews, offers }, clock, moments, todayShowsOffer: openOffers > 0 && Boolean(campaign) };
 }
 

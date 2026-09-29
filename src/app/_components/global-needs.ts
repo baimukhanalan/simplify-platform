@@ -15,7 +15,12 @@ export const ENABLE_AUTOSUBMIT = { text: "Включи автоподачу в �
 export type GlobalNeed = { kind: GlobalNeedKind; n: number; text: string; href: string };
 
 /** needsYou, cached per request (several components on one screen ask for it). */
-export const needsYouCached = cache((userId: string) => needsYou(userId));
+export const needsYouCached = cache(async (userId: string) => {
+  // The signed-in user's row is already loaded for this render (currentUser is memoized): reuse its autonomy.
+  // Imported lazily: the pure helpers below are used outside Next (tests) where the auth module can't load.
+  const me = await (await import("@/lib/auth")).currentUser();
+  return needsYou(userId, new Date(), me?.id === userId ? me.autonomy : undefined);
+});
 
 /** Short forms for the status line: «ждут тебя: оффер, 2 вопроса.» */
 export const globalNeeds = cache(async (userId: string): Promise<GlobalNeed[]> => globalNeedsOf(await needsYouCached(userId)));

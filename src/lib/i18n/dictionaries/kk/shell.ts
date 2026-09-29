@@ -36,4 +36,6 @@ export const shellKk: typeof shellRu = {
     text: "Интернетті тексер — байланыс қалпына келген бойда бет өзі ашылады. Агент осы уақытта жұмысын жалғастырып жатыр.",
     reload: "Жаңарту",
   },
+  /** Screen-reader text of the route skeletons (loading.tsx under src/app/app) while a screen loads. */
+  loading: "Бет жүктеліп жатыр…",
 };

@@ -34,4 +34,6 @@ export const shellRu = {
     text: "Проверь интернет — страница откроется сама, как только связь вернётся. Агент тем временем продолжает работать.",
     reload: "Обновить",
   },
+  /** Screen-reader text of the route skeletons (loading.tsx under src/app/app) while a screen loads. */
+  loading: "Загружаем страницу…",
 };

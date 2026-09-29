@@ -5,13 +5,15 @@ import { getLocale, getT } from "@/lib/i18n/server";
 import { I18nScope } from "@/lib/i18n/scope";
 
 const inter = Inter({ subsets: ["latin", "cyrillic", "cyrillic-ext"], variable: "--font-inter" });
-const pinyon = Pinyon_Script({ subsets: ["latin"], weight: "400", variable: "--font-pinyon", adjustFontFallback: false });
+// Decorative / secondary faces (script accents, Cyrillic mono) are not preloaded: they still load on demand through the
+// same @font-face rules (display: swap), without competing with the page's first requests on every navigation.
+const pinyon = Pinyon_Script({ subsets: ["latin"], weight: "400", variable: "--font-pinyon", adjustFontFallback: false, preload: false });
 // The brand fonts (STK Bureau Serif, PP Supply Mono) have no Cyrillic glyphs: these carry Russian text
 // in a matching style via per-glyph fallback in the font stacks (globals.css). cyrillic-ext carries the Kazakh letters
 // (Ә Ғ Қ Ң Ө Ұ Ү Һ І); unicode-range means it is only downloaded on pages that use them.
 const serifCyr = Source_Serif_4({ subsets: ["cyrillic", "cyrillic-ext"], weight: ["400"], variable: "--font-serif-cyr", adjustFontFallback: false });
-const scriptCyr = Great_Vibes({ subsets: ["cyrillic", "cyrillic-ext"], weight: "400", variable: "--font-script-cyr", adjustFontFallback: false });
-const monoCyr = JetBrains_Mono({ subsets: ["cyrillic", "cyrillic-ext"], weight: ["400"], variable: "--font-mono-cyr", adjustFontFallback: false });
+const scriptCyr = Great_Vibes({ subsets: ["cyrillic", "cyrillic-ext"], weight: "400", variable: "--font-script-cyr", adjustFontFallback: false, preload: false });
+const monoCyr = JetBrains_Mono({ subsets: ["cyrillic", "cyrillic-ext"], weight: ["400"], variable: "--font-mono-cyr", adjustFontFallback: false, preload: false });
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3210")),

@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
@@ -65,20 +66,25 @@ export async function currentUserId(): Promise<string | null> {
   }
 }
 
-export async function currentUser() {
+/**
+ * The signed-in user with profile and goal. Memoized per request while rendering (React cache): the root layout's
+ * language, the app layout and the page share one read. Server actions and route handlers are outside a render, so
+ * there it reads fresh every call.
+ */
+export const currentUser = cache(async () => {
   const id = await currentUserId();
   if (!id) return null;
   return db.user.findUnique({ where: { id }, include: { profile: true, goal: true } });
-}
+});
 
-/** For pages/actions inside the app: redirects to /login when signed out. */
-export async function requireUser() {
+/** For pages/actions inside the app: redirects to /login when signed out. Memoized per render like currentUser. */
+export const requireUser = cache(async () => {
   const user = await currentUser();
   if (!user) redirect("/login");
   // Simulation mode: nothing operational waits for the user — settled lazily before any screen reads (guarded, cheap).
   if (isSimulation()) await (await import("./engine/simulation")).maybeSettleChores(user.id);
   return user;
-}
+});
 
 export async function requireAdmin() {
   const user = await requireUser();

@@ -81,8 +81,17 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
 
   // What the next agent cycle would send on its own — the same computation as Today. Computed first: «Ждут решения» is
   // exactly the roles it leaves for the user (awaitingDecisionWhere), for both the list and its counter.
-  const queue = await nextCycleQueue(campaign, autonomy);
   const base: Prisma.OpportunityWhereInput = visibleOpportunities({ campaignId: campaign.id });
+  // Narrative window: today; if the agent found nothing today, the last 7 days; then the whole campaign.
+  const today = startOfToday();
+  const week = new Date(today.getTime() - 6 * 86400000);
+  // The window counts and needsYou (memoized per request, read again below) don't depend on the queue: started with it.
+  const [queue, foundToday, foundWeek] = await Promise.all([
+    nextCycleQueue(campaign, autonomy),
+    db.opportunity.count({ where: { ...base, createdAt: { gte: today } } }),
+    db.opportunity.count({ where: { ...base, createdAt: { gte: week } } }),
+    needsYouCached(user.id),
+  ]);
   const search: Prisma.OpportunityWhereInput = q ? { job: { OR: [{ title: { contains: q, ...insensitive } }, { company: { contains: q, ...insensitive } }, { location: { contains: q, ...insensitive } }] } } : {};
   const tabWhere: Record<Tab, Prisma.OpportunityWhereInput> = {
     // The same filter as needsYou.applyDecisions (Today, Applications, Inbox): awaitingDecisionWhere.
@@ -92,13 +101,6 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   };
   const where: Prisma.OpportunityWhereInput = { ...base, ...tabWhere[tab], ...search };
 
-  // Narrative window: today; if the agent found nothing today, the last 7 days; then the whole campaign.
-  const today = startOfToday();
-  const week = new Date(today.getTime() - 6 * 86400000);
-  const [foundToday, foundWeek] = await Promise.all([
-    db.opportunity.count({ where: { ...base, createdAt: { gte: today } } }),
-    db.opportunity.count({ where: { ...base, createdAt: { gte: week } } }),
-  ]);
   const since = foundToday ? today : foundWeek ? week : null;
 
   const [{ submitted }, windowOpps, waiting, counts, total, rows, candidate] = await Promise.all([

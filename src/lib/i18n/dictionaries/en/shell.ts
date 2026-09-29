@@ -36,4 +36,6 @@ export const shellEn: typeof shellRu = {
     text: "Check your internet — the page will open by itself as soon as you're back online. Meanwhile, the Agent keeps working.",
     reload: "Reload",
   },
+  /** Screen-reader text of the route skeletons (loading.tsx under src/app/app) while a screen loads. */
+  loading: "Loading the page…",
 };

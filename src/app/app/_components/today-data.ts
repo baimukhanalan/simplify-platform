@@ -381,7 +381,7 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
   // "Сегодня" = the Almaty calendar day, the same window and definitions as the Opportunities header.
   const dayStart = startOfToday(new Date(now));
   const autonomy = readAutonomy(user.autonomy);
-  const [opps, day, approvals, handoffs, upcoming, offers, responsesToday, timeline, ivCounts] = await Promise.all([
+  const [opps, day, approvals, handoffs, upcoming, offers, responsesToday, timeline, ivCounts, queue] = await Promise.all([
     db.opportunity.findMany({
       where: { campaignId: campaign.id, ...visibleScope() },
       select: { status: true, match: true, eligibility: true, blockers: true, createdAt: true, submittedAt: true, interviews: { select: { round: true } }, _count: { select: { offers: true } } },
@@ -401,13 +401,14 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
     db.inboxMessage.count({ where: { userId: user.id, receivedAt: { gte: dayStart }, classification: { in: ["interview", "assessment", "offer", "rejection"] }, ...visibleLinkedScope() } }),
     loadTimeline(user.id, campaign.id, new Date(now - 3 * DAY)),
     interviewCounts(user.id, new Date(now)),
+    // Independent of the reads above: started with them instead of after them.
+    nextCycleQueue(campaign, autonomy),
   ]);
 
   const t = totals(opps);
   const stage = currentStage(t, campaign.status);
   const today = { found: day.found, qualified: day.qualified, strong: day.strong, submitted: day.submitted, responses: responsesToday };
   const dayOpps = opps.filter((o) => o.createdAt >= dayStart);
-  const queue = await nextCycleQueue(campaign, autonomy);
   const { line, regions } = goalLine(user.goal);
   return {
     clock: campaignDay(campaign, now),

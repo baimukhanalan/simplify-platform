@@ -1,8 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 
+// One client per server instance, in production too: every bundle that imports this module (pages, route handlers,
+// server actions) and every hot reload in dev reuses the same connection pool instead of opening another.
 const g = globalThis as unknown as { prisma?: PrismaClient };
 export const db = g.prisma ?? new PrismaClient();
-if (process.env.NODE_ENV !== "production") g.prisma = db;
+g.prisma = db;
 
 /** Parse a JSON string column, falling back when empty or malformed. */
 export function j<T>(value: string | null | undefined, fallback: T): T {

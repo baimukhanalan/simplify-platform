@@ -3,9 +3,9 @@
 /* Simplify design system — mirrors the landing (simplify-deploy): mint atmosphere,
    frosted white glass, STK Bureau Serif headlines, PP Supply Mono labels, dark pill CTAs. */
 
-@font-face { font-family: "STK Bureau Serif"; src: url("/fonts/STKBureau-SerifBook.otf") format("opentype"); font-display: swap; }
-@font-face { font-family: "PP Supply Mono"; src: url("/fonts/PPSupplyMono-Regular.otf") format("opentype"); font-display: swap; }
-@font-face { font-family: "PP Supply Sans"; src: url("/fonts/PPSupplySans-Regular.otf") format("opentype"); font-display: swap; }
+@font-face { font-family: "STK Bureau Serif"; src: url("/fonts/STKBureau-SerifBook.woff2") format("woff2"), url("/fonts/STKBureau-SerifBook.otf") format("opentype"); font-display: swap; }
+@font-face { font-family: "PP Supply Mono"; src: url("/fonts/PPSupplyMono-Regular.woff2") format("woff2"), url("/fonts/PPSupplyMono-Regular.otf") format("opentype"); font-display: swap; }
+@font-face { font-family: "PP Supply Sans"; src: url("/fonts/PPSupplySans-Regular.woff2") format("woff2"), url("/fonts/PPSupplySans-Regular.otf") format("opentype"); font-display: swap; }
 
 @theme {
   --font-sans: var(--font-inter), "Google Sans Flex", system-ui, sans-serif;

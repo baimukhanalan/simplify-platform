@@ -3,7 +3,7 @@ import "server-only";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { db } from "@/lib/db";
-import { currentUserId } from "@/lib/auth";
+import { currentUser, currentUserId } from "@/lib/auth";
 import { DEFAULT_LOCALE, LOCALE_COOKIE, fromAcceptLanguage, isLocale, resolveLocale, shouldAdoptCookie, type Locale } from "./config";
 import { DICTIONARIES } from "./dictionaries";
 import { createTranslator, pickMessages, type Namespace } from "./translator";
@@ -21,7 +21,8 @@ export const getLocale = cache(async (): Promise<Locale> => {
   const cookie = jar.get(LOCALE_COOKIE)?.value ?? null;
   let userLocale: string | null = null;
   if (userId) {
-    const u = await db.user.findUnique({ where: { id: userId }, select: { locale: true, createdAt: true } }).catch(() => null);
+    // The same (per-request memoized) row the app layout and the page read — no separate query for the language.
+    const u = await currentUser().catch(() => null);
     userLocale = u?.locale ?? null;
     if (u && shouldAdoptCookie(u, cookie)) {
       userLocale = cookie;

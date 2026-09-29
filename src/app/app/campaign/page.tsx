@@ -4,12 +4,12 @@ import { cookies } from "next/headers";
 import { ArrowRight, Check, CircleAlert, Pause, Play, ShieldCheck, TicketPercent } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
-import { isOverdue, pendingApprovalsCount, pendingHandoffsCount } from "@/lib/ops-data";
+import { isOverdue, pendingApprovalsCount, pendingHandoffsCount, settleGuaranteesOnce } from "@/lib/ops-data";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { ButtonLink, Card, Chip, Label, PageHeader, Progress, Ring, Script, cx } from "@/components/ui";
 import { PaymentHistory } from "./_components/payment-history";
 import { GuaranteeCard } from "./_components/guarantee";
-import { guaranteeView, settleGuarantees, type GuaranteeView } from "@/lib/engine/guarantee";
+import { guaranteeView, type GuaranteeView } from "@/lib/engine/guarantee";
 import { SubmitButton } from "@/components/client";
 import { checkout, setCampaignStatus } from "@/lib/actions/campaign";
 import { PLANS } from "@/lib/engine/taxonomy";
@@ -55,7 +55,7 @@ function campaignClock(startedAt: Date | null, endsAt: Date | null, days: number
 export default async function CampaignPage() {
   const user = await requireUser();
   // Interview guarantee: an overdue campaign without interviews is extended before it could be shown as over.
-  await settleGuarantees(user.id);
+  await settleGuaranteesOnce(user.id);
   const [rows, payments, approvals, handoffs, jar, t] = await Promise.all([
     db.campaign.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { _count: { select: { opportunities: { where: { submittedAt: { not: null } } } } } } }),
     db.payment.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, include: { campaign: { select: { plan: true } } } }),
