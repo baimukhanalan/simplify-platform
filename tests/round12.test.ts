@@ -25,6 +25,9 @@ import { cvPdfFilename } from "../src/lib/links";
 import { readAutonomy } from "../src/lib/engine/autonomy";
 import { missingPoints, suggestion, type MockCtx } from "../src/app/app/interviews/[id]/_components/mock-questions";
 
+// These suites cover the live-mode engine (questions, handoffs, Apply decisions); simulation mode has its own suite.
+process.env.SIMPLIFY_MODE = "live";
+
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-r12-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 delete process.env.ANTHROPIC_API_KEY;

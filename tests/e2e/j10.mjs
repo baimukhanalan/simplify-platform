@@ -1,7 +1,7 @@
 // Misc: exported server functions, admin gating, CV parse, free Career Check.
 import { Client, db, form, check, findings, signupNew } from "./lib.mjs";
 import { CV } from "./j1.mjs";
-const demo = await db.user.findUnique({ where: { email: "demo@simplify.kz" } });
+const demo = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" } });
 const anon = new Client("anon");
 // activeCampaign is exported from a "use server" file -> callable as an endpoint with any userId
 import { ACTIONS } from "./lib.mjs";
@@ -51,9 +51,9 @@ r = await anon.action("auth.signup", [undefined, form({ name: "Dup", email: "DEM
 check(/уже есть/.test(r.result?.error ?? ""), "J10.signup.dup", "duplicate email (case-insensitive) rejected", r.result);
 r = await anon.action("auth.signup", [undefined, form({ name: "No terms", email: `nt-${Date.now()}@test.local`, password: "Passw0rd!23" })], { page: "/login" });
 check(!!r.result?.error, "J10.signup.terms", "signup without terms rejected", r.result);
-r = await anon.action("auth.login", [undefined, form({ email: "demo@simplify.kz", password: "simplify2026", next: "//evil.com" })], { page: "/login" });
+r = await anon.action("auth.login", [undefined, form({ email: "aruzhan@simplify.kz", password: "simplify2026", next: "//evil.com" })], { page: "/login" });
 check(r.redirect?.split(";")[0] === "/app", "J10.login.next", "open redirect blocked", r.redirect);
-r = await anon.action("auth.login", [undefined, form({ email: "demo@simplify.kz", password: "wrong", next: "/app" })], { page: "/login" });
+r = await anon.action("auth.login", [undefined, form({ email: "aruzhan@simplify.kz", password: "wrong", next: "/app" })], { page: "/login" });
 check(/Неверный/.test(r.result?.error ?? ""), "J10.login.wrong", "wrong password message", r.result);
 // signup with ?plan= carried through
 const pc = new Client("plan");

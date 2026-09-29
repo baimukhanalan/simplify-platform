@@ -32,6 +32,11 @@ export type CandidateCtx = {
   permissions?: { outsideCountries: boolean; belowSalaryFloor: boolean }; // Agent screen
   /** The campaign's plan: its regions are a hard scope (Local / CIS never applies abroad). Omitted = no plan limit. */
   plan?: { key: string; label: string; regions: readonly string[] };
+  /**
+   * The agent makes the dream-company level call itself (simulation mode): Match ≥ STRONG_MATCH → it applies (the level
+   * lines become soft gaps), below → the role stays blocked and is skipped. Nothing is left as the user's decision.
+   */
+  agentDecides?: boolean;
 };
 
 /** Per-role options: `userPicked` = the user pressed Apply/Auto on this role (a level below the goal is then allowed). */
@@ -178,8 +183,10 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date(), opts: S
   const dream = c.goal.dreamCompanies.some((d) => d && job.company.toLowerCase().includes(d.toLowerCase()));
   let userDecision = false;
   if (dream && blockers.length && blockers.every(isLevelBlocker)) {
-    softGaps.unshift(...blockers.splice(0));
-    if (!opts.userPicked) { softGaps.unshift(DREAM_DECISION); userDecision = true; }
+    if (opts.userPicked || !c.agentDecides) {
+      softGaps.unshift(...blockers.splice(0));
+      if (!opts.userPicked) { softGaps.unshift(DREAM_DECISION); userDecision = true; }
+    } else if (match >= STRONG_MATCH) softGaps.unshift(...blockers.splice(0));
   }
 
   const eligibility = blockers.length ? "blocked" : softGaps.length > 2 ? "soft" : "eligible";

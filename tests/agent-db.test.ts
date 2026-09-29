@@ -10,6 +10,9 @@ import path from "node:path";
 
 import { salaryAnswer, publishedMidUsd } from "../src/lib/engine/salary";
 
+// These suites cover the live-mode engine (questions, handoffs, Apply decisions); simulation mode has its own suite.
+process.env.SIMPLIFY_MODE = "live";
+
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-test-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 delete process.env.ANTHROPIC_API_KEY; // deterministic engine fallback for package generation

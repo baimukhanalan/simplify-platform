@@ -7,6 +7,9 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+// These suites cover the live-mode engine (questions, handoffs, Apply decisions); simulation mode has its own suite.
+process.env.SIMPLIFY_MODE = "live";
+
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-hh-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 delete process.env.ANTHROPIC_API_KEY;

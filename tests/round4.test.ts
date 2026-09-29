@@ -16,6 +16,9 @@ import { interviewReadiness } from "../src/lib/engine/interview-readiness";
 import { ago, fmtYears, yearsForEmployer } from "../src/lib/ops";
 import { plural } from "../src/lib/ru";
 
+// These suites cover the live-mode engine (questions, handoffs, Apply decisions); simulation mode has its own suite.
+process.env.SIMPLIFY_MODE = "live";
+
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-r4-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 delete process.env.ANTHROPIC_API_KEY;

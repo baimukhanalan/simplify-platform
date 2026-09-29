@@ -7,6 +7,7 @@ import { REGIONS, classifyRole, roleKey } from "./engine/taxonomy";
 import { toUSD } from "./engine/fx";
 import { userFloorUsd } from "./engine/salary";
 import { startOfToday } from "./time";
+import { visibleJobsWhere } from "./mode";
 
 /** Inputs + live Career Score for a user. Every query is scoped to `userId`. */
 export async function loadCareer(userId: string) {
@@ -73,7 +74,7 @@ export async function betterPayingRoles(c: Pick<CareerData, "family" | "currentS
   const threshold = Math.round(c.currentSalary * 1.25);
   if (!c.currentSalary) return { threshold, count: 0, list: [] };
   const rows = await db.job.findMany({
-    where: { active: true, roleFamily: c.family, currency: "USD", salaryMax: { gte: threshold } },
+    where: { active: true, ...visibleJobsWhere(), roleFamily: c.family, currency: "USD", salaryMax: { gte: threshold } },
     orderBy: { salaryMax: "desc" },
     take: 500,
     select: { id: true, title: true, company: true, location: true, remote: true, countries: true, salaryMin: true, salaryMax: true, url: true },

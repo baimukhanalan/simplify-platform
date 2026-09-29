@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 const BASE = (process.env.BASE ?? "http://localhost:3300").replace(/\/$/, "");
 const DURATION = Number(process.env.DURATION ?? 60) * 1000;
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 30);
-const DEMO = { email: process.env.DEMO_EMAIL ?? "demo@simplify.kz", password: process.env.DEMO_PASSWORD ?? "simplify2026" };
+const DEMO = { email: process.env.DEMO_EMAIL ?? "aruzhan@simplify.kz", password: process.env.DEMO_PASSWORD ?? "simplify2026" };
 const APP_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "src", "app");
 
 const failures = [];

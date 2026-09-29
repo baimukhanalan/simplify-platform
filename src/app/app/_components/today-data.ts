@@ -2,7 +2,7 @@ import "server-only";
 import { db, j } from "@/lib/db";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { regionsFor } from "@/lib/regions";
-import { currentCampaign, interviewCounts, isQualified, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, reachedAssessment, reachedInterviewRound, runningCampaign, windowNumbers } from "@/lib/ops-data";
+import { currentCampaign, interviewCounts, isQualified, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, reachedAssessment, reachedInterviewRound, runningCampaign, visibleLinkedScope, visibleScope, windowNumbers } from "@/lib/ops-data";
 import { APPLIED_OR_LATER, fmtMoney } from "@/lib/engine/taxonomy";
 import { blockerRu } from "@/lib/engine/matching";
 import { APP_TZ as TZ, startOfToday } from "@/lib/time";
@@ -216,25 +216,25 @@ const RESPONSE_COPY: Record<string, (c: string) => { text: string; kind: Timelin
 export async function loadTimeline(userId: string, campaignId: string, since: Date) {
   const [events, found, skipped, inbox] = await Promise.all([
     db.event.findMany({
-      where: { userId, createdAt: { gte: since }, type: { not: "inbox" } },
+      where: { userId, createdAt: { gte: since }, type: { not: "inbox" }, ...visibleLinkedScope() },
       orderBy: { createdAt: "desc" },
       take: 200,
       include: { opportunity: { select: { id: true, match: true, job: { select: { company: true, title: true, location: true, remote: true } } } } },
     }),
     db.opportunity.findMany({
-      where: { campaignId, createdAt: { gte: since }, status: { not: "skipped" }, match: { gte: 60 } },
+      where: { campaignId, ...visibleScope(), createdAt: { gte: since }, status: { not: "skipped" }, match: { gte: 60 } },
       orderBy: { match: "desc" },
       take: 60,
       select: { id: true, match: true, createdAt: true, job: { select: { company: true, title: true, location: true, remote: true } } },
     }),
     db.opportunity.findMany({
-      where: { campaignId, createdAt: { gte: since }, status: "skipped" },
+      where: { campaignId, ...visibleScope(), createdAt: { gte: since }, status: "skipped" },
       orderBy: { match: "desc" },
       take: 60,
       select: { id: true, blockers: true, createdAt: true, job: { select: { company: true, title: true, location: true, remote: true } } },
     }),
     db.inboxMessage.findMany({
-      where: { userId, receivedAt: { gte: since } },
+      where: { userId, receivedAt: { gte: since }, ...visibleLinkedScope() },
       orderBy: { receivedAt: "desc" },
       take: 60,
       include: { opportunity: { select: { id: true, job: { select: { company: true } }, interviews: { select: { id: true, round: true }, orderBy: { createdAt: "desc" } } } } },
@@ -309,7 +309,7 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
   const autonomy = readAutonomy(user.autonomy);
   const [opps, day, approvals, handoffs, upcoming, offers, responsesToday, timeline, ivCounts] = await Promise.all([
     db.opportunity.findMany({
-      where: { campaignId: campaign.id },
+      where: { campaignId: campaign.id, ...visibleScope() },
       select: { status: true, match: true, eligibility: true, createdAt: true, submittedAt: true, interviews: { select: { round: true } }, _count: { select: { offers: true } } },
     }),
     windowNumbers(campaign.id, dayStart, autonomy.autoApplyMinMatch),

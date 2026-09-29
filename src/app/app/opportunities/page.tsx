@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { db, j, insensitive } from "@/lib/db";
 import { awaitingDecisionWhere, currentCampaign, nextCycleQueue, windowNumbers, type NextCycle, type NotQueuedReason } from "@/lib/ops-data";
 import { startOfToday } from "@/lib/time";
+import { isSimulation, visibleOpportunities } from "@/lib/mode";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { salaryLabel } from "@/lib/ops";
@@ -32,12 +33,15 @@ const TABS = [
   { key: "skipped", label: "Пропущенные" },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
+/** Simulation mode: the agent decides every role itself, so there is no «Ждут решения» tab — the feed opens on «Все». */
+const defaultTab = (): Tab => (isSimulation() ? "all" : "strong");
+const visibleTabs = () => (isSimulation() ? TABS.filter((t) => t.key !== "strong") : TABS);
 type SP = Record<string, string | string[] | undefined>;
 const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
 
 function href(tab: Tab, q: string, page = 1) {
   const p = new URLSearchParams();
-  if (tab !== "strong") p.set("tab", tab);
+  if (tab !== defaultTab()) p.set("tab", tab);
   if (q) p.set("q", q);
   if (page > 1) p.set("page", String(page));
   const s = p.toString();
@@ -64,7 +68,8 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     );
   }
 
-  const tab: Tab = (TABS.find((t) => t.key === one(sp.tab))?.key ?? "strong") as Tab;
+  const tabs = visibleTabs();
+  const tab: Tab = (tabs.find((t) => t.key === one(sp.tab))?.key ?? defaultTab()) as Tab;
   const q = one(sp.q).trim().slice(0, 80);
   const page = Math.max(1, Number.parseInt(one(sp.page), 10) || 1);
   const autonomy = readAutonomy(user.autonomy);
@@ -74,7 +79,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
   // What the next agent cycle would send on its own — the same computation as Today. Computed first: «Ждут решения» is
   // exactly the roles it leaves for the user (awaitingDecisionWhere), for both the list and its counter.
   const queue = await nextCycleQueue(campaign, autonomy);
-  const base: Prisma.OpportunityWhereInput = { campaignId: campaign.id };
+  const base: Prisma.OpportunityWhereInput = visibleOpportunities({ campaignId: campaign.id });
   const search: Prisma.OpportunityWhereInput = q ? { job: { OR: [{ title: { contains: q, ...insensitive } }, { company: { contains: q, ...insensitive } }, { location: { contains: q, ...insensitive } }] } } : {};
   const tabWhere: Record<Tab, Prisma.OpportunityWhereInput> = {
     // The same filter as needsYou.applyDecisions (Today, Applications, Inbox): awaitingDecisionWhere.
@@ -97,7 +102,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
     windowNumbers(campaign.id, since, threshold),
     db.opportunity.findMany({ where: { ...base, ...(since ? { createdAt: { gte: since } } : {}) }, select: { status: true, match: true, eligibility: true, submittedAt: true } }),
     needsYouCached(user.id),
-    Promise.all(TABS.map((t) => db.opportunity.count({ where: { ...base, ...tabWhere[t.key], ...search } }))),
+    Promise.all(tabs.map((t) => db.opportunity.count({ where: { ...base, ...tabWhere[t.key], ...search } }))),
     db.opportunity.count({ where }),
     db.opportunity.findMany({
       where,
@@ -167,7 +172,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
             {discoverySentence(found, when)}
             {submitted > 0 && <>{" "}<N v={submitted} /> {plural(submitted, ["заявка уже отправлена", "заявки уже отправлены", "заявок уже отправлены"])}.</>}
           </p>
-          <AutoApplyToggle enabled={autonomy.submitApplications} min={threshold} consent={campaign.autoSubmit} />
+          {!isSimulation() && <AutoApplyToggle enabled={autonomy.submitApplications} min={threshold} consent={campaign.autoSubmit} />}
           {queueNote && <p className="text-[12.5px] text-ink-3">{queueNote}</p>}
           <Link href="/app/applications" className="inline-flex min-h-10 w-fit items-center gap-1.5 text-[13px] text-teal underline-offset-4 hover:text-head hover:underline">
             Смотреть заявки <ArrowRight className="size-3.5" aria-hidden />
@@ -177,7 +182,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <nav aria-label="Фильтр вакансий" className="glass inline-flex w-fit gap-1 !rounded-full p-1">
-          {TABS.map((t, i) => (
+          {tabs.map((t, i) => (
             <Link
               key={t.key}
               href={href(t.key, q)}
@@ -193,7 +198,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
           ))}
         </nav>
         <form method="get" action="/app/opportunities" role="search" className="relative w-full sm:w-72">
-          {tab !== "strong" && <input type="hidden" name="tab" value={tab} />}
+          {tab !== defaultTab() && <input type="hidden" name="tab" value={tab} />}
           <label htmlFor="opp-q" className="sr-only">Поиск по роли, компании или городу</label>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-4" aria-hidden />
           <input id="opp-q" name="q" type="search" defaultValue={q} placeholder="Роль, компания, город" className="field !rounded-full !py-2 !pl-10 !text-[14px]" />

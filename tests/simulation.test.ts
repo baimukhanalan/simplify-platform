@@ -64,11 +64,11 @@ describe("mode switch", () => {
     const tools0 = process.env.SIMPLIFY_DEMO_TOOLS;
     delete process.env.SIMPLIFY_DEMO_TOOLS;
     try {
-      assert.equal(demoToolsEnabled({ email: "demo@simplify.kz", role: "user" }), false);
+      assert.equal(demoToolsEnabled({ email: "aruzhan@simplify.kz", role: "user" }), false);
       assert.equal(demoToolsEnabled({ email: "someone@mail.kz", role: "user" }), false);
       assert.equal(demoToolsEnabled({ email: "admin@simplify.kz", role: "admin" }), true);
       process.env.SIMPLIFY_MODE = "live";
-      assert.equal(demoToolsEnabled({ email: "demo@simplify.kz", role: "user" }), true, "live mode keeps today's behaviour (dev default / demo account)");
+      assert.equal(demoToolsEnabled({ email: "aruzhan@simplify.kz", role: "user" }), true, "live mode keeps today's behaviour (dev default / demo account)");
     } finally {
       if (tools0 === undefined) delete process.env.SIMPLIFY_DEMO_TOOLS; else process.env.SIMPLIFY_DEMO_TOOLS = tools0;
     }

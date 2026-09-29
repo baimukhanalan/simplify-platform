@@ -3,7 +3,7 @@ import "server-only";
 import { db } from "./db";
 import { agentMaySubmit, readAutonomy, type Autonomy } from "./engine/autonomy";
 import { agentQueue, dailyUsage, hasOpenAnswers } from "./engine/agent";
-import { FICTIONAL_SOURCE } from "./mode";
+import { FICTIONAL_SOURCE, isSimulation } from "./mode";
 import { DREAM_DECISION } from "./engine/matching";
 import { reachedInterview } from "./engine/insights";
 import { APPLIED_OR_LATER, roleKey } from "./engine/taxonomy";
@@ -60,6 +60,15 @@ export function pendingQueueCount(userId: string) {
   return db.approval.count({ where: pendingQueueWhere(userId) });
 }
 
+/**
+ * Simulation mode: an Opportunity filter that keeps the internal corpus only (live-feed vacancies are never listed or
+ * counted, src/lib/mode.ts). Spread into a `where` that has no `job` key of its own. Live mode: nothing.
+ */
+export const visibleScope = (): { job?: { source: string } } => (isSimulation() ? { job: { source: FICTIONAL_SOURCE } } : {});
+
+/** The same scope for rows that may point at an opportunity (events, inbox messages): unlinked rows always show. */
+export const visibleLinkedScope = () => (isSimulation() ? { OR: [{ opportunityId: null }, { opportunity: { job: { source: FICTIONAL_SOURCE } } }] } : {});
+
 // ——— "Today" numbers (Today, Opportunities and Career use the same window and the same definitions) ———
 
 /** Match from which a found role counts as "подошла" (fits). Defined in the engine so event texts use it too. */
@@ -77,6 +86,7 @@ export const isQualified = (o: { status: string; eligibility: string; match: num
 /** Prisma twin of isQualified. `since` limits it to roles found in the window (null = the whole campaign). */
 export const qualifiedWhere = (campaignId: string, since: Date | null = null) => ({
   campaignId,
+  ...visibleScope(),
   ...(since ? { createdAt: { gte: since } } : {}),
   status: { not: "skipped" },
   eligibility: { not: "blocked" },
@@ -111,10 +121,10 @@ export const reachedAssessment = (o: { status: string; interviews: { round: stri
 export async function windowNumbers(campaignId: string, since: Date | null, threshold: number) {
   const created = since ? { createdAt: { gte: since } } : {};
   const [found, qualified, strong, submitted] = await Promise.all([
-    db.opportunity.count({ where: { campaignId, ...created } }),
+    db.opportunity.count({ where: { campaignId, ...visibleScope(), ...created } }),
     qualifiedCount(campaignId, since),
     db.opportunity.count({ where: strongWhere(campaignId, since, threshold) }),
-    db.opportunity.count({ where: { campaignId, submittedAt: since ? { gte: since } : { not: null } } }),
+    db.opportunity.count({ where: { campaignId, ...visibleScope(), submittedAt: since ? { gte: since } : { not: null } } }),
   ]);
   return { found, qualified, fit: qualified, strong, submitted };
 }
@@ -176,7 +186,8 @@ export const awaitingDecisionIds = (queue: Pick<NextCycle, "notQueued">) =>
  */
 export const awaitingDecisionWhere = (campaignId: string, queue: Pick<NextCycle, "notQueued"> | null) => ({
   campaignId,
-  id: { in: queue ? awaitingDecisionIds(queue) : [] },
+  // Simulation mode: the agent decides every role itself — nothing ever waits for the user's Apply.
+  id: { in: queue && !isSimulation() ? awaitingDecisionIds(queue) : [] },
   status: { in: [...AWAITING_DECISION_STATUSES] },
   eligibility: { not: "blocked" },
   decision: { not: "skip" },
@@ -211,7 +222,7 @@ export async function nextCycleQueue(
   // Every fitting role not sent yet — the cards the user sees as "waiting".
   // Dream-company decisions (DREAM_DECISION) are the user's call whatever their Match, so they are listed too.
   const fitting = await db.opportunity.findMany({
-    where: { campaignId: campaign.id, status: { in: ["found", "qualified", "prepared"] }, eligibility: { not: "blocked" }, OR: [{ match: { gte: STRONG_MATCH } }, { status: "qualified", softGaps: { contains: DREAM_DECISION } }] },
+    where: { campaignId: campaign.id, ...visibleScope(), status: { in: ["found", "qualified", "prepared"] }, eligibility: { not: "blocked" }, OR: [{ match: { gte: STRONG_MATCH } }, { status: "qualified", softGaps: { contains: DREAM_DECISION } }] },
     select: { id: true, status: true, decision: true, match: true, softGaps: true, job: { select: { source: true, postedAt: true } }, pkg: { select: { answers: true } }, approvals: { where: { status: "pending" }, select: { kind: true } } },
   });
   const notQueued: Record<string, NotQueuedReason> = {};
@@ -233,7 +244,7 @@ export async function nextCycleQueue(
     agentMaySubmit(o, autonomy) ? null : o.decision === "skip" ? "user-skip" : !autonomy.submitApplications ? "auto-apply-off" : "below-threshold";
 
   const ready = await db.opportunity.findMany({
-    where: { campaignId: campaign.id, status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } },
+    where: { campaignId: campaign.id, ...visibleScope(), status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } },
     orderBy: [{ decision: "desc" }, { priority: "desc" }],
     select: { id: true, decision: true, match: true, updatedAt: true, job: { select: { source: true } }, pkg: { select: { answers: true } } },
   });
@@ -356,6 +367,9 @@ export async function needsYouFor(
     campaign && campaign.status === "active" ? nextCycleQueue(campaign, autonomy) : null,
   ]);
   const applyDecisions = campaign && queue ? await db.opportunity.count({ where: awaitingDecisionWhere(campaign.id, queue) }) : 0;
+  // Simulation mode: only the human moments (offer, interview prep, an assessment to take) — the agent answers every
+  // question itself, never hands a role off and decides every Apply (settleSimulationChores keeps the queue empty).
+  if (isSimulation()) return { questions: 0, handoffs: 0, applyDecisions: 0, offer, interviews48h, assessments, total: offer + interviews48h + assessments };
   return { questions, handoffs, applyDecisions, offer, interviews48h, assessments, total: questions + handoffs + applyDecisions + offer + interviews48h + assessments };
 }
 

@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { roundDate } from "@/lib/engine/agent";
 import { realUrl } from "@/lib/links";
+import { visibleLinkedScope } from "@/lib/ops-data";
 import { INBOX_CLASS, fmtDateTime } from "@/lib/ops";
 import { agoRu } from "../opportunities/_lib/when";
 import { ButtonLink, Chip, Empty, PageHeader, cx } from "@/components/ui";
@@ -28,7 +29,7 @@ const FILTERS = [
 
 const load = (userId: string, cls: string) =>
   db.inboxMessage.findMany({
-    where: { userId, ...(cls ? { classification: cls } : {}) },
+    where: { userId, ...visibleLinkedScope(), ...(cls ? { classification: cls } : {}) },
     orderBy: { receivedAt: "desc" },
     take: 80,
     include: {
@@ -56,7 +57,7 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
 
   const [messages, counts, waiting] = await Promise.all([
     load(user.id, cls),
-    db.inboxMessage.groupBy({ by: ["classification"], where: { userId: user.id }, _count: true }),
+    db.inboxMessage.groupBy({ by: ["classification"], where: { userId: user.id, ...visibleLinkedScope() }, _count: true }),
     needsYouCached(user.id),
   ]);
   const count = (k: string) => (k ? counts.find((c) => c.classification === k)?._count ?? 0 : counts.reduce((a, c) => a + c._count, 0));

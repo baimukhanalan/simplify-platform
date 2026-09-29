@@ -142,7 +142,7 @@ async function qualifiedAgree(c, camp, label) {
 
 // ——— 1-3, 5 on the seeded demo account (9 replayed days) ———
 {
-  const demo = await db.user.findUnique({ where: { email: "demo@simplify.kz" }, include: { profile: true } });
+  const demo = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" }, include: { profile: true } });
   const camp = await db.campaign.findFirst({ where: { userId: demo.id }, orderBy: { createdAt: "desc" } });
   const c = await new Client("j14demo").asUser(demo.id);
   const over = await overGapSubmissions(camp.id, demo.profile.yearsExperience);
@@ -368,7 +368,7 @@ async function qualifiedAgree(c, camp, label) {
 
 // ——— 9. Russian labels: lanes on Insights use the shared names ———
 {
-  const demo = await db.user.findUnique({ where: { email: "demo@simplify.kz" } });
+  const demo = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" } });
   const c = await new Client("j14labels").asUser(demo.id);
   const ins = visible((await c.get("/app/insights")).text);
   const lane = ins.match(/Lane .{0,300}/)?.[0] ?? "";

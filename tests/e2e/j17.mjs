@@ -461,7 +461,7 @@ const icamp = await db.campaign.findFirst({ where: { userId: ic.user.id } });
 
 // ——— B4 · the demo user ———
 {
-  const demo = await db.user.findUnique({ where: { email: "demo@simplify.kz" } });
+  const demo = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" } });
   const dc = await new Client("j17demo").asUser(demo.id);
   dc.user = demo;
   const n = await needsAgree(dc, "demo");

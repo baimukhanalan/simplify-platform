@@ -24,6 +24,9 @@ import { isDemoUrl } from "../src/lib/links";
 import { isPushHiddenOn } from "../src/lib/push";
 import { classifyEmail } from "../src/lib/engine/inbox";
 
+// These suites cover the live-mode engine (questions, handoffs, Apply decisions); simulation mode has its own suite.
+process.env.SIMPLIFY_MODE = "live";
+
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-r6-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 delete process.env.ANTHROPIC_API_KEY;

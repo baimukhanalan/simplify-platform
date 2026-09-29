@@ -14,7 +14,7 @@ import { count, plural, roleLabelRu } from "../ru";
 import { toUSD } from "./fx";
 import { salaryAnswer } from "./salary";
 import { snapRoundTime, startOfToday } from "../time";
-import { FICTIONAL_SOURCE, isSimulation } from "../mode";
+import { FICTIONAL_SOURCE, isFictionalJob, isSimulation, visibleJobsWhere } from "../mode";
 import { ensureFictionalCoverage } from "./coverage";
 
 // Journal wording for employer emails (Settings → audit log shows these lines).
@@ -58,6 +58,7 @@ export async function loadCandidate(userId: string) {
     educationLevel: /phd|доктор/.test(edu) ? "phd" : /master|магистр|msc/.test(edu) ? "master" : /bachelor|бакалавр|bsc|university|университет/.test(edu) ? "bachelor" : "none",
     goal, allocation, permissions: { outsideCountries: autonomy.outsideCountries, belowSalaryFloor: autonomy.belowSalaryFloor },
     plan: planScopeOf(plan),
+    agentDecides: isSimulation(),
   });
   return { user, profile, facts, goal, ctx, stories: user.stories, autonomy };
 }
@@ -115,24 +116,16 @@ export const agentQueueWhere = (campaignId: string) => ({
 });
 
 const QUEUE_SELECT = { id: true, decision: true, match: true, job: { select: { company: true, title: true, source: true } } } satisfies Prisma.OpportunitySelect;
-/** Share of a cycle's preparation slots the internal corpus goes first for, in simulation mode (the rest: by priority). */
-export const SIM_FICTIONAL_SHARE = 0.7;
 
 /**
  * The agent's preparation queue in the order a cycle takes it (runTick; nextCycleQueue in src/lib/ops-data.ts mirrors
- * it), over-fetched ×2 because prepare() sets duplicates aside. Roles the user picked (Apply / Auto) always go first; then,
- * in simulation mode, up to SIM_FICTIONAL_SHARE of the slots go to internal-corpus roles; then everything by priority.
+ * it), over-fetched ×2 because prepare() sets duplicates aside. Roles the user picked (Apply / Auto) go first, then
+ * everything by priority. In simulation mode the queue holds internal-corpus roles only (src/lib/mode.ts).
  */
 export async function agentQueue(campaignId: string, take: number) {
   if (take <= 0) return [];
-  const orderBy = [{ decision: "desc" as const }, { priority: "desc" as const }];
-  const all = await db.opportunity.findMany({ where: agentQueueWhere(campaignId), orderBy, take: take * 2, select: QUEUE_SELECT });
-  if (!isSimulation()) return all;
-  const lead = Math.ceil(take * SIM_FICTIONAL_SHARE);
-  const fx = await db.opportunity.findMany({ where: { ...agentQueueWhere(campaignId), job: { source: FICTIONAL_SOURCE } }, orderBy, take: lead * 2, select: QUEUE_SELECT });
-  const picked = (o: { decision: string }) => o.decision === "apply" || o.decision === "auto";
-  const seen = new Set<string>();
-  return [...all.filter(picked), ...fx.filter((o) => !picked(o)), ...all].filter((o) => (seen.has(o.id) ? false : (seen.add(o.id), true)));
+  const where = isSimulation() ? { ...agentQueueWhere(campaignId), job: { source: FICTIONAL_SOURCE } } : agentQueueWhere(campaignId);
+  return db.opportunity.findMany({ where, orderBy: [{ decision: "desc" as const }, { priority: "desc" as const }], take: take * 2, select: QUEUE_SELECT });
 }
 
 /** A package answer still waiting for the user (its own approval card, or a standing question asked on another role). */
@@ -181,7 +174,8 @@ export async function discover(campaignId: string, opts: { coverage?: boolean } 
   // Two passes: a light list to pick relevant, unseen jobs, then only their scoring columns (never all descriptions).
   // Relevance = the goal's roles (primary + extra), or mass-hiring roles in Mass mode. A dream company widens nothing:
   // its roles are ranked higher (Target lane), but a QA opening there is still not a Data Analyst role.
-  const light = await db.job.findMany({ where: { active: true }, select: { id: true, roleFamily: true, massHiring: true, company: true } });
+  // Simulation mode: only the fictional corpus is discovered (live-feed vacancies stay in the Job table for later).
+  const light = await db.job.findMany({ where: { active: true, ...visibleJobsWhere() }, select: { id: true, roleFamily: true, massHiring: true, company: true } });
   const candidateIds = light
     .filter((job) => !known.has(job.id) && (wanted.has(job.roleFamily) || (c.goal.mode === "mass" && job.massHiring)))
     .map((job) => job.id);
@@ -302,6 +296,33 @@ export { SENSITIVE_DECLINE, SENSITIVE_DECLINE_LEGACY, SENSITIVE_DECLINE_RU, answ
 export const CAMPAIGN_CLOSED_NOTE = "Кампания завершена — вопрос закрыт";
 
 /**
+ * Simulation mode: the answer the agent gives on its own to a question that would otherwise wait for the user — the
+ * latest standing answer when one exists, else sensitive → «I prefer not to answer», legal consent → "Yes", anything
+ * else → the agent's own proposal (or "Yes" when it has none).
+ */
+export async function standingAnswer(userId: string, q: { kind?: string | null; question: string; proposed?: string | null }) {
+  if (q.kind === "sensitive") return SENSITIVE_DECLINE;
+  if (q.kind && STANDING_KINDS.has(q.kind)) {
+    const prior = await db.approval.findFirst({ where: { userId, question: q.question, kind: q.kind, status: { in: ["approved", "edited"] }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
+    if (prior) return prior.answer;
+  }
+  if (q.kind === "legal") return "Yes";
+  return q.proposed?.trim() || "Yes";
+}
+
+/** Simulation mode: every answer of a package still pending gets the agent's standing answer. Returns how many changed. */
+export async function settlePendingAnswers(userId: string, answers: Answer[]) {
+  let n = 0;
+  for (const a of answers) {
+    if (a.status !== "pending") continue;
+    a.a = await standingAnswer(userId, { kind: a.kind, question: a.q, proposed: a.a });
+    a.status = "approved";
+    n++;
+  }
+  return n;
+}
+
+/**
  * A finished campaign must stop asking: close every pending approval of its opportunities
  * (status "rejected" + CAMPAIGN_CLOSED_NOTE). The opportunities themselves are left as they are.
  */
@@ -354,6 +375,14 @@ export async function settleSharedAnswers(userId: string) {
   const touched: string[] = [];
   for (const o of opps) {
     const answers = j<Answer[]>(o.pkg?.answers ?? "[]", []);
+    // Simulation mode: nothing is asked — the agent gives its standing answers (standingAnswer).
+    if (isSimulation()) {
+      if (await settlePendingAnswers(userId, answers)) {
+        await db.applicationPackage.update({ where: { opportunityId: o.id }, data: { answers: s(answers) } });
+        touched.push(o.id);
+      }
+      continue;
+    }
     let changed = false;
     for (const a of answers) {
       if (a.status !== "pending" || !STANDING_KINDS.has(a.kind ?? "") || o.approvals.some((x) => x.question === a.q)) continue;
@@ -428,6 +457,8 @@ export async function prepare(opportunityId: string, opts: PrepareOptions = {}) 
     const prior = await db.approval.findFirst({ where: { userId, question: a.q, kind: a.kind, status: { in: ["approved", "edited"] }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
     if (prior) { a.a = prior.answer; a.status = "approved"; reused++; }
   }
+  // Simulation mode: the agent answers whatever is left itself — no question ever waits for the user.
+  if (isSimulation() && !opts.preview) await settlePendingAnswers(userId, pkg.answers);
   const version = `v${(await db.applicationPackage.count({ where: { opportunity: { campaignId: opp.campaignId } } })) + 1}-${opp.segment}`;
   await db.applicationPackage.upsert({
     where: { opportunityId },
@@ -476,6 +507,8 @@ export async function submit(opportunityId: string, via: "agent" | "user" = "age
   if ((opp.approvals.length || hasOpenAnswers(opp.pkg.answers)) && via === "agent") return { ok: false, reason: "approvals" };
   // Never twice to one role in a campaign. A user handoff is recorded regardless: the user already sent it themselves.
   if (via === "agent" && (await duplicateOf(opp))) return { ok: false, reason: "duplicate" };
+  // Simulation mode: the agent never acts on a live-feed vacancy (a real company) — no submission, no handoff.
+  if (via === "agent" && isSimulation() && !isFictionalJob(opp.job)) return { ok: false, reason: "live-feed" };
   let method = via === "user" ? "user-handoff" : `ats:${opp.job.source}`;
   let hhNote: object = {};
   // hh.kz adapter (src/lib/hh/apply.ts): the same gates as above (consent, autonomy, daily limit, open questions) were
@@ -550,6 +583,8 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
     return { skipped: "expired" };
   }
   if (campaign.status !== "active") return { skipped: campaign.status };
+  // Simulation mode: live-feed leftovers and any open question are settled before the cycle (src/lib/engine/simulation.ts).
+  if (isSimulation()) await (await import("./simulation")).settleSimulationChores(campaign.userId);
   const { autonomy } = await loadCandidate(campaign.userId);
   const d = autonomy.findJobs ? await discover(campaignId, { coverage: opts.coverage }) : { found: 0, qualified: 0, blocked: 0 };
   await rerank(campaignId);
@@ -619,6 +654,7 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
  * merely queued for a later cycle (daily limit) are not the user's decision.
  */
 export async function pendingDecisions(campaignId: string, autoSubmit: boolean, autonomy: Parameters<typeof agentMaySubmit>[1]) {
+  if (isSimulation()) return 0; // the agent decides everything itself (src/lib/mode.ts)
   const [approvals, prepared] = await Promise.all([
     db.approval.count({ where: { status: "pending", opportunity: { campaignId } } }),
     db.opportunity.findMany({ where: { campaignId, status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } }, select: { decision: true, match: true, pkg: { select: { answers: true } } } }),

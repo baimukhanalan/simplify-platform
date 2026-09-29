@@ -106,7 +106,7 @@ check(!!iv1 && !!iv2, "J15.iv.created", "interview + assessment rounds created f
   const lim = await c.action("interview.regeneratePack", [form({ id: iv1.id })], { page });
   check(lim.result && lim.result.ok === false && lim.result.limited === true && lim.result.by === null, "J15.pack.limited", "11th run → {ok:false, by:null, limited:true}", lim.result ?? lim.text.slice(0, 200));
   check((await db.interview.findUnique({ where: { id: iv1.id } })).pack === before, "J15.pack.unchanged", "a limited run changes nothing");
-  const other = await new Client("j15-other").asUser((await db.user.findUnique({ where: { email: "demo@simplify.kz" } })).id);
+  const other = await new Client("j15-other").asUser((await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" } })).id);
   const foreign = await other.action("interview.regeneratePack", [form({ id: iv1.id })], { page });
   check(!foreign.result?.ok, "J15.pack.foreign", "another user cannot regenerate this pack", { status: foreign.status, res: foreign.result });
   const msgs = await db.event.findMany({ where: { userId: u.id, type: "interview_pack" }, select: { message: true }, take: 3 });
@@ -154,7 +154,7 @@ async function todayAddsUp(cl, label, campaignId) {
 }
 await todayAddsUp(c, "j15", camp.id);
 {
-  const demo = await db.user.findUnique({ where: { email: "demo@simplify.kz" } });
+  const demo = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" } });
   const dc = await new Client("j15-demo").asUser(demo.id);
   const dcamp = await db.campaign.findFirst({ where: { userId: demo.id }, orderBy: { createdAt: "desc" } });
   await todayAddsUp(dc, "demo", dcamp.id);

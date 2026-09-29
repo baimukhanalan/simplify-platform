@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { isSimulation } from "@/lib/mode";
 import { logout } from "@/lib/actions/auth";
 import { currentCampaign, interviewCounts, unreadMoments } from "@/lib/ops-data";
 import { needsYouCached } from "../_components/global-needs";
@@ -41,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const { counts, clock, moments, todayShowsOffer } = await shellData(user.id);
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
-      <Nav counts={counts} role={user.role} campaign={clock} userName={user.name} />
+      <Nav counts={counts} role={user.role} campaign={clock} userName={user.name} quietQueue={isSimulation()} />
       <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-16 pt-4 sm:px-8 lg:pt-6">
         <div className="mx-auto flex w-full max-w-[1180px] items-center justify-end gap-2 lg:mb-5">
           {/* One Notifier instance: pinned into the sticky mobile header (left of the menu button), inline on desktop. */}

@@ -8,6 +8,7 @@ import { PLANS } from "@/lib/engine/taxonomy";
 import { setCampaignStatus, updateCampaignSettings } from "@/lib/actions/campaign";
 import { pendingApprovalsCount, pendingHandoffsCount, runningCampaign } from "@/lib/ops-data";
 import { hhEnabled } from "@/lib/hh/client";
+import { isSimulation } from "@/lib/mode";
 import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Field, PageHeader, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
@@ -50,7 +51,7 @@ export default async function AgentPage({ searchParams }: { searchParams: Promis
       />
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <AutonomyForm initial={autonomy} rows={rows} autoSubmitConsent={autoSubmitConsent} />
+        <AutonomyForm initial={autonomy} rows={rows} autoSubmitConsent={autoSubmitConsent} standing={isSimulation()} />
 
         <div className="flex flex-col gap-6 lg:sticky lg:top-6">
           <Card strong className="flex flex-col gap-5">
@@ -101,12 +102,12 @@ export default async function AgentPage({ searchParams }: { searchParams: Promis
             <Link href="/app/extension" className="self-start text-[13.5px] text-teal underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-green">Подключить расширение →</Link>
           </Card>
 
-          <Card className="flex flex-col gap-3">
+          {!isSimulation() && <Card className="flex flex-col gap-3">
             <h2 className="label">Когда агент спрашивает тебя</h2>
             <p className="text-[13.5px] leading-relaxed text-ink-2">
               Юридические декларации, спонсорство визы и нестандартные вопросы агент сам не решает: в первый раз они ждут тебя в <Link href="/app/approvals" className="inline-flex min-h-10 items-center rounded text-teal underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-green sm:min-h-0">Подтверждениях</Link>. Когда такой юридический вопрос или вопрос о спонсорстве повторится, агент повторит твой прошлый ответ. Как быть с деликатными вопросами (пол, инвалидность и похожие), выбираешь в блоке «Деликатные вопросы».
             </p>
-          </Card>
+          </Card>}
         </div>
       </div>
     </>

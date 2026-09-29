@@ -8,7 +8,7 @@ import { parseCVHeuristic, yearsFromFacts } from "./engine/profile";
 import { runTick, createInterview, loadCandidate, logEvent, rescheduleInterview, SENSITIVE_DECLINE } from "./engine/agent";
 import { ensureFictionalCoverage } from "./engine/coverage";
 import { isSimulation } from "./mode";
-import { playStep, simulateEmployerActivity } from "./engine/simulation";
+import { playStep, settleSimulationChores, simulateEmployerActivity } from "./engine/simulation";
 import { patchPackageAnswer } from "./engine/approvals";
 import { renormalizeDemoJobs } from "./engine/ingest";
 import { PLANS, seniorityFromYears } from "./engine/taxonomy";
@@ -109,7 +109,7 @@ const log = (...a: unknown[]) => { if (process.env.SEED_VERBOSE !== "0") console
 
 export async function seedDemo(opts: { staff: boolean; staffPassword?: string } = { staff: true }) {
   log("Resetting showcase data…");
-  await db.user.deleteMany({ where: { email: { in: opts.staff ? ["demo@simplify.kz", "admin@simplify.kz", "partner@amaskills.kz"] : ["demo@simplify.kz"] } } });
+  await db.user.deleteMany({ where: { email: { in: opts.staff ? ["aruzhan@simplify.kz", "demo@simplify.kz", "admin@simplify.kz", "partner@amaskills.kz"] : ["aruzhan@simplify.kz", "demo@simplify.kz"] } } });
   await removeOrphans();
   log(`Corpus roles re-normalized: ${await renormalizeDemoJobs()}`);
 
@@ -125,7 +125,7 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
   const years = yearsFromFacts(parsed.facts);
   const user = await db.user.create({
     data: {
-      email: "demo@simplify.kz", name: "Aruzhan Sadykova", passwordHash: pw, referredByCode: "AMASKILLS",
+      email: "aruzhan@simplify.kz", name: "Aruzhan Sadykova", passwordHash: pw, referredByCode: "AMASKILLS",
       consents: s({ terms: true, autoSubmit: true, emailScan: true, copilot: true, analytics: true, at: new Date().toISOString() }),
       profile: { create: {
         headline: "Data Analyst", location: "Almaty, Kazakhstan", city: "Almaty", country: "KZ", citizenship: "KZ", workAuth: s(["KZ"]),
@@ -251,8 +251,18 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
   }
   await db.careerSnapshot.create({ data: { userId: user.id, score: live.score, marketValue: live.marketValue, components: s(live.components) } });
 
+  // Simulation mode: nothing operational is left for anyone — live-feed leftovers removed, open questions answered
+  // (every account, so a database switched from live mode reads the same way).
+  if (isSimulation()) {
+    const users = await db.campaign.findMany({ where: { status: { in: ["active", "paused"] } }, select: { userId: true }, distinct: ["userId"] });
+    for (const u of users) {
+      const r = await settleSimulationChores(u.userId);
+      if (r.removed || r.answered || r.closed) log(`  settled ${u.userId}: removed ${r.removed}, answered ${r.answered}, closed ${r.closed}`);
+    }
+  }
+
   const counts = await db.opportunity.groupBy({ by: ["status"], where: { campaignId: campaign.id }, _count: true });
   log(counts.map((c) => `${c.status}:${c._count}`).join("  "));
-  log("\nDemo login: demo@simplify.kz / simplify2026   Admin: admin@simplify.kz   Partner: partner@amaskills.kz");
+  log("\nDemo login: aruzhan@simplify.kz / simplify2026   Admin: admin@simplify.kz   Partner: partner@amaskills.kz");
 }
 

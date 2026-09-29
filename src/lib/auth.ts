@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
 import bcrypt from "bcryptjs";
 import { db } from "./db";
+import { isSimulation } from "./mode";
 
 const COOKIE = "sfy_session";
 const secret = () => {
@@ -74,6 +75,8 @@ export async function currentUser() {
 export async function requireUser() {
   const user = await currentUser();
   if (!user) redirect("/login");
+  // Simulation mode: nothing operational waits for the user — settled lazily before any screen reads (guarded, cheap).
+  if (isSimulation()) await (await import("./engine/simulation")).maybeSettleChores(user.id);
   return user;
 }
 

@@ -19,7 +19,7 @@ for (const email of ["admin@simplify.kz", "partner@amaskills.kz"]) {
   const c = await new Client(email).asUser(u.id);
   report(email.split("@")[0], await crawl(c, email, { extraSeeds: ["/admin", "/partners"] }));
 }
-const demo = await db.user.findUnique({ where: { email: "demo@simplify.kz" } });
+const demo = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" } });
 report("demo", await crawl(await new Client("demo").asUser(demo.id), "demo", { extraSeeds: extra, max: 600 }));
 console.log(`\n${findings.length} failures`);
 await db.$disconnect();

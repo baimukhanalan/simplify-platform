@@ -1,4 +1,5 @@
 // Agent permissions ("Agent" screen). Stored as JSON in User.autonomy; missing keys fall back to defaults.
+import { isSimulation } from "../mode";
 
 export type Autonomy = {
   findJobs: boolean; // discover new vacancies
@@ -34,8 +35,15 @@ export function readAutonomy(raw: string | null | undefined): Autonomy {
   const a = { ...AUTONOMY_DEFAULTS, ...parsed };
   if (a.sensitive !== "ask" && a.sensitive !== "decline") a.sensitive = "ask";
   a.autoApplyMinMatch = normalizeThreshold(a.autoApplyMinMatch);
-  return a;
+  // Simulation mode: the agent does everything end to end — these standing values always hold (SIMULATION_AUTONOMY).
+  return isSimulation() ? { ...a, ...SIMULATION_AUTONOMY } : a;
 }
+
+/**
+ * Simulation mode's standing autonomy (src/lib/mode.ts): auto-apply to every qualified role (Match ≥ 70, the «подошла»
+ * bar), standard questions answered, sensitive ones declined («Предпочитаю не указывать»). Nothing waits for the user.
+ */
+export const SIMULATION_AUTONOMY = { submitApplications: true, autoApplyMinMatch: 70, sensitive: "decline", answerStandard: true } as const satisfies Partial<Autonomy>;
 
 /** Stored threshold → 50..100. Legacy null / garbage falls back to the default (85). */
 export function normalizeThreshold(v: unknown): number {

@@ -7,6 +7,7 @@ import { count, plural } from "./ru";
 import { scoreJob, type CandidateCtx, type MatchResult } from "./engine/matching";
 import { jobCtx } from "./engine/agent";
 import { ensureSeedJobs } from "./engine/ingest";
+import { visibleJobsWhere } from "./mode";
 import { buildPackageHeuristic, type FactLite, type ProfileLite } from "./engine/personalize";
 import { ROLE_FAMILIES, REGIONS, SENIORITY_LABEL, fmtMoney, fmtMoneyRange, seniorityFromYears } from "./engine/taxonomy";
 import { toUSD } from "./engine/fx";
@@ -300,7 +301,8 @@ export async function buildCareerCheck(cvText: string, targetRaw: string): Promi
 
   // Best single vacancy from the live/demo corpus.
   await ensureSeedJobs();
-  const jobs = await db.job.findMany({ where: { active: true }, orderBy: { postedAt: "desc" }, take: 400 });
+  // Simulation mode: the sample comes from the internal corpus only (visibleJobsWhere, src/lib/mode.ts).
+  const jobs = await db.job.findMany({ where: { active: true, ...visibleJobsWhere() }, orderBy: { postedAt: "desc" }, take: 400 });
   const ctx: CandidateCtx = {
     skills: cv.skills, yearsExperience: cv.yearsExperience, englishLevel: english, languages: ["English", "Russian"], workAuth: ["KZ"], needsSponsorship: true, relocation: false,
     educationLevel: cv.facts.some((f) => f.kind === "education" && /master|магистр|msc/i.test(f.title)) ? "master" : cv.facts.some((f) => f.kind === "education") ? "bachelor" : "none",

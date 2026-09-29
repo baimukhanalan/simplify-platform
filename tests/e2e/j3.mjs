@@ -153,7 +153,7 @@ const cyr = /[А-Яа-яЁё]/.test((await db.applicationPackage.findUnique({ wh
 console.log("  package cvText contains Cyrillic:", cyr);
 
 // Demo user's real applications: PDF for every applied role
-const demo = await db.user.findUnique({ where: { email: "demo@simplify.kz" } });
+const demo = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" } });
 const dc = await new Client("demo").asUser(demo.id);
 const dApps = await db.opportunity.findMany({ where: { campaign: { userId: demo.id }, pkg: { isNot: null } }, select: { id: true }, take: 20 }); // CV downloads are rate-limited (30 / 10 min / user)
 let bad = [];

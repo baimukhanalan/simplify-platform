@@ -28,6 +28,9 @@ import { salaryLabel } from "../src/lib/ops";
 import { isPushHiddenOn, isPushTypeHiddenOn } from "../src/lib/push";
 import { fromUSD, toUSD } from "../src/lib/engine/fx";
 
+// These suites cover the live-mode engine (questions, handoffs, Apply decisions); simulation mode has its own suite.
+process.env.SIMPLIFY_MODE = "live";
+
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-r8-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 delete process.env.ANTHROPIC_API_KEY;

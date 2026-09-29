@@ -47,7 +47,7 @@ export async function crawl(c, label, { max = 400, extraSeeds = [] } = {}) {
 
 if (process.argv[1].endsWith("crawl.mjs")) {
   const { db } = await import("./lib.mjs");
-  const email = process.argv[2] ?? "demo@simplify.kz";
+  const email = process.argv[2] ?? "aruzhan@simplify.kz";
   const u = await db.user.findUnique({ where: { email } });
   const c = await new Client("crawl").asUser(u.id);
   const { seen } = await crawl(c, email);

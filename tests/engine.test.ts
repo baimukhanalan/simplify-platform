@@ -17,6 +17,9 @@ import { STOP_WEIGHT, segmentStats, type OppLite } from "../src/lib/engine/insig
 import { AUTONOMY_DEFAULTS, AUTONOMY_LABELS, agentMaySubmit, readAutonomy } from "../src/lib/engine/autonomy";
 import { startOfToday } from "../src/lib/time";
 
+// These suites cover the live-mode engine (questions, handoffs, Apply decisions); simulation mode has its own suite.
+process.env.SIMPLIFY_MODE = "live";
+
 const NOW = new Date("2026-09-28T12:00:00Z");
 const daysAgo = (d: number) => new Date(NOW.getTime() - d * 86400000);
 

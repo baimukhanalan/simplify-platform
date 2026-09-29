@@ -43,7 +43,11 @@ function Switch({ name, label, hint, checked, onChange, note }: { name: string; 
 type Snapshot = string;
 const snap = (v: Record<string, boolean>, sensitive: string, autoOn: boolean, threshold: number): Snapshot => JSON.stringify([v, sensitive, autoOn, threshold]);
 
-export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Autonomy; rows: Row[]; autoSubmitConsent: boolean }) {
+/**
+ * `standing`: auto-apply, standard answers and sensitive questions are fixed standing rules of the agent (it applies to
+ * every qualified role and answers everything itself) — those controls are not shown and their values are sent as is.
+ */
+export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = false }: { initial: Autonomy; rows: Row[]; autoSubmitConsent: boolean; standing?: boolean }) {
   const { state, pending, formAction, onSubmit: submit } = useActionForm<AutonomyState>(saveAutonomy, {});
   const [v, setV] = useState<Record<string, boolean>>(() => Object.fromEntries(rows.map((r) => [r.key, Boolean(initial[r.key as keyof Autonomy])])));
   const [sensitive, setSensitive] = useState(initial.sensitive);
@@ -61,13 +65,14 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
 
   const selfRows = rows.filter((r) => ["findJobs", "personalizeCv", "answerStandard"].includes(r.key));
   const askRows = rows.filter((r) => !selfRows.includes(r));
+  const shownSelfRows = standing ? selfRows.filter((r) => r.key !== "answerStandard") : selfRows;
 
   return (
     <form action={formAction} onSubmit={onSubmit} className="flex flex-col gap-6" aria-describedby={state.error ? "autonomy-error" : undefined}>
       <fieldset aria-labelledby="self-h" className="glass p-5 sm:p-6">
         <h2 id="self-h" className="label mb-1">Агент делает сам</h2>
         <div className="divide-y divide-line">
-          {selfRows.map((r) => (
+          {shownSelfRows.map((r) => (
             <Switch
               key={r.key} name={r.key} label={r.label} hint={r.hint} checked={v[r.key]} onChange={(x) => setV((p) => ({ ...p, [r.key]: x }))}
             />
@@ -75,7 +80,16 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
         </div>
       </fieldset>
 
-      <fieldset id="auto-apply" aria-labelledby="auto-h" className="glass scroll-mt-24 p-5 sm:p-6">
+      {standing && (
+        <>
+          <input type="hidden" name="answerStandard" value={v.answerStandard ? "on" : ""} />
+          <input type="hidden" name="submitApplications" value={autoOn ? "on" : ""} />
+          <input type="hidden" name="autoApplyMinMatch" value={threshold} />
+          <input type="hidden" name="sensitive" value={sensitive} />
+        </>
+      )}
+
+      {!standing && <fieldset id="auto-apply" aria-labelledby="auto-h" className="glass scroll-mt-24 p-5 sm:p-6">
         <h2 id="auto-h" className="label mb-1">Автоподача</h2>
         <p className="mb-1 text-[13px] text-ink-3">
           Здесь — какие роли агент отправляет сам. Отправлять вообще ему разрешает согласие{" "}
@@ -114,7 +128,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
           />
           <div className="flex justify-between font-mono text-[11px] uppercase tracking-[.06em] text-ink-3"><span>50% · больше заявок</span><span>100% · только идеальные</span></div>
         </div>
-      </fieldset>
+      </fieldset>}
 
       <fieldset aria-labelledby="ask-h" className="glass p-5 sm:p-6">
         <h2 id="ask-h" className="label mb-1">Только с твоего разрешения</h2>
@@ -125,7 +139,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
         </div>
       </fieldset>
 
-      <fieldset className="glass p-5 sm:p-6" aria-describedby="sensitive-help">
+      {!standing && <fieldset className="glass p-5 sm:p-6" aria-describedby="sensitive-help">
         <legend className="mb-1 float-left w-full"><h2 className="label">Деликатные вопросы</h2></legend>
         <p id="sensitive-help" className="clear-both mb-4 pt-1 text-[13px] text-ink-3">Пол, этническая принадлежность, инвалидность, статус ветерана — добровольные вопросы в анкетах.</p>
         <div className="grid gap-2.5 sm:grid-cols-2">
@@ -148,7 +162,7 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent }: { initial: Au
             </label>
           ))}
         </div>
-      </fieldset>
+      </fieldset>}
 
       {/* The save bar appears only with unsaved changes (or an error to show); otherwise just a quiet status line. */}
       <div

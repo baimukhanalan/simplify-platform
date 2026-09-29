@@ -33,7 +33,8 @@ const SECONDARY: Item[] = [
 
 export type NavCounts = { approvals: number; responses: number; interviews: number; offers: number };
 
-export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; role: string; campaign: { status: string; day: number | null; total: number } | null; userName: string }) {
+/** `quietQueue`: nothing ever waits in «Подтверждения» (the agent answers everything itself), so it is not listed. */
+export function Nav({ counts, role, campaign, userName, quietQueue = false }: { counts: NavCounts; role: string; campaign: { status: string; day: number | null; total: number } | null; userName: string; quietQueue?: boolean }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const isActive = (it: Item) =>
@@ -95,7 +96,7 @@ export function Nav({ counts, role, campaign, userName }: { counts: NavCounts; r
       <nav aria-label="Дополнительно">
         <div className="label mb-1.5 px-3 !text-[11px] !text-ink-3">Ещё</div>
         <ul className="flex flex-col">
-          {[...SECONDARY, ...extra].map((it) => {
+          {[...SECONDARY.filter((it) => !(quietQueue && it.href === "/app/approvals")), ...extra].map((it) => {
             const active = isActive(it);
             const n = badge(it);
             return (

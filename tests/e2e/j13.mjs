@@ -125,7 +125,7 @@ async function paidUser(label, opts) {
     check(!/Демо-инструменты|Симулировать ответы|Запустить цикл агента/.test(today + camp), "J13.demo.hidden", "no demo tools on Today / Campaign for a regular user");
     check(inboxAfter === inboxBefore, "J13.demo.blocked", "simulateEmployers is a no-op for a regular user", { inboxBefore, inboxAfter });
   }
-  const demoUser = await db.user.findUnique({ where: { email: "demo@simplify.kz" } });
+  const demoUser = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" } });
   const d = await new Client("demo").asUser(demoUser.id);
   check(/Демо-инструменты/.test(visible((await d.get("/app")).text)), "J13.demo.shown", "demo account sees demo tools");
 }

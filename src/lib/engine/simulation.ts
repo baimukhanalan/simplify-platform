@@ -2,7 +2,9 @@ import "server-only";
 import { db, j, s } from "../db";
 import { FICTIONAL_SOURCE, isFictionalJob, isSimulation } from "../mode";
 import { APP_TZ, snapRoundTime } from "../time";
-import { ingestEmail, rescheduleInterview } from "./agent";
+import { ingestEmail, rescheduleInterview, settleSharedAnswers, standingAnswer } from "./agent";
+import { patchPackageAnswer } from "./approvals";
+import { APPLIED_OR_LATER } from "./taxonomy";
 import { marketRange } from "./market";
 import { companyDomain, seededRng } from "./seed-jobs";
 
@@ -73,8 +75,11 @@ export function nextStep(o: SimOpp): SimStep | null {
     return d() < 0.3 ? { kind: "rejection", at: at(sub + between(d, 12, 20) * DAY) } : null;
   }
   if (o.status === "assessment") {
+    // The test counts as taken by its deadline (the round's date; 5 days after the invite when none is set). The employer
+    // answers 0.5–2.5 days after it: ~60% the next stage (a recruiter interview), ~40% a rejection.
     const sent = Math.max(...o.inbox.filter((m) => m.classification === "assessment").map((m) => m.receivedAt.getTime()), lastMail);
-    return r() < 0.55 ? { kind: "recruiter", at: at(sent + between(r, 3, 6) * DAY) } : { kind: "rejection", at: at(sent + between(r, 4, 7) * DAY) };
+    const due = Math.max(sent, o.interviews.find((i) => i.round === "assessment")?.scheduledAt?.getTime() ?? sent + 5 * DAY);
+    return r() < 0.6 ? { kind: "recruiter", at: at(due + between(r, 0.5, 2) * DAY) } : { kind: "rejection", at: at(due + between(r, 1, 2.5) * DAY) };
   }
   if (o.status === "recruiter") {
     const held = roundAt("recruiter");
@@ -244,7 +249,26 @@ async function applyStep(userId: string, o: FullOpp, step: SimStep) {
   if (step.kind === "rejection" || step.kind === "offer") {
     await db.interview.updateMany({ where: { opportunityId: o.id, status: "upcoming", scheduledAt: { lte: new Date() } }, data: { status: "done" } });
   }
+  // The round the reply answers gets its outcome (the user's own debrief result, if any, is kept): the next stage or an
+  // offer → passed, a rejection → failed.
+  if (step.kind !== "confirmation" && ROUNDS.includes(o.status)) {
+    await db.interview.updateMany({ where: { opportunityId: o.id, round: o.status, status: { in: ["upcoming", "done"] }, OR: [{ scheduledAt: null }, { scheduledAt: { lte: step.at } }] }, data: { status: step.kind === "rejection" ? "failed" : "passed" } });
+  }
   await backdate(userId, o.id, mark, step.at);
+}
+
+const ROUNDS = ["assessment", "recruiter", "hiring_manager", "technical", "final"];
+
+/**
+ * An assessment of a fictional employer counts as taken once its deadline has passed: it shows as done («Ждём ответа»)
+ * until the employer answers (nextStep). The user never has to do anything for it. Returns how many were closed.
+ */
+export async function closeTakenAssessments(userId: string, now = new Date()) {
+  const r = await db.interview.updateMany({
+    where: { userId, round: "assessment", status: "upcoming", scheduledAt: { lte: now }, opportunity: { job: { source: FICTIONAL_SOURCE } } },
+    data: { status: "done" },
+  });
+  return r.count;
 }
 
 export type SimulationResult = { steps: number; nextAt: Date | null };
@@ -258,6 +282,7 @@ export async function simulateEmployerActivity(userId: string, opts: { now?: Dat
   const now = opts.now ?? new Date();
   let steps = 0;
   let nextAt: Date | null = null;
+  await closeTakenAssessments(userId, now);
   for (let pass = 0; pass < 6; pass++) {
     const opps = await loadOpps(userId, opts.opportunityId);
     let progressed = false;
@@ -299,6 +324,60 @@ export async function fastForwardEmployers(userId: string) {
     n++;
   }
   return n;
+}
+
+// ——— No chores (simulation mode only) ———
+
+/** Note on a question or handoff closed because the agent no longer works on that role. */
+export const SIM_CLOSED_NOTE = "Вакансия больше не в работе — вопрос закрыт";
+
+/**
+ * Simulation mode keeps nothing on the user's plate: applications to live-feed vacancies (real companies) that were never
+ * sent are removed (with their open questions / handoffs closed first); anything the user already marked as sent stays.
+ * Every other open question gets the agent's standing answer (standingAnswer), every open handoff is closed, and packages
+ * waiting on a shared question take the answer. Idempotent; no-op in live mode. Run by the seed, runTick and, lazily,
+ * once per user per few minutes on page views (maybeSettleChores).
+ */
+export async function settleSimulationChores(userId: string) {
+  const out = { removed: 0, answered: 0, closed: 0 };
+  if (!isSimulation()) return out;
+  const live = await db.opportunity.findMany({
+    where: { campaign: { userId }, job: { source: { not: FICTIONAL_SOURCE } }, submittedAt: null, status: { notIn: APPLIED_OR_LATER } },
+    select: { id: true },
+  });
+  const ids = live.map((o) => o.id);
+  if (ids.length) {
+    out.closed += (await db.approval.updateMany({ where: { opportunityId: { in: ids }, status: "pending" }, data: { status: "rejected", answer: SIM_CLOSED_NOTE, resolvedAt: new Date() } })).count;
+    out.removed = (await db.opportunity.deleteMany({ where: { id: { in: ids }, submittedAt: null } })).count;
+  }
+  const pending = await db.approval.findMany({ where: { userId, status: "pending" }, orderBy: { createdAt: "asc" }, select: { id: true, kind: true, question: true, proposed: true, opportunityId: true } });
+  for (const a of pending) {
+    if (a.kind === "handoff") {
+      out.closed += (await db.approval.updateMany({ where: { id: a.id, status: "pending" }, data: { status: "rejected", answer: SIM_CLOSED_NOTE, resolvedAt: new Date() } })).count;
+      continue;
+    }
+    const answer = await standingAnswer(userId, a);
+    const won = await db.approval.updateMany({ where: { id: a.id, status: "pending" }, data: { status: "approved", answer, resolvedAt: new Date() } });
+    if (!won.count) continue;
+    out.answered++;
+    if (a.opportunityId) await patchPackageAnswer(a.opportunityId, a.question, answer, "approved");
+  }
+  await settleSharedAnswers(userId);
+  await closeTakenAssessments(userId);
+  return out;
+}
+
+const chores = new Map<string, { at: number; run: Promise<unknown> }>();
+const CHORES_EVERY_MS = 10 * 60000;
+
+/** Guarded settleSimulationChores for page views (requireUser): at most once per user every 10 minutes per process. */
+export async function maybeSettleChores(userId: string, now = Date.now()) {
+  if (!isSimulation()) return;
+  const g = chores.get(userId);
+  if (g && now - g.at < CHORES_EVERY_MS) { await g.run; return; }
+  const run = settleSimulationChores(userId).catch((e) => console.error("[simulation] chores failed", userId, e));
+  chores.set(userId, { at: now, run });
+  await run;
 }
 
 // ——— Entry points (simulation mode only) ———

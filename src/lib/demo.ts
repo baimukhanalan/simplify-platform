@@ -5,7 +5,7 @@ import { isSimulation } from "./mode";
 //   live mode: the public demo account, staff, and everyone when SIMPLIFY_DEMO_TOOLS=1 (local development by default).
 //   simulation mode (src/lib/mode.ts): employers answer on their own, so the tools are hidden from every account except
 //   staff (role "admin") — or everyone with an explicit SIMPLIFY_DEMO_TOOLS=1.
-export const DEMO_EMAILS = new Set(["demo@simplify.kz"]);
+export const DEMO_EMAILS = new Set(["aruzhan@simplify.kz"]);
 
 export function demoToolsEnabled(user: { email: string; role?: string } | null | undefined) {
   if (!user) return false;

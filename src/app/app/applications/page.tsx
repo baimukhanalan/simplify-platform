@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, ChevronDown, LayoutGrid, List } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { currentCampaign, interviewCounts } from "@/lib/ops-data";
+import { currentCampaign, interviewCounts, visibleScope } from "@/lib/ops-data";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { ButtonLink, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
@@ -56,7 +56,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
 
   const [apps, waiting, ic] = await Promise.all([
     db.opportunity.findMany({
-      where: { campaignId: campaign.id, status: { in: APPLIED_OR_LATER } },
+      where: { campaignId: campaign.id, ...visibleScope(), status: { in: APPLIED_OR_LATER } },
       orderBy: [{ updatedAt: "desc" }],
       select: { id: true, status: true, submittedAt: true, job: { select: { company: true, title: true, source: true } }, pkg: { select: { cvVersion: true } } },
     }),
