@@ -2,7 +2,7 @@
 // Register the Telegram webhook (owner task, run once per environment / after changing the secret or domain).
 //
 //   node --env-file=.env.local scripts/telegram-set-webhook.mjs            # uses APP_URL
-//   node --env-file=.env.local scripts/telegram-set-webhook.mjs https://simplify.kz
+//   node --env-file=.env.local scripts/telegram-set-webhook.mjs https://app.wesimplify.works
 //   node --env-file=.env.local scripts/telegram-set-webhook.mjs --info     # show the current webhook
 //   node --env-file=.env.local scripts/telegram-set-webhook.mjs --delete   # remove it
 //

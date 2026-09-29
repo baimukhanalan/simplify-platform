@@ -298,5 +298,5 @@ export function appOrigin(fallbackHost?: string | null) {
   if (explicit) return explicit.replace(/\/+$/, "");
   const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
   if (vercel) return `https://${vercel.replace(/^https?:\/\//, "").replace(/\/+$/, "")}`;
-  return fallbackHost ? `${/^(localhost|127\.)/.test(fallbackHost) ? "http" : "https"}://${fallbackHost}` : "https://simplify.kz";
+  return fallbackHost ? `${/^(localhost|127\.)/.test(fallbackHost) ? "http" : "https"}://${fallbackHost}` : "https://app.wesimplify.works";
 }

@@ -1,4 +1,4 @@
-// Cloudflare Email Worker: <alias>@in.simplify.kz → POST https://<app>/api/inbound/email
+// Cloudflare Email Worker: <alias>@in.wesimplify.works → POST https://<app>/api/inbound/email
 //
 // Personal forwarding addresses ("Пересылка писем" on /app/inbox) receive employer mail that users auto-forward from
 // Gmail / Outlook / Mail.ru / Yandex. This Worker parses each raw message and hands it to the app as generic JSON:
@@ -6,8 +6,8 @@
 // The app classifies it with Inbox Intelligence (or, for a forwarding-confirmation letter, shows the code to the user).
 //
 // ——— Setup (once) ———
-// 1. DNS: add the receiving domain (default in.simplify.kz) to Cloudflare. Dashboard → Email → Email Routing →
-//    enable for the zone (Cloudflare adds the MX + SPF records for in.simplify.kz).
+// 1. DNS: add the receiving domain (default in.wesimplify.works) to Cloudflare. Dashboard → Email → Email Routing →
+//    enable for the zone (Cloudflare adds the MX + SPF records for in.wesimplify.works).
 // 2. Worker:
 //      mkdir inbound-email && cd inbound-email
 //      npm init -y && npm i postal-mime
@@ -22,7 +22,7 @@
 //      npx wrangler secret put INBOUND_EMAIL_SECRET
 //      npx wrangler deploy
 // 3. Email Routing → Routing rules → Catch-all address → Action "Send to a Worker" → simplify-inbound-email.
-// 4. App env (Vercel): INBOUND_EMAIL_SECRET=<same secret>, INBOUND_EMAIL_DOMAIN=in.simplify.kz (if different).
+// 4. App env (Vercel): INBOUND_EMAIL_SECRET=<same secret>, INBOUND_EMAIL_DOMAIN=in.wesimplify.works (if different).
 // 5. Check: send a letter to your own alias (copy it from /app/inbox) — it shows up in the inbox within seconds.
 //
 // Behaviour: the Worker never rejects a message (a bounce could make Gmail switch forwarding off); failures are logged
@@ -72,7 +72,7 @@ const worker = {
     for (const [name, value] of source) if (KEEP_HEADERS.has(String(name).toLowerCase()) && headers.length < 200) headers.push({ name, value: String(value).slice(0, 5000) });
     const fromHeader = parsed.from ? (parsed.from.name ? `${parsed.from.name} <${parsed.from.address}>` : parsed.from.address) : message.from;
     const payload = {
-      to: message.to, // the envelope recipient: <alias>@in.simplify.kz even when To: says the user's own mailbox
+      to: message.to, // the envelope recipient: <alias>@in.wesimplify.works even when To: says the user's own mailbox
       from: fromHeader || message.from,
       subject: parsed.subject || "",
       text: (parsed.text || "").slice(0, TEXT_MAX),

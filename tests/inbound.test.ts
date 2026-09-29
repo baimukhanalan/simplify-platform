@@ -41,14 +41,14 @@ describe("aliases", () => {
   });
 
   test("recipient → alias: case, +tag, quotes; foreign domains and malformed locals are not ours", () => {
-    assert.equal(aliasOf("Alan.K7M2Q@IN.SIMPLIFY.KZ"), "alan.k7m2q");
-    assert.equal(aliasOf("alan.k7m2q+jobs@in.simplify.kz"), "alan.k7m2q");
-    assert.equal(aliasOf("<alan.k7m2q@in.simplify.kz>"), "alan.k7m2q");
+    assert.equal(aliasOf("Alan.K7M2Q@IN.WESIMPLIFY.WORKS"), "alan.k7m2q");
+    assert.equal(aliasOf("alan.k7m2q+jobs@in.wesimplify.works"), "alan.k7m2q");
+    assert.equal(aliasOf("<alan.k7m2q@in.wesimplify.works>"), "alan.k7m2q");
     assert.equal(aliasOf("alan.k7m2q@gmail.com"), null);
-    assert.equal(aliasOf("alan.k7m2q@evil-in.simplify.kz"), null);
-    assert.equal(aliasOf("alan@in.simplify.kz"), null);
-    assert.equal(aliasOf("../etc@in.simplify.kz"), null);
-    assert.deepEqual(aliasesOf(["me@gmail.com", "ab.cdefg@in.simplify.kz", "AB.CDEFG+x@in.simplify.kz", "zz.qwert@in.simplify.kz"]), ["ab.cdefg", "zz.qwert"]);
+    assert.equal(aliasOf("alan.k7m2q@evil-in.wesimplify.works"), null);
+    assert.equal(aliasOf("alan@in.wesimplify.works"), null);
+    assert.equal(aliasOf("../etc@in.wesimplify.works"), null);
+    assert.deepEqual(aliasesOf(["me@gmail.com", "ab.cdefg@in.wesimplify.works", "AB.CDEFG+x@in.wesimplify.works", "zz.qwert@in.wesimplify.works"]), ["ab.cdefg", "zz.qwert"]);
   });
 });
 
@@ -61,7 +61,7 @@ const postmarkPayload = (over: Record<string, unknown> = {}) => ({
   ToFull: [{ Email: "alan@gmail.com", Name: "Alan", MailboxHash: "" }],
   Cc: "",
   CcFull: [],
-  OriginalRecipient: "alan.k7m2q@in.simplify.kz",
+  OriginalRecipient: "alan.k7m2q@in.wesimplify.works",
   Subject: "Interview invitation — Data Analyst",
   MessageID: "22c74902-a0c1-4511-804f-341342852c90",
   ReplyTo: "",
@@ -74,7 +74,7 @@ const postmarkPayload = (over: Record<string, unknown> = {}) => ({
   Headers: [
     { Name: "Message-ID", Value: "<CAF=abc123@mail.acme.com>" },
     { Name: "Delivered-To", Value: "alan@gmail.com" },
-    { Name: "X-Original-To", Value: "alan.k7m2q@in.simplify.kz" },
+    { Name: "X-Original-To", Value: "alan.k7m2q@in.wesimplify.works" },
   ],
   Attachments: [],
   ...over,
@@ -84,7 +84,7 @@ describe("payload parsing", () => {
   test("Postmark: envelope recipient, headers, Message-ID from the header (not Postmark's own id)", () => {
     const l = parseInbound(postmarkPayload())!;
     assert.equal(l.format, "postmark");
-    assert.equal(l.recipients[0], "alan.k7m2q@in.simplify.kz");
+    assert.equal(l.recipients[0], "alan.k7m2q@in.wesimplify.works");
     assert.ok(l.recipients.includes("alan@gmail.com"));
     assert.equal(l.from, "Acme Talent <jobs@acme.com>");
     assert.equal(l.messageId, "CAF=abc123@mail.acme.com");
@@ -93,14 +93,14 @@ describe("payload parsing", () => {
   });
 
   test("generic (Worker): to as string/array, headers as object or list, HTML-only body converted", () => {
-    const a = parseInbound({ to: "Alan.K7M2Q+x@In.Simplify.KZ", from: "hr@globex.io", subject: "Hi", text: "Body", messageId: "<m1@globex.io>", headers: { "List-Id": "x", "Delivered-To": ["a@b.co", "c@d.co"] } })!;
+    const a = parseInbound({ to: "Alan.K7M2Q+x@In.WeSimplify.Works", from: "hr@globex.io", subject: "Hi", text: "Body", messageId: "<m1@globex.io>", headers: { "List-Id": "x", "Delivered-To": ["a@b.co", "c@d.co"] } })!;
     assert.equal(a.format, "generic");
-    assert.deepEqual(a.recipients.slice(0, 1), ["alan.k7m2q+x@in.simplify.kz"]);
+    assert.deepEqual(a.recipients.slice(0, 1), ["alan.k7m2q+x@in.wesimplify.works"]);
     assert.equal(a.messageId, "m1@globex.io");
     assert.equal(a.headers["list-id"], "x");
     assert.equal(a.headers["delivered-to"], "a@b.co, c@d.co");
-    const b = parseInbound({ to: ["x@y.kz", "z.abcde@in.simplify.kz"], from: "a@b.co", html: "<html><head><title>T</title><style>p{}</style></head><body><p>Hello&nbsp;&laquo;there&raquo;</p><script>alert(1)</script><a href=\"https://calendly.com/acme/30\">Book</a><br>Line 2 &#x41;&#66;</body></html>", headers: [{ name: "Message-ID", value: "<q@b.co>" }] })!;
-    assert.deepEqual(b.recipients, ["x@y.kz", "z.abcde@in.simplify.kz"]);
+    const b = parseInbound({ to: ["x@y.kz", "z.abcde@in.wesimplify.works"], from: "a@b.co", html: "<html><head><title>T</title><style>p{}</style></head><body><p>Hello&nbsp;&laquo;there&raquo;</p><script>alert(1)</script><a href=\"https://calendly.com/acme/30\">Book</a><br>Line 2 &#x41;&#66;</body></html>", headers: [{ name: "Message-ID", value: "<q@b.co>" }] })!;
+    assert.deepEqual(b.recipients, ["x@y.kz", "z.abcde@in.wesimplify.works"]);
     assert.equal(b.messageId, "q@b.co");
     assert.equal(b.text, "Hello «there»\nBook (https://calendly.com/acme/30)\nLine 2 AB");
   });
@@ -111,7 +111,7 @@ describe("payload parsing", () => {
     assert.equal(parseInbound({ hello: 1 }), null);
     assert.equal(parseInbound({ to: "", from: "a@b.co" }), null, "no recipients");
     assert.equal(parseInbound({ to: 5 }), null, "wrong types");
-    const l = parseInbound({ to: "a.bcdef@in.simplify.kz", subject: "=?UTF-8?B?0J/RgNC40LPQu9Cw0YjQtdC90LjQtQ==?=\r\n next" })!;
+    const l = parseInbound({ to: "a.bcdef@in.wesimplify.works", subject: "=?UTF-8?B?0J/RgNC40LPQu9Cw0YjQtdC90LjQtQ==?=\r\n next" })!;
     assert.equal(l.subject, "Приглашение next");
     assert.equal(decodeMimeWords("=?utf-8?Q?Caf=C3=A9_ok?="), "Café ok");
   });
@@ -123,7 +123,7 @@ describe("payload parsing", () => {
     assert.ok(Date.now() - t0 < 2000);
     assert.ok(!out.includes("javascript:"));
     assert.equal(htmlToText("<p>a<!-- <script>hidden</script> -->b</p><div onclick=\"x\">c</div>"), "ab\n\nc");
-    const big = parseInbound({ to: "a.bcdef@in.simplify.kz", text: "x".repeat(3_000_000) })!;
+    const big = parseInbound({ to: "a.bcdef@in.wesimplify.works", text: "x".repeat(3_000_000) })!;
     assert.equal(big.text.length, TEXT_MAX);
   });
 });
@@ -132,12 +132,12 @@ describe("payload parsing", () => {
 const GMAIL_EN = {
   from: "Gmail Team <forwarding-noreply@google.com>",
   subject: "(#123456789) Gmail Forwarding Confirmation - Receive Mail from alan@gmail.com",
-  text: "alan@gmail.com has requested to automatically forward mail to your email address alan.k7m2q@in.simplify.kz.\nConfirmation code: 123456789\n\nTo allow alan@gmail.com to automatically forward mail to your address, please click the link below to confirm the request:\n\nhttps://mail-settings.google.com/mail/vf-%5BANGjdJ_abc%5D-xyz\n\nIf you click the link and it appears to be broken...",
+  text: "alan@gmail.com has requested to automatically forward mail to your email address alan.k7m2q@in.wesimplify.works.\nConfirmation code: 123456789\n\nTo allow alan@gmail.com to automatically forward mail to your address, please click the link below to confirm the request:\n\nhttps://mail-settings.google.com/mail/vf-%5BANGjdJ_abc%5D-xyz\n\nIf you click the link and it appears to be broken...",
 };
 const GMAIL_RU = {
   from: "Команда Gmail <forwarding-noreply@google.com>",
   subject: "(#987654321) Подтверждение пересылки Gmail – получение почты с адреса aliya@gmail.com",
-  text: "Пользователь aliya@gmail.com хочет автоматически пересылать письма на адрес aliya.q2w3e@in.simplify.kz.\nКод подтверждения: 987654321\n\nЧтобы разрешить пересылку, нажмите на ссылку ниже:\nhttps://mail-settings.google.com/mail/vf-%5BXYZ%5D-abc",
+  text: "Пользователь aliya@gmail.com хочет автоматически пересылать письма на адрес aliya.q2w3e@in.wesimplify.works.\nКод подтверждения: 987654321\n\nЧтобы разрешить пересылку, нажмите на ссылку ниже:\nhttps://mail-settings.google.com/mail/vf-%5BXYZ%5D-abc",
 };
 
 describe("forwarding confirmation letters", () => {
@@ -227,7 +227,7 @@ async function makeUser(name = "Алан Баймухан") {
   });
   const campaign = await db.campaign.create({ data: { userId: user.id, plan: "local", priceKzt: 1, status: "active", startedAt: new Date(), endsAt: new Date(Date.now() + 30 * DAY) } });
   const alias = await svc.ensureAlias(user.id);
-  return { user, campaign, alias, address: `${alias}@in.simplify.kz` };
+  return { user, campaign, alias, address: `${alias}@in.wesimplify.works` };
 }
 async function makeOpp(campaignId: string, company: string, status = "submitted") {
   seq++;
@@ -272,9 +272,9 @@ describe("webhook auth and limits", () => {
   test("bad JSON → 400, unknown format → 400, oversized → 413, unknown alias → 200 ignored", async () => {
     assert.equal((await hook.handleInbound(req(null, { raw: "{not json" }))).status, 400);
     assert.equal((await hook.handleInbound(req({ hello: "world" }))).status, 400);
-    const huge = await hook.handleInbound(req(null, { raw: JSON.stringify({ to: "a.bcdef@in.simplify.kz", text: "x".repeat(hook.REQUEST_MAX) }) }));
+    const huge = await hook.handleInbound(req(null, { raw: JSON.stringify({ to: "a.bcdef@in.wesimplify.works", text: "x".repeat(hook.REQUEST_MAX) }) }));
     assert.equal(huge.status, 413);
-    const r = await hook.handleInbound(req(generic("nobody.zzzzz@in.simplify.kz")));
+    const r = await hook.handleInbound(req(generic("nobody.zzzzz@in.wesimplify.works")));
     assert.equal(r.status, 200);
     assert.deepEqual(await r.json(), { ok: true, ignored: true });
     // A 1 MB+ text body is accepted, capped, and stored shorter.
@@ -295,7 +295,7 @@ describe("delivery", () => {
       { Name: "X-Spam-Tests", Value: "DKIM_SIGNED,DKIM_VALID,DKIM_VALID_AU,SPF_PASS" },
       { Name: "Message-ID", Value: "<pm-1@acme.com>" },
       { Name: "Delivered-To", Value: user.email },
-      { Name: "X-Original-To", Value: `${alias.toUpperCase()}+Jobs@IN.SIMPLIFY.KZ` },
+      { Name: "X-Original-To", Value: `${alias.toUpperCase()}+Jobs@IN.WESIMPLIFY.WORKS` },
     ] });
     const r = await hook.handleInbound(req(p, { how: "basic" }));
     assert.equal(r.status, 200);
@@ -367,7 +367,7 @@ describe("delivery", () => {
     assert.notEqual(next, alias);
     assert.equal((await svc.forwardingStatus(user.id))?.lastAt, null, "the new address waits for its first letter");
     assert.deepEqual(await (await hook.handleInbound(req(generic(address)))).json(), { ok: true, ignored: true });
-    assert.equal((await hook.handleInbound(req(generic(`${next}@in.simplify.kz`)))).status, 200);
+    assert.equal((await hook.handleInbound(req(generic(`${next}@in.wesimplify.works`)))).status, 200);
   });
 
   test("a letter forwarded by hand («Fwd:») is read as the original sender's", () => {
@@ -465,9 +465,9 @@ describe("sender authentication (pure)", () => {
   });
 
   test("forwarding chain and company domain", () => {
-    assert.equal(normMailbox("A.Liya+caf_=x=in.simplify.kz@GoogleMail.com"), "aliya@gmail.com");
-    assert.ok(forwardedFrom({ "x-forwarded-for": "aliya@gmail.com alias.abcde@in.simplify.kz" }, ["aliya@gmail.com"]));
-    assert.ok(forwardedFrom({ "return-path": "<a.liya+caf_=alias=in.simplify.kz@gmail.com>" }, ["aliya@gmail.com"]));
+    assert.equal(normMailbox("A.Liya+caf_=x=in.wesimplify.works@GoogleMail.com"), "aliya@gmail.com");
+    assert.ok(forwardedFrom({ "x-forwarded-for": "aliya@gmail.com alias.abcde@in.wesimplify.works" }, ["aliya@gmail.com"]));
+    assert.ok(forwardedFrom({ "return-path": "<a.liya+caf_=alias=in.wesimplify.works@gmail.com>" }, ["aliya@gmail.com"]));
     assert.ok(!forwardedFrom({ "x-forwarded-for": "other@gmail.com" }, ["aliya@gmail.com"]));
     assert.ok(!forwardedFrom({}, []));
     assert.ok(domainNamesCompany("mail.acme.com", "Acme Inc"));
@@ -488,7 +488,7 @@ describe("delivery: forged vs authenticated letters", () => {
     AAR(`i=2; mx.cloudflare.net; arc=pass; spf=pass smtp.mailfrom=${mailbox.replace("@", "+caf_=x@")}`),
     AR(`mx.cloudflare.net; arc=pass; spf=pass smtp.mailfrom=${mailbox.replace("@", "+caf_=x@")}`),
     AAR(`i=1; mx.google.com; dkim=pass header.i=@${domain}; spf=pass smtp.mailfrom=bounce@${domain}; dmarc=pass header.from=${domain}`),
-    { name: "X-Forwarded-For", value: `${mailbox} alias@in.simplify.kz` },
+    { name: "X-Forwarded-For", value: `${mailbox} alias@in.wesimplify.works` },
     { name: "Delivered-To", value: mailbox },
   ];
   const statusOf = async (id: string) => (await db.opportunity.findUniqueOrThrow({ where: { id } })).status;

@@ -36,7 +36,7 @@ export const hhEnabled = () => hhConfig() !== null;
  * unconfigured server shows no hh card instead of a «не настроено на сервере» notice.
  */
 export const hhAvailable = () => hhEnabled();
-export const hhUserAgent = () => process.env.HH_USER_AGENT?.trim() || "Simplify/1.0 (support@simplify.kz)";
+export const hhUserAgent = () => process.env.HH_USER_AGENT?.trim() || "Simplify/1.0 (support@wesimplify.works)";
 
 function appUrl() {
   const explicit = process.env.APP_URL?.trim();

@@ -28,7 +28,7 @@ export function vapidConfig() {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY?.trim();
   const privateKey = process.env.VAPID_PRIVATE_KEY?.trim();
   if (!publicKey || !privateKey) return null;
-  const subject = process.env.VAPID_SUBJECT?.trim() || "mailto:support@simplify.kz";
+  const subject = process.env.VAPID_SUBJECT?.trim() || "mailto:support@wesimplify.works";
   return { publicKey, privateKey, subject };
 }
 export const pushConfigured = () => vapidConfig() !== null;

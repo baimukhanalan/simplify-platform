@@ -7,6 +7,7 @@
   "minimum_chrome_version": "116",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": [
+    "https://app.wesimplify.works/*",
     "https://simplify-platform-tau.vercel.app/*",
     "http://localhost:3210/*",
     "https://*.greenhouse.io/*",

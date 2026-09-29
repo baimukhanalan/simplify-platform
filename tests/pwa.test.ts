@@ -12,7 +12,7 @@ const dir = mkdtempSync(path.join(tmpdir(), "simplify-pwa-"));
 process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY = "BLgMbqUpBjutTDb9_IYdCEKVSmGIcknGvW6O6pewxn6ok2JL9ntboHPdv5kuWxgOHjb3K0Ok8svJiyyNPIzXqL8";
 process.env.VAPID_PRIVATE_KEY = "I8bZiDyAempr8CmQeCsXzTEGDQ6MgzuBisJJUcl3FDw";
-process.env.VAPID_SUBJECT = "mailto:support@simplify.kz";
+process.env.VAPID_SUBJECT = "mailto:support@wesimplify.works";
 
 type Db = typeof import("../src/lib/db").db;
 let db: Db;

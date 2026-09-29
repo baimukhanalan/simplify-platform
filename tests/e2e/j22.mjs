@@ -66,7 +66,7 @@ const dupL = letter(); dupL.Headers[0].Value = `<dup-${Date.now()}@nomadanalytic
 const dup = await deliver(dupL);
 const dup2 = await deliver(dupL);
 check(JSON.stringify(dup2).includes("duplicate"), "J22.dedupe", "same Message-ID delivered twice → duplicate", [dup, dup2]);
-const stranger = await deliver(letter({ To: "nobody.zzzzz@in.simplify.kz", ToFull: [{ Email: "nobody.zzzzz@in.simplify.kz", Name: "" }], OriginalRecipient: "nobody.zzzzz@in.simplify.kz", Headers: [] }));
+const stranger = await deliver(letter({ To: "nobody.zzzzz@in.wesimplify.works", ToFull: [{ Email: "nobody.zzzzz@in.wesimplify.works", Name: "" }], OriginalRecipient: "nobody.zzzzz@in.wesimplify.works", Headers: [] }));
 check(JSON.stringify(stranger).includes("unknown_recipient"), "J22.unknown", "unknown alias → unknown_recipient", stranger);
 
 // Gmail forwarding confirmation → code on the inbox page

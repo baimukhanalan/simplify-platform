@@ -137,7 +137,7 @@ describe("disabled mode (no HH_CLIENT_ID / HH_CLIENT_SECRET)", () => {
   test("every request carries HH-User-Agent", async () => {
     await hh.searchVacancies({ text: "analyst" }).catch(() => null);
     assert.ok(calls.length > 0);
-    for (const c of calls) assert.equal(c.headers["hh-user-agent"], "Simplify/1.0 (support@simplify.kz)");
+    for (const c of calls) assert.equal(c.headers["hh-user-agent"], "Simplify/1.0 (support@wesimplify.works)");
   });
 });
 

@@ -1,9 +1,9 @@
 // Personal forwarding addresses: <alias>@<INBOUND_EMAIL_DOMAIN>. Pure helpers (no DB).
 import { randomInt } from "node:crypto";
 
-export const DEFAULT_INBOUND_DOMAIN = "in.simplify.kz";
+export const DEFAULT_INBOUND_DOMAIN = "in.wesimplify.works";
 
-/** The receiving domain, lowercased (INBOUND_EMAIL_DOMAIN, default in.simplify.kz). */
+/** The receiving domain, lowercased (INBOUND_EMAIL_DOMAIN, default in.wesimplify.works). */
 export const inboundDomain = () => (process.env.INBOUND_EMAIL_DOMAIN?.trim().toLowerCase() || DEFAULT_INBOUND_DOMAIN).replace(/^@/, "");
 
 export const aliasAddress = (alias: string) => `${alias}@${inboundDomain()}`;

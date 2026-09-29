@@ -1,4 +1,4 @@
-// Forwarding-verification letters. When a user adds <alias>@in.simplify.kz as a forwarding address, Gmail (and Yandex /
+// Forwarding-verification letters. When a user adds <alias>@in.wesimplify.works as a forwarding address, Gmail (and Yandex /
 // Mail.ru for their forwarding rules) first sends a letter with a code or a link to that address. It is not employer
 // mail: we never classify it — we pull out the code/link and show it in the «Пересылка писем» card so the user can
 // finish the setup. Pure (no DB).

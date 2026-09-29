@@ -8,7 +8,7 @@
 // is older (see needsLegalAcceptance). Change `version` only when the content changes materially.
 
 /** One support address for every legal page, the reset page and refund requests. */
-export const SUPPORT_EMAIL = "support@simplify.kz";
+export const SUPPORT_EMAIL = "support@wesimplify.works";
 
 export type LegalDocKey = "offer" | "terms" | "privacy" | "consent" | "refund";
 

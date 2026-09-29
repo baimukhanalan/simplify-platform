@@ -2,9 +2,9 @@
 // and a small client for the Simplify extension API. Every request carries the key in X-Simplify-Token.
 "use strict";
 
-const DEFAULT_BASE = "https://simplify-platform-tau.vercel.app";
+const DEFAULT_BASE = "https://app.wesimplify.works";
 /** The only servers the key is ever sent to: production, and the local dev server (same list as manifest host_permissions). */
-const ALLOWED_BASES = [DEFAULT_BASE, "http://localhost:3210", "http://127.0.0.1:3210"];
+const ALLOWED_BASES = [DEFAULT_BASE, "https://simplify-platform-tau.vercel.app", "http://localhost:3210", "http://127.0.0.1:3210"];
 
 // The key is a secret: keep chrome.storage.local out of reach of content scripts (injected into employer pages).
 try {
