@@ -3,7 +3,8 @@
 // /apply sub-page, an embed iframe, a company career site with ?gh_jid=…). Any other page falls back to host + path.
 // Pure: no DB, no server-only — unit-tested in tests/extension.test.ts.
 
-export type JobKey = { ats: "greenhouse" | "lever" | "ashby" | "workable" | "hh" | "url"; key: string; id: string };
+/** `via: "param"`: the id came from a query parameter (?gh_jid / ?ashby_jid) that any site can carry — see hostCheck. */
+export type JobKey = { ats: "greenhouse" | "lever" | "ashby" | "workable" | "hh" | "url"; key: string; id: string; via?: "param" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -48,7 +49,7 @@ export function jobKey(raw: string): JobKey | null {
   // Greenhouse: boards.greenhouse.io/{org}/jobs/{id}, job-boards(.eu).greenhouse.io/{org}/jobs/{id},
   // boards.greenhouse.io/embed/job_app?for={org}&token={id}, and any career site with ?gh_jid={id}.
   const ghJid = q.get("gh_jid");
-  if (ghJid && /^\d+$/.test(ghJid)) return mk("greenhouse", ghJid);
+  if (ghJid && /^\d+$/.test(ghJid)) return { ...mk("greenhouse", ghJid), via: "param" };
   if (isHost(h, "greenhouse.io")) {
     const token = q.get("token");
     if (token && /^\d+$/.test(token)) return mk("greenhouse", token);
@@ -64,7 +65,7 @@ export function jobKey(raw: string): JobKey | null {
 
   // Ashby: jobs.ashbyhq.com/{org}/{uuid}[/application], and career sites with ?ashby_jid={uuid}.
   const ashbyJid = q.get("ashby_jid");
-  if (ashbyJid && UUID.test(ashbyJid)) return mk("ashby", ashbyJid);
+  if (ashbyJid && UUID.test(ashbyJid)) return { ...mk("ashby", ashbyJid), via: "param" };
   if (isHost(h, "ashbyhq.com")) {
     const id = p.find((s) => UUID.test(s));
     if (id) return mk("ashby", id);
@@ -100,4 +101,51 @@ export function sameJob(a: string, b: string) {
  */
 export function urlNeedle(k: JobKey) {
   return k.ats === "url" ? k.id.split("/")[0] : k.id;
+}
+
+/** ATS sources whose Job.externalId is `${boardSlug}:${atsJobId}` (src/lib/sources/ats.ts atsExternalId). */
+export const ATS_EXTERNAL_ID_SOURCES = new Set<JobKey["ats"]>(["greenhouse", "lever", "ashby", "workable"]);
+
+/** Job.externalId of an ATS source ends with ":<the page's ATS job id>" (case-insensitive: Lever / Ashby UUIDs). */
+export const externalIdMatches = (k: JobKey, job: { source: string; externalId: string }) =>
+  ATS_EXTERNAL_ID_SOURCES.has(k.ats) && job.source === k.ats && job.externalId.toLowerCase().endsWith(`:${k.id.toLowerCase()}`);
+
+/** The ATS's own hosts, where its job-id parameters can be trusted. */
+function isAtsHost(h: string, ats: JobKey["ats"]) {
+  if (ats === "greenhouse") return isHost(h, "greenhouse.io"); // boards. / job-boards. / job-boards.eu.
+  if (ats === "ashby") return h === "jobs.ashbyhq.com";
+  return false;
+}
+
+export const pageHost = (raw: string) => {
+  const u = parse(raw);
+  return u ? hostOf(u) : "";
+};
+
+/**
+ * May this page get the package of the matched vacancy? Ids read from the URL path of an ATS host are tied to that host
+ * already. A ?gh_jid / ?ashby_jid parameter, though, can be put on any site: it counts only on the ATS host itself or on
+ * the host of the stored Job.url (the employer's own career site). Otherwise the extension must warn and fill nothing
+ * vacancy-specific — a look-alike page must never receive the CV.
+ */
+export function hostCheck(pageUrl: string, k: JobKey, jobUrl: string | null | undefined): { ok: boolean; pageHost: string; expectedHost: string } {
+  const host = pageHost(pageUrl);
+  const expected = jobUrl ? pageHost(jobUrl) : "";
+  if (k.via !== "param") return { ok: true, pageHost: host, expectedHost: expected };
+  return { ok: Boolean(host) && (isAtsHost(host, k.ats) || host === expected), pageHost: host, expectedHost: expected };
+}
+
+/** Query parameters that identify a vacancy (everything else — tracking, emails, session ids — is dropped). */
+const ID_PARAMS = ["gh_jid", "ashby_jid", "token", "for", "vacancyId"];
+
+/** origin + path + the vacancy-id parameters only. The extension sends nothing else about the tab (mirrored in extension/lib/api.js). */
+export function stripPageUrl(raw: string): string | null {
+  const u = parse(raw);
+  if (!u) return null;
+  const out = new URL(u.origin + u.pathname);
+  for (const k of ID_PARAMS) {
+    const v = u.searchParams.get(k);
+    if (v) out.searchParams.set(k, v);
+  }
+  return out.toString();
 }

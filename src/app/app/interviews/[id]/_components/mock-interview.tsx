@@ -23,6 +23,7 @@ const DIMS: { key: keyof MockFeedback["dims"]; label: string }[] = [
   { key: "confidence", label: "Уверенность" },
 ];
 const STAR_RU = { s: "ситуация", t: "задача", a: "действие", r: "результат" } as const;
+const INTRO_CHIP = { now: "сейчас", past: "опыт", future: "дальше" } as const;
 
 /**
  * The end-of-session summary with the server's own function and inputs (summarizeMock on the transcript, the vacancy's
@@ -252,11 +253,21 @@ function Feedback({ c }: { c: Current }) {
             </div>
           ))}
           <div className="col-span-2 flex flex-wrap items-center gap-2 text-[12px]">
+            {/* STAR only where the question asks for a story; an intro shows its own present → past → future cues. */}
+            {(s.intent === "behavioral" || s.intent === "leadership") && (
             <span className="flex gap-1" role="img" aria-label={`STAR: ${(["s", "t", "a", "r"] as const).map((k) => `${STAR_RU[k]} — ${s.star[k] ? "есть" : "нет"}`).join(", ")}`}>
               {(["s", "t", "a", "r"] as const).map((k) => (
                 <span key={k} aria-hidden className={cx("num grid size-6 place-items-center rounded-md text-[11px] uppercase", s.star[k] ? "bg-green text-white" : "bg-head/10 text-ink-4")}>{k}</span>
               ))}
             </span>
+            )}
+            {s.introCues && (
+              <span className="flex flex-wrap gap-1">
+                {(["now", "past", "future"] as const).map((k) => (
+                  <Chip key={k} tone={s.introCues![k] ? "green" : "neutral"}>{INTRO_CHIP[k]}{s.introCues![k] ? "" : " — нет"}</Chip>
+                ))}
+              </span>
+            )}
             <Chip>{count(s.words, ["слово", "слова", "слов"])}</Chip>
             <Chip tone={s.fillers > 2 ? "amber" : "neutral"}>Слова-паразиты: {s.fillers}</Chip>
             <Chip>Уверенность {s.confidence}</Chip>

@@ -38,7 +38,8 @@ export function runningCampaign(userId: string) {
 export const pendingQueueWhere = (userId: string, now = new Date()) => ({
   userId,
   status: "pending",
-  opportunity: { campaign: { userId, ...runningCampaignWhere(now) } },
+  // Simulation mode: questions / handoffs of live-feed roles stay as they are, out of sight (visibleScope).
+  opportunity: { campaign: { userId, ...runningCampaignWhere(now) }, ...visibleScope() },
 });
 
 /** Pending questions only (no handoffs): "N вопросов ждут твоего ответа". */
@@ -68,6 +69,9 @@ export const visibleScope = (): { job?: { source: string } } => (isSimulation() 
 
 /** The same scope for rows that may point at an opportunity (events, inbox messages): unlinked rows always show. */
 export const visibleLinkedScope = () => (isSimulation() ? { OR: [{ opportunityId: null }, { opportunity: { job: { source: FICTIONAL_SOURCE } } }] } : {});
+
+/** The same scope for Interview rows (always linked to an opportunity). Spread into a `where` without its own `opportunity`. */
+export const visibleInterviewScope = (): { opportunity?: { job: { source: string } } } => (isSimulation() ? { opportunity: visibleScope() as { job: { source: string } } } : {});
 
 // ——— "Today" numbers (Today, Opportunities and Career use the same window and the same definitions) ———
 
@@ -298,10 +302,10 @@ export async function nextCycleQueue(
  * An upcoming interview ROUND (not an assessment): status "upcoming" and scheduled in the future. A round whose time
  * has passed but still waits for «Как прошло?» is not upcoming any more (it counts as completed).
  */
-export const upcomingRoundWhere = (userId: string, now = new Date()) => ({ userId, status: "upcoming", round: { not: "assessment" }, scheduledAt: { gte: now } });
+export const upcomingRoundWhere = (userId: string, now = new Date()) => ({ userId, status: "upcoming", round: { not: "assessment" }, scheduledAt: { gte: now }, ...visibleInterviewScope() });
 
 /** An open assessment: status "upcoming" and its deadline not passed (no deadline = open). */
-export const openAssessmentWhere = (userId: string, now = new Date()) => ({ userId, status: "upcoming", round: "assessment", OR: [{ scheduledAt: null }, { scheduledAt: { gte: now } }] });
+export const openAssessmentWhere = (userId: string, now = new Date()) => ({ userId, status: "upcoming", round: "assessment", OR: [{ scheduledAt: null }, { scheduledAt: { gte: now } }], ...visibleInterviewScope() });
 
 /** Interview rows whose campaign did not end with HIRED. */
 const NOT_HIRED_CAMPAIGN = { campaign: { status: { not: "hired" } } };
@@ -324,8 +328,8 @@ export async function interviewCounts(userId: string, now = new Date()): Promise
   const [upcoming, active, finished, awaitingDebrief, assessments] = await Promise.all([
     db.interview.count({ where: upcomingRoundWhere(userId, now) }),
     db.interview.findMany({ where: upcomingRoundWhere(userId, now), select: { opportunityId: true }, distinct: ["opportunityId"] }),
-    db.interview.count({ where: { userId, round: { not: "assessment" }, status: { in: ["done", "passed", "failed"] } } }),
-    db.interview.count({ where: { userId, round: { not: "assessment" }, status: "upcoming", scheduledAt: { lt: now } } }),
+    db.interview.count({ where: { userId, round: { not: "assessment" }, status: { in: ["done", "passed", "failed"] }, ...visibleInterviewScope() } }),
+    db.interview.count({ where: { userId, round: { not: "assessment" }, status: "upcoming", scheduledAt: { lt: now }, ...visibleInterviewScope() } }),
     db.interview.count({ where: openAssessmentWhere(userId, now) }),
   ]);
   return { upcoming, activeRounds: active.length, completed: finished + awaitingDebrief, awaitingDebrief, assessments };
@@ -344,8 +348,12 @@ export type NeedsYou = {
   offer: number;
   /** Interview rounds (not assessments) in the next 48 hours. */
   interviews48h: number;
-  /** Assessments still open (deadline not passed). */
+  /** Assessments still open (deadline not passed). Simulation mode: 0 — they progress on their own (info only, Interviews). */
   assessments: number;
+  /** Simulation mode: 1 when the running campaign is active but the auto-submit consent is off — the agent can't send anything
+   * until the user switches it on in Settings («Включи автоподачу в настройках»). Always 0 in live mode (there the roles
+   * show up as Apply decisions instead). */
+  enableAutoSubmit: number;
   /** Sum of everything above. */
   total: number;
 };
@@ -360,17 +368,21 @@ export async function needsYouFor(
   const [questions, handoffs, offer, interviews48h, assessments, queue] = await Promise.all([
     db.approval.count({ where: pendingApprovalsWhere(userId, now) }),
     db.approval.count({ where: pendingHandoffsWhere(userId, now) }),
-    db.offer.count({ where: { userId, status: { in: ["received", "negotiating"] } } }),
+    db.offer.count({ where: { userId, status: { in: ["received", "negotiating"] }, ...visibleLinkedScope() } }),
     // Rounds of a campaign that ended with HIRED never wait on the user (markHired also cancels them).
-    db.interview.count({ where: { ...upcomingRoundWhere(userId, now), scheduledAt: { gte: now, lte: new Date(now.getTime() + 48 * 3600000) }, opportunity: NOT_HIRED_CAMPAIGN } }),
-    db.interview.count({ where: { ...openAssessmentWhere(userId, now), opportunity: NOT_HIRED_CAMPAIGN } }),
+    db.interview.count({ where: { ...upcomingRoundWhere(userId, now), scheduledAt: { gte: now, lte: new Date(now.getTime() + 48 * 3600000) }, opportunity: { ...NOT_HIRED_CAMPAIGN, ...visibleScope() } } }),
+    db.interview.count({ where: { ...openAssessmentWhere(userId, now), opportunity: { ...NOT_HIRED_CAMPAIGN, ...visibleScope() } } }),
     campaign && campaign.status === "active" ? nextCycleQueue(campaign, autonomy) : null,
   ]);
   const applyDecisions = campaign && queue ? await db.opportunity.count({ where: awaitingDecisionWhere(campaign.id, queue) }) : 0;
-  // Simulation mode: only the human moments (offer, interview prep, an assessment to take) — the agent answers every
-  // question itself, never hands a role off and decides every Apply (settleSimulationChores keeps the queue empty).
-  if (isSimulation()) return { questions: 0, handoffs: 0, applyDecisions: 0, offer, interviews48h, assessments, total: offer + interviews48h + assessments };
-  return { questions, handoffs, applyDecisions, offer, interviews48h, assessments, total: questions + handoffs + applyDecisions + offer + interviews48h + assessments };
+  // Simulation mode: only the human moments (offer, interview prep) — the agent answers every question itself, never
+  // hands a role off, decides every Apply (settleSimulationChores keeps the queue empty) and assessments progress on their
+  // own. The one switch only the user can flip — the auto-submit consent — is named when it is off.
+  if (isSimulation()) {
+    const enableAutoSubmit = campaign && campaign.status === "active" && !campaign.autoSubmit ? 1 : 0;
+    return { questions: 0, handoffs: 0, applyDecisions: 0, offer, interviews48h, assessments: 0, enableAutoSubmit, total: offer + interviews48h + enableAutoSubmit };
+  }
+  return { questions, handoffs, applyDecisions, offer, interviews48h, assessments, enableAutoSubmit: 0, total: questions + handoffs + applyDecisions + offer + interviews48h + assessments };
 }
 
 /** What waits on the user right now: the running campaign's queue plus offers and near rounds. */

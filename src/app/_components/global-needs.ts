@@ -7,7 +7,10 @@ import { needsYou, type NeedsYou } from "@/lib/ops-data";
 import { count, handoffsWaiting, plural, questionsWaiting } from "./ru";
 import type { Need } from "./agent-status";
 
-export type GlobalNeedKind = "offer" | "questions" | "handoffs" | "interview" | "assessments" | "decisions";
+export type GlobalNeedKind = "offer" | "questions" | "handoffs" | "interview" | "assessments" | "decisions" | "autosubmit";
+
+/** The consent only the user can give (needsYou.enableAutoSubmit). */
+export const ENABLE_AUTOSUBMIT = { text: "Включи автоподачу в настройках", href: "/app/settings#autosubmit" } as const;
 export type GlobalNeed = { kind: GlobalNeedKind; text: string; href: string };
 
 /** needsYou, cached per request (several components on one screen ask for it). */
@@ -17,6 +20,7 @@ export const needsYouCached = cache((userId: string) => needsYou(userId));
 export const globalNeeds = cache(async (userId: string): Promise<GlobalNeed[]> => {
   const n = await needsYouCached(userId);
   const out: GlobalNeed[] = [];
+  if (n.enableAutoSubmit) out.push({ kind: "autosubmit", text: "включить автоподачу", href: ENABLE_AUTOSUBMIT.href });
   if (n.offer) out.push({ kind: "offer", text: n.offer === 1 ? "оффер" : count(n.offer, ["оффер", "оффера", "офферов"]), href: "/app/offers" });
   if (n.interviews48h) out.push({ kind: "interview", text: n.interviews48h === 1 ? "интервью в ближайшие 48 ч" : `${n.interviews48h} интервью в ближайшие 48 ч`, href: "/app/interviews" });
   if (n.assessments) out.push({ kind: "assessments", text: count(n.assessments, ["тестовое задание", "тестовых задания", "тестовых заданий"]), href: "/app/interviews" });
@@ -32,6 +36,7 @@ export const decisionsWaiting = (n: number) => `${count(n, ["вакансия ж
 /** Full sentences for a «Нужно от тебя» block, most urgent first. `skip` drops what the screen itself shows. */
 export function needsList(n: NeedsYou, skip: GlobalNeedKind[] = []): Need[] {
   const out: (Need & { kind: GlobalNeedKind })[] = [];
+  if (n.enableAutoSubmit) out.push({ kind: "autosubmit", ...ENABLE_AUTOSUBMIT });
   if (n.offer) out.push({ kind: "offer", text: `${n.offer} ${plural(n.offer, ["оффер ждёт", "оффера ждут", "офферов ждут"])} твоего решения`, href: "/app/offers" });
   if (n.interviews48h) out.push({ kind: "interview", text: `Подготовься: ${n.interviews48h} интервью в ближайшие 48 ч`, href: "/app/interviews" });
   if (n.assessments) out.push({ kind: "assessments", text: `${n.assessments} ${plural(n.assessments, ["тестовое задание ждёт", "тестовых задания ждут", "тестовых заданий ждут"])} выполнения`, href: "/app/interviews" });

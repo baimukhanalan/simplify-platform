@@ -1,6 +1,10 @@
 // Journey 7: Agent screen toggles persist AND change engine behaviour on the next runAgentNow.
-import { Client, db, form, check, findings } from "./lib.mjs";
+import { Client, db, form, check, findings, needsMode } from "./lib.mjs";
 import { newPaidUser, payInvoice } from "./j1.mjs";
+
+// Simulation mode pins the autonomy the agent works with (SIMULATION_AUTONOMY: auto-apply ≥ 70, standard answers on,
+// sensitive declined) whatever the Agent screen stores, so these switches change engine behaviour only in live mode.
+needsMode("live", "autonomy switches are pinned in simulation");
 
 const DEFAULTS = { findJobs: "on", personalizeCv: "on", submitApplications: "on", answerStandard: "on", sensitive: "ask", autoApplyMinMatch: "85" };
 // Exactly what the browser form sends (see autonomy-form.tsx): checked switches as "on", sensitive radio, range slider. No autoApplyOn field exists in the form.

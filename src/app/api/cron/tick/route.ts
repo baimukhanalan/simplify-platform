@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { runTick } from "@/lib/engine/agent";
 import { ingestLive } from "@/lib/engine/ingest";
 import { hhEnabled } from "@/lib/hh/client";
+import { isSimulation } from "@/lib/mode";
 import { syncHhNegotiations } from "@/lib/hh/sync";
 import { simulateAllEmployers } from "@/lib/engine/simulation";
 
@@ -23,6 +24,9 @@ const INGEST_BUDGET_MS = Number(process.env.SIMPLIFY_INGEST_BUDGET_MS) || 90_000
 const SIM_DEADLINE_MS = 265_000;
 /** hh.kz status sync runs after the cycles, until this point (maxDuration is 300 s). */
 const HH_SYNC_DEADLINE_MS = 280_000;
+/** Within this much of TIME_BUDGET_MS a cycle's package preparation is capped (PREPARE_MS per package). */
+const PREPARE_TAIL_MS = 90_000;
+const PREPARE_MS = 15_000;
 
 /**
  * Scheduler entrypoint (Vercel Cron / external). Runs one agent cycle per active campaign, least recently run first
@@ -51,9 +55,12 @@ export async function GET(req: Request) {
   });
   let failed = 0, ran = 0, expired = 0, deferred = 0;
   for (const [i, c] of campaigns.entries()) {
-    if (Date.now() - started > TIME_BUDGET_MS) { deferred = campaigns.length - i; break; }
+    const left = TIME_BUDGET_MS - (Date.now() - started);
+    if (left < 0) { deferred = campaigns.length - i; break; }
     try {
-      const r = await runTick(c.id);
+      // Near the end of the budget a cycle prepares only as many packages as fit (~15 s each with AI), so the whole run
+      // stays inside maxDuration; the cron prepares the rest next time.
+      const r = await runTick(c.id, left < PREPARE_TAIL_MS ? { maxPrepare: Math.max(1, Math.floor(left / PREPARE_MS)) } : {});
       if ("skipped" in r) { if (r.skipped === "expired") expired++; } else ran++;
     } catch (e) { failed++; console.error("[cron] tick failed", c.id, e); }
   }
@@ -64,12 +71,13 @@ export async function GET(req: Request) {
   } catch (e) { console.error("[cron] employer simulation failed", e); }
   // hh.kz: pull negotiation states for connected users (only when the integration is configured on the server).
   let hh: { synced: number; failed: number; deferred: number } | undefined;
-  if (hhEnabled()) {
+  // Simulation mode: the fictional corpus only — no hh traffic from the cron.
+  if (hhEnabled() && !isSimulation()) {
     const users = await db.integration.findMany({ where: { provider: "hh", accessToken: { not: "" } }, orderBy: { updatedAt: "asc" }, select: { userId: true } });
     hh = { synced: 0, failed: 0, deferred: 0 };
     for (const [i, u] of users.entries()) {
       if (Date.now() - started > HH_SYNC_DEADLINE_MS) { hh.deferred = users.length - i; break; }
-      try { await syncHhNegotiations(u.userId); hh.synced++; } catch (e) { hh.failed++; console.error("[cron] hh sync failed", u.userId, e); }
+      try { await syncHhNegotiations(u.userId, { deadline: started + HH_SYNC_DEADLINE_MS }); hh.synced++; } catch (e) { hh.failed++; console.error("[cron] hh sync failed", u.userId, e); }
     }
   }
   return Response.json({ ran, expired, failed, deferred, ...(employers?.steps ? { employers } : {}), ...(hh ? { hh } : {}), ...(ingest ? { ingest } : {}) });

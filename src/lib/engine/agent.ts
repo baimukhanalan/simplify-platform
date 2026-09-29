@@ -14,7 +14,7 @@ import { count, plural, roleLabelRu } from "../ru";
 import { toUSD } from "./fx";
 import { salaryAnswer } from "./salary";
 import { snapRoundTime, startOfToday } from "../time";
-import { FICTIONAL_SOURCE, isFictionalJob, isSimulation, visibleJobsWhere } from "../mode";
+import { FICTIONAL_SOURCE, isFictionalJob, isSimulation, visibleJobsWhere, visibleOpportunities } from "../mode";
 import { ensureFictionalCoverage } from "./coverage";
 
 // Journal wording for employer emails (Settings → audit log shows these lines).
@@ -227,7 +227,7 @@ export async function discover(campaignId: string, opts: { coverage?: boolean } 
  */
 export async function rerank(campaignId: string) {
   const campaign = await db.campaign.findUniqueOrThrow({ where: { id: campaignId } });
-  const opps = await db.opportunity.findMany({ where: { campaignId }, include: { job: { select: { ...SCORE_JOB_SELECT, location: true } }, pkg: { select: { cvVersion: true } }, interviews: { select: { round: true } } } });
+  const opps = await db.opportunity.findMany({ where: { campaignId }, include: { job: { select: { ...SCORE_JOB_SELECT, location: true, source: true } }, pkg: { select: { cvVersion: true } }, interviews: { select: { round: true } } } });
   // An assessment is not an interview: only real rounds count as interview success for allocation.
   const allocation = allocationFrom(opps.map((o) => ({
     ...o,
@@ -252,7 +252,9 @@ export async function rerank(campaignId: string) {
   let nowBlocked = 0, unblocked = 0;
   // Prepared (not yet sent) packages are re-checked too: a setting turned off since (countries, salary floor, format…) must
   // stop them before submission. The package is kept; the role is set aside with its blocker and comes back if it clears.
-  for (const o of opps.filter((o) => o.status === "qualified" || o.status === "found" || o.status === "prepared" || autoSkipped(o))) {
+  // Simulation mode: live-feed roles are out of scope — left exactly as they are (their questions included) for live mode.
+  const inScope = (o: (typeof opps)[number]) => !isSimulation() || o.job.source === FICTIONAL_SOURCE;
+  for (const o of opps.filter((o) => inScope(o) && (o.status === "qualified" || o.status === "found" || o.status === "prepared" || autoSkipped(o)))) {
     const userPicked = o.decision === "apply" || o.decision === "auto";
     const r = scoreJob(c, scoreCtx(o.job), new Date(), { userPicked });
     const fresh = statusFor(r);
@@ -289,6 +291,15 @@ export const NO_LONGER_ELIGIBLE = "Вакансия больше не прохо
 // and answering one pending copy answers every other pending copy of the same question (see ./approvals.ts).
 export const STANDING_KINDS = new Set(["sensitive", "legal", "sponsorship"]);
 
+/**
+ * Approval.status of an answer the agent gave on its own in simulation mode (settleSimulationChores). It is kept apart
+ * from the user's own "approved" / "edited" answers so that it never becomes a standing answer in live mode.
+ */
+export const AUTO_ANSWER_STATUS = "auto";
+
+/** Approval statuses whose answer may be reused as a standing answer: the user's own only (plus auto-answers inside the simulation). */
+export const standingStatuses = () => (isSimulation() ? ["approved", "edited", AUTO_ANSWER_STATUS] : ["approved", "edited"]);
+
 // The opt-out answer for sensitive questions (one wording per audience) lives in ./autonomy.ts (pure, UI-safe).
 export { SENSITIVE_DECLINE, SENSITIVE_DECLINE_LEGACY, SENSITIVE_DECLINE_RU, answerRu } from "./autonomy";
 
@@ -303,7 +314,7 @@ export const CAMPAIGN_CLOSED_NOTE = "Кампания завершена — в�
 export async function standingAnswer(userId: string, q: { kind?: string | null; question: string; proposed?: string | null }) {
   if (q.kind === "sensitive") return SENSITIVE_DECLINE;
   if (q.kind && STANDING_KINDS.has(q.kind)) {
-    const prior = await db.approval.findFirst({ where: { userId, question: q.question, kind: q.kind, status: { in: ["approved", "edited"] }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
+    const prior = await db.approval.findFirst({ where: { userId, question: q.question, kind: q.kind, status: { in: standingStatuses() }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
     if (prior) return prior.answer;
   }
   if (q.kind === "legal") return "Yes";
@@ -369,7 +380,8 @@ function openStandingApproval(userId: string, kind: string, question: string) {
  */
 export async function settleSharedAnswers(userId: string) {
   const opps = await db.opportunity.findMany({
-    where: { status: "prepared", campaign: { userId, status: { in: ["active", "paused"] } }, pkg: { isNot: null } },
+    // Simulation mode: live-feed packages are out of scope (never answered with the agent's standing answers).
+    where: visibleOpportunities({ status: "prepared", campaign: { userId, status: { in: ["active", "paused"] } }, pkg: { isNot: null } }),
     select: { id: true, pkg: { select: { answers: true } }, approvals: { where: { status: "pending" }, select: { question: true } } },
   });
   const touched: string[] = [];
@@ -386,7 +398,7 @@ export async function settleSharedAnswers(userId: string) {
     let changed = false;
     for (const a of answers) {
       if (a.status !== "pending" || !STANDING_KINDS.has(a.kind ?? "") || o.approvals.some((x) => x.question === a.q)) continue;
-      const prior = await db.approval.findFirst({ where: { userId, question: a.q, kind: a.kind, status: { in: ["approved", "edited"] }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
+      const prior = await db.approval.findFirst({ where: { userId, question: a.q, kind: a.kind, status: { in: standingStatuses() }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
       if (prior) { a.a = prior.answer; a.status = "approved"; changed = true; continue; }
       if (await openStandingApproval(userId, a.kind!, a.q)) continue;
       await db.approval.create({ data: { userId, opportunityId: o.id, kind: a.kind!, question: a.q, proposed: a.a } });
@@ -454,7 +466,7 @@ export async function prepare(opportunityId: string, opts: PrepareOptions = {}) 
   let reused = 0;
   for (const a of pkg.answers) {
     if (a.status !== "pending" || !STANDING_KINDS.has(a.kind ?? "")) continue;
-    const prior = await db.approval.findFirst({ where: { userId, question: a.q, kind: a.kind, status: { in: ["approved", "edited"] }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
+    const prior = await db.approval.findFirst({ where: { userId, question: a.q, kind: a.kind, status: { in: standingStatuses() }, answer: { not: "" } }, orderBy: { resolvedAt: "desc" }, select: { answer: true } });
     if (prior) { a.a = prior.answer; a.status = "approved"; reused++; }
   }
   // Simulation mode: the agent answers whatever is left itself — no question ever waits for the user.
@@ -558,7 +570,8 @@ export async function submit(opportunityId: string, via: "agent" | "user" = "age
  * (a prepared role holds its slot until it is sent). One definition for runTick and continueIfReady.
  */
 export function dailyUsage(campaignId: string, since = startOfToday()) {
-  return db.opportunity.count({ where: { campaignId, OR: [{ submittedAt: { gte: since } }, { status: "prepared", updatedAt: { gte: since } }] } });
+  // Simulation mode: only the fictional corpus is in play — a live-feed role kept from before never takes a slot.
+  return db.opportunity.count({ where: visibleOpportunities({ campaignId, OR: [{ submittedAt: { gte: since } }, { status: "prepared", updatedAt: { gte: since } }] }) });
 }
 
 export type TickOptions = {
@@ -600,7 +613,7 @@ export async function runTick(campaignId: string, opts: TickOptions = {}) {
   // or the last question answered while paused) go out first. Anything with an open question or handoff keeps waiting.
   if (campaign.autoSubmit) {
     const ready = await db.opportunity.findMany({
-      where: { campaignId, status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } },
+      where: visibleOpportunities({ campaignId, status: "prepared", decision: { not: "skip" }, approvals: { none: { status: "pending" } } }),
       orderBy: [{ decision: "desc" }, { priority: "desc" }],
       select: { id: true, decision: true, match: true, updatedAt: true },
     });
@@ -724,7 +737,14 @@ export async function createInterview(userId: string, opportunityId: string, rou
     name: profile.name, role: opp.job.title, company: opp.job.company, round, jd: opp.job.description, technologies: j<string[]>(opp.job.technologies, []), skills: profile.skills, yearsExperience: profile.yearsExperience,
     stories: stories.map((x) => ({ ...x, tags: j<string[]>(x.tags, []) })), facts: facts.map((f) => ({ ...f, teamSize: null })),
   });
-  const iv = await db.interview.create({ data: { userId, opportunityId, round, scheduledAt: roundTime(round, scheduledAt, opts.exact), pack: s(pack) } });
+  let iv;
+  try {
+    iv = await db.interview.create({ data: { userId, opportunityId, round, scheduledAt: roundTime(round, scheduledAt, opts.exact), pack: s(pack) } });
+  } catch (e) {
+    // @@unique([opportunityId, round]): a concurrent call created this round first — that row is the round.
+    if ((e as { code?: string }).code !== "P2002") throw e;
+    return db.interview.findFirstOrThrow({ where: { opportunityId, round } });
+  }
   await logEvent(userId, "interview_room", `Interview Room создан: ${opp.job.company} — ${ROUND_LABEL[round] ?? round}`, opportunityId);
   return iv;
 }

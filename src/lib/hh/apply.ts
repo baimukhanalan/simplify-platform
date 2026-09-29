@@ -51,9 +51,21 @@ const FAIL_RU: Record<ApplyFailure, string> = {
 
 export const hhVacancyId = (externalId: string) => externalId.replace(/^hh-/, "");
 
+/** An http(s) link, or null: a handoff URL from hh's API (employer-controlled response_url) is rendered as a link. */
+export const safeHttpUrl = (raw: string | null | undefined) => {
+  const t = (raw ?? "").trim();
+  if (!/^https?:\/\//i.test(t)) return null;
+  try {
+    return new URL(t).toString();
+  } catch {
+    return null;
+  }
+};
+
 export async function submitViaHh(userId: string, job: { externalId: string; url: string }, coverLetter: string): Promise<HhSubmitOutcome> {
-  const url = job.url || `https://hh.kz/vacancy/${hhVacancyId(job.externalId)}`;
-  const handoff = (why: string, detail?: string, to = url): HhSubmitOutcome => ({ kind: "handoff", reason: `Отправь отклик на hh.kz сам: ${why}.`, url: to, detail });
+  const url = safeHttpUrl(job.url) ?? `https://hh.kz/vacancy/${encodeURIComponent(hhVacancyId(job.externalId))}`;
+  // Only http(s) links ever become a handoff (never javascript:, data: …); anything else falls back to the vacancy page.
+  const handoff = (why: string, detail?: string, to: string | null | undefined = url): HhSubmitOutcome => ({ kind: "handoff", reason: `Отправь отклик на hh.kz сам: ${why}.`, url: safeHttpUrl(to) ?? url, detail });
   if (!hhEnabled()) return handoff("интеграция hh.kz ещё не включена на сервере");
   const row = await hhIntegration(userId);
   if (!row || !row.accessToken) return handoff("аккаунт hh.kz не подключён (подключи в «Агент» → hh.kz — и агент будет откликаться сам)");

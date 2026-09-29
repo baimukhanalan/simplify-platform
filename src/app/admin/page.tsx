@@ -10,7 +10,10 @@ import { countsAsRevenue } from "@/lib/payments/kaspi";
 import { fmtNum } from "@/lib/ru";
 import { IngestPanel } from "./_components/ingest-panel";
 
-export const metadata = { title: "Operations" };
+// Server Actions of this page (adminIngest, adminRunTick) run up to this long; adminIngest keeps its own budget well inside.
+export const maxDuration = 300;
+
+export const metadata = { title: "Операции" };
 
 const pct = (a: number, b: number) => (b ? Math.round((a / b) * 100) : 0);
 const DAY = 86400000;

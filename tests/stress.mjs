@@ -240,8 +240,12 @@ async function newUserJourney(routes, demoIds) {
   await step("onboarding completeStep(4) → step 5", "/onboarding?step=4", { step: "4" }, "step=5");
   await step("onboarding completeStep(999) clamps to step 1", "/onboarding?step=4", { step: "999" }, "step=1");
 
-  // Inbox: paste a "thank you for applying… unfortunately" email.
-  try {
+  // Inbox: paste a "thank you for applying… unfortunately" email — only where the page still has the paste form. It was
+  // removed from the Inbox with the neutral UI wording (791d307: employer mail arrives on its own); the action behind it
+  // (ops.ingestPastedEmail) stays covered by the e2e journeys (tests/e2e/setup.mjs → email()).
+  const inboxHtml = (await get("/app/inbox", cookie)).body;
+  if (!/name="subject"/.test(inboxHtml)) console.log("  (no inbox paste form on /app/inbox — removed on purpose; skipped)");
+  else try {
     const r = await submitForm("/app/inbox", cookie, { from: "jobs@kaspi.kz", subject: "Thank you for applying", body: "Thank you for applying. Unfortunately we will not be moving forward." });
     check("inbox paste email (no matching application) handled", r.status < 500 && !hasRenderError(r.body), `${r.status}`);
     const huge = await submitForm("/app/inbox", cookie, { from: "x@y.z", subject: "s".repeat(5000), body: "unfortunately ".repeat(40000) });

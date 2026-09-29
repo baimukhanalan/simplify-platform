@@ -132,9 +132,14 @@ export function scaffold(q: string, ctx: { stories: StoryLite[]; facts: FactLite
   let keyNumber = story?.metric || topFact?.metrics || "";
   switch (intent) {
     case "intro":
+    {
+      // Unknown years: the years clause is left out, never "hands-on project of hands-on experience".
+      const yrs = yearsForEmployer(ctx.yearsExperience);
+      const tools = ctx.skills.slice(0, 2).join(" and ") || "this kind of work";
       opener = nowTitle
-        ? `I'm ${withArticle(titleInSentence(nowTitle))} with ${yearsForEmployer(ctx.yearsExperience) ?? "hands-on project"} of hands-on experience.`
-        : `I have ${yearsForEmployer(ctx.yearsExperience) ?? "hands-on project"} of hands-on experience with ${ctx.skills.slice(0, 2).join(" and ") || "this kind of work"}.`;
+        ? `I'm ${withArticle(titleInSentence(nowTitle))}${yrs ? ` with ${yrs} of hands-on experience` : ""}.`
+        : yrs ? `I have ${yrs} of hands-on experience with ${tools}.` : `I work hands-on with ${tools}.`;
+    }
       bullets = [`Сейчас: ${current ? `${current.title}${current.org ? ` в ${current.org}` : ""}` : "твоя текущая роль"}`, `Доказательство: ${short(keyNumber || topFact?.details.split("\n")[0] || "один конкретный результат")}`, `Инструменты: ${ctx.skills.slice(0, 4).join(", ")}`, `Почему сюда: ${ctx.role} в ${ctx.company}`];
       break;
     case "salary": {
@@ -305,6 +310,27 @@ export const STRUCTURE_CUE_RU: Record<keyof ReturnType<typeof structureCues>, st
   example: "конкретный пример («for example…»)",
   conclusion: "вывод в конце («so / as a result…»)",
 };
+/**
+ * «Tell me about yourself» is not a STAR story: present → past → future, with one proof. Its own cues, scored instead of
+ * STAR / the generic cues.
+ */
+export function introCues(answer: string) {
+  return {
+    // "at Kaspi" is case-sensitive on purpose (not "at the end").
+    now: /(?<![\p{L}])(?:i['’]m|i am|currently|right now|now i|these days|сейчас|работаю|я\s+—|я\s+-)(?![\p{L}])/iu.test(answer) || /(?<![\p{L}])at\s+\p{Lu}/u.test(answer),
+    past: /(?<![\p{L}])(?:before(?: that)?|previously|prior to|started (?:my career|as|at|in)|began|spent|over the (?:last|past)|years? (?:at|in|of)|до этого|раньше|начинал\p{L}*|начала|пришл\p{L}*|за (?:последние|\d+) (?:год|лет))(?![\p{L}])/iu.test(answer),
+    future: /(?<![\p{L}])(?:looking for|looking to|next step|i want|i'd like|i would like|excited about|interested in|that's why|which is why|this role|your team|хочу|ищу|интерес\p{L}*|поэтому|следующий шаг)(?![\p{L}])/iu.test(answer),
+    proof: /\d/.test(answer) || /(?<![\p{L}])(?:for example|for instance|например|к примеру)(?![\p{L}])/iu.test(answer),
+  };
+}
+/** What each missing intro cue means for the user («Чего не хватило»). */
+export const INTRO_CUE_RU: Record<keyof ReturnType<typeof introCues>, string> = {
+  now: "кто ты сейчас",
+  past: "как ты к этому пришёл(а): прошлый опыт",
+  future: "почему эта роль — следующий шаг",
+  proof: "одно доказательство: результат с цифрой",
+};
+
 export function structureScore(answer: string) {
   const cues = Object.values(structureCues(answer)).filter(Boolean).length;
   return [20, 45, 65, 85, 100][cues];
@@ -326,7 +352,10 @@ export function scoreAnswer(question: string, answer: string, ctx: { skills: str
   const relevance = ctx.jdTerms.filter((t) => answer.toLowerCase().includes(t.toLowerCase())).length;
   const lengthScore = n < SHORT_ANSWER_WORDS ? 15 : n < 40 ? 40 : n <= 220 ? 100 : n <= 320 ? 70 : 45;
   const clarity = Math.max(0, 100 - fillers * 12 - (answer.match(/[^.!?]{220,}/g)?.length ?? 0) * 15);
-  const structure = intent === "behavioral" || intent === "leadership" ? Math.round(starScore * 100) : structureScore(answer);
+  const intro = intent === "intro" ? introCues(answer) : null;
+  const structure = intent === "behavioral" || intent === "leadership" ? Math.round(starScore * 100)
+    : intro ? [20, 45, 65, 85, 100][Object.values(intro).filter(Boolean).length]
+    : structureScore(answer);
   const confidence = answerConfidence(answer, ctx.spoken);
   const content = Math.min(100, 45 + (hasNumber ? 25 : 0) + relevance * 10 + (/\bi\b|я /i.test(answer) ? 10 : 0));
   // Structure weighs as much as content, and caps the overall (structure 45 → overall ≤ 70).
@@ -339,12 +368,12 @@ export function scoreAnswer(question: string, answer: string, ctx: { skills: str
   const STAR_RU: Record<string, string> = { s: "ситуации", t: "задачи", a: "действия", r: "результата" };
   if ((intent === "behavioral" || intent === "leadership") && starScore < 0.75) tips.push(`STAR неполный — не хватает: ${Object.entries(star).filter(([, v]) => !v).map(([k]) => STAR_RU[k]).join(", ")}.`);
   if (n > 220) tips.push("Слишком длинно — уложись в 60–120 секунд.");
-  if (n < SHORT_ANSWER_WORDS) tips.push("Это одна фраза, а не ответ — расскажи о своём конкретном действии и его результате.");
-  else if (n < 40) tips.push("Слишком коротко — раскрой своё конкретное действие.");
+  if (n < SHORT_ANSWER_WORDS) tips.push(intro ? "Это одна фраза, а не ответ — расскажи, кто ты сейчас, откуда пришёл(а) и почему эта роль." : "Это одна фраза, а не ответ — расскажи о своём конкретном действии и его результате.");
+  else if (n < 40) tips.push(intro ? "Слишком коротко — добавь прошлый опыт и почему эта роль." : "Слишком коротко — раскрой своё конкретное действие.");
   if (fillers > 2) tips.push(`Слова-паразиты: ${fillers}. Делай паузу вместо «um/like».`);
   if (!relevance) tips.push("Свяжи ответ с требованиями вакансии.");
   const cues = structureCues(answer);
-  return { overall, content, structure, clarity, length: lengthScore, confidence, fillers, words: n, star, cues, tips, intent };
+  return { overall, content, structure, clarity, length: lengthScore, confidence, fillers, words: n, star, cues, introCues: intro, tips, intent };
 }
 
 // ——— Mock session summary (the one computation: client preview and the server's stored feedback) ———

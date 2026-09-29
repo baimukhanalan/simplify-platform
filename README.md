@@ -28,6 +28,7 @@ Postgres the seed requires `ALLOW_DEMO_SEED=1` and `ADMIN_PASSWORD` for those st
 | `SESSION_SECRET` | ≥32 random bytes, signs session JWTs. |
 | `ANTHROPIC_API_KEY` | Optional. Enables Claude for CV parsing, packages, interview packs. Without it the deterministic engine runs everything. |
 | `SIMPLIFY_MODEL` | Claude model id, default `claude-opus-5`. |
+| `SIMPLIFY_MODE` | `simulation` turns on the fictional-company corpus with automatic employer activity (showcase). **Unset or any other value = `live`** (the plain production engine), so a missing or mistyped value never starts the simulation. `.env` sets `simulation` for local dev. |
 | `SIMPLIFY_GREENHOUSE_BOARDS` / `SIMPLIFY_LEVER_COMPANIES` | Comma-separated public boards for live job ingestion. |
 | `CRON_SECRET` | Protects `GET /api/cron/tick` (one agent cycle for every active campaign). |
 | `SEED_TOKEN` | Optional, ≥32 chars. Enables `POST /api/admin/seed-demo` (Bearer). Unset = endpoint returns 404. |
@@ -39,7 +40,7 @@ Postgres the seed requires `ALLOW_DEMO_SEED=1` and `ADMIN_PASSWORD` for those st
 | `HH_REDIRECT_URI` | OAuth redirect URI; default `${APP_URL}/api/integrations/hh/callback`. Must match the value registered at dev.hh.ru exactly. |
 | `HH_USER_AGENT` | Sent as `HH-User-Agent` (and `User-Agent`) on every hh request; default `Simplify/1.0 (support@simplify.kz)`. hh requires a real app name + contact. |
 | `HH_APP_TOKEN` | Optional. The application token (client_credentials) issued once; recommended on serverless so cold starts don't re-issue it (hh rate-limits issuing and a new one can invalidate the old). Unset = issued on demand and cached in memory. |
-| `ENCRYPTION_KEY` | Optional, 32 bytes (hex/base64): AES-256-GCM key for third-party tokens at rest (hh). Default: derived from `SESSION_SECRET`. |
+| `ENCRYPTION_KEY` | Optional, 32 bytes (hex/base64): AES-256-GCM key for third-party tokens at rest (hh). Default: derived from `SESSION_SECRET`. A malformed value fails loudly in production. **Rotating `SESSION_SECRET` while `ENCRYPTION_KEY` is unset makes every stored hh token undecryptable — users have to reconnect hh.** Set `ENCRYPTION_KEY` before rotating the session secret. |
 | `SIMPLIFY_EXTENSION_IDS` | Optional, comma-separated Chrome extension ids allowed to call `/api/extension/*` (CORS). Unset = any `chrome-extension://` origin; the `X-Simplify-Token` key is the credential either way. |
 
 ## Architecture

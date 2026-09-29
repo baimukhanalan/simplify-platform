@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { db, s } from "../db";
-import { AUTONOMY_DEFAULTS, AUTONOMY_LABELS, readAutonomy, type Autonomy } from "../engine/autonomy";
+import { AUTONOMY_LABELS, mergeAutonomyForm, readStoredAutonomy } from "../engine/autonomy";
+import { isSimulation } from "../mode";
 import { logEvent, SENSITIVE_DECLINE } from "../engine/agent";
 import { answerMatchingApprovals } from "../engine/approvals";
 
@@ -11,22 +12,12 @@ export type AutonomyState = { ok?: boolean; error?: string; savedAt?: number };
 
 export async function saveAutonomy(_prev: AutonomyState, form: FormData): Promise<AutonomyState> {
   const user = await requireUser();
-  const next: Autonomy = { ...AUTONOMY_DEFAULTS };
-  for (const { key } of AUTONOMY_LABELS) next[key] = form.get(key) === "on";
+  const fresh = await db.user.findUnique({ where: { id: user.id }, select: { autonomy: true } });
+  // The user's own stored values — never the simulation's standing overlay (readAutonomy), which must not be persisted.
+  const before = readStoredAutonomy(fresh?.autonomy ?? user.autonomy);
+  const next = mergeAutonomyForm(before, form, isSimulation());
+  if ("error" in next) return { error: next.error };
 
-  const sensitive = String(form.get("sensitive") ?? "");
-  if (sensitive !== "ask" && sensitive !== "decline") return { error: "Выбери, как агент отвечает на чувствительные вопросы." };
-  next.sensitive = sensitive;
-
-  // One control, two fields (the same ones the Opportunities switch writes): the switch is submitApplications,
-  // the slider is the threshold. The threshold is always kept, so turning auto-apply back on restores it.
-  next.submitApplications = form.get("submitApplications") === "on";
-  const raw = String(form.get("autoApplyMinMatch") ?? "").trim();
-  const n = Number(raw);
-  if (!raw || !Number.isFinite(n) || n < 50 || n > 100) return { error: "Порог Match должен быть от 50 до 100%." };
-  next.autoApplyMinMatch = Math.round(n);
-
-  const before = readAutonomy(user.autonomy);
   await db.user.update({ where: { id: user.id }, data: { autonomy: s(next) } });
   // Campaign.autoSubmit is not touched here: it mirrors only the auto-submit consent (Settings → Privacy).
 
@@ -45,3 +36,4 @@ export async function saveAutonomy(_prev: AutonomyState, form: FormData): Promis
   revalidatePath("/app", "layout");
   return { ok: true, savedAt: Date.now() };
 }
+

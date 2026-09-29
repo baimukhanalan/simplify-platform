@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, ChevronDown, Download, ExternalLink } from "lucide-react";
 import { realUrl } from "@/lib/links";
 import { currentUserId, requireUser } from "@/lib/auth";
+import { isSimulation } from "@/lib/mode";
 import { db, j } from "@/lib/db";
 import type { Answer } from "@/lib/engine/personalize";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
@@ -126,6 +127,8 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             <h2 className="label">История</h2>
             <Timeline steps={steps} />
           </Card>
+          {/* Simulation: statuses only move on their own — no manual status change to offer or describe. */}
+          {!isSimulation() && (
           <Card className="flex flex-col gap-2.5">
             <h2 className="label">Статус</h2>
             <p className="text-[13px] text-ink-3">
@@ -133,6 +136,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             </p>
             <StatusMover id={opp.id} current={opp.status} groups={["applied", "interview", "result"]} label="Сменить статус" ariaLabel={`Сменить статус заявки: ${job.company} — ${job.title}`} />
           </Card>
+          )}
         </aside>
 
         <div className="flex min-w-0 flex-col gap-5 lg:col-start-1 lg:row-start-1">

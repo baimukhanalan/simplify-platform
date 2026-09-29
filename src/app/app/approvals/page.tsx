@@ -1,3 +1,5 @@
+import { redirect } from "next/navigation";
+import { isSimulation } from "@/lib/mode";
 import Link from "next/link";
 import { Check, ExternalLink } from "lucide-react";
 import { requireUser } from "@/lib/auth";
@@ -45,6 +47,8 @@ const sameKey = (a: { kind: string; question: string }) => `${a.kind}\u0000${a.q
 
 export default async function ApprovalsPage() {
   const user = await requireUser();
+  // Simulation mode: the agent answers and sends everything itself — nothing to confirm or send by hand here.
+  if (isSimulation()) redirect("/app");
   const [pending, resolved] = await Promise.all([
     db.approval.findMany({
       where: pendingQueueWhere(user.id),

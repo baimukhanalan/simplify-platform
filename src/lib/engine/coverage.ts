@@ -3,7 +3,7 @@ import { db, j } from "../db";
 import { FICTIONAL_SOURCE } from "../mode";
 import { scoreJob, STRONG_MATCH, planCountries, type CandidateCtx, type JobCtx } from "./matching";
 import { classifyRole, goalTitle, normalizeLanguage, roleKey, seniorityFromYears, seniorityIndex, SENIORITY, type Seniority } from "./taxonomy";
-import { CORPUS_REGIONS, FX_PREFIX, tailorSignature, tailoredSeeds, type Region, type TailorSpec } from "./seed-jobs";
+import { CORPUS_REGIONS, FX_PREFIX, VARIANT_SPAN, tailorSignature, tailoredSeeds, type Region, type TailorSpec } from "./seed-jobs";
 import { upsertFictional } from "./ingest";
 
 /** Unseen internal roles that fit the goal (on-goal, not blocked, Match ≥ STRONG_MATCH) the agent should always have. */
@@ -72,18 +72,21 @@ export async function ensureFictionalCoverage(userId: string, c: CandidateCtx, m
   const spec = tailorSpecFor(c);
   const sig = tailorSignature(spec);
   let added = 0;
-  for (let round = 0; round < 3 && have < min; round++) {
+  let jump = 0; // index to continue from when the last batch added nothing: the next variant block (new titles)
+  for (let round = 0; round < 4 && have < min; round++) {
     const prefix = `${FX_PREFIX}g-${sig}-`;
     const made = await db.job.findMany({ where: { source: FICTIONAL_SOURCE, externalId: { startsWith: prefix } }, select: { externalId: true } });
     if (made.length >= MAX_PER_SPEC) break;
     // Continue after the highest index generated so far (the generator skips indices it can't place).
-    const offset = made.reduce((m, x) => Math.max(m, Number(x.externalId.slice(prefix.length)) + 1 || 0), 0);
+    const offset = Math.max(jump, made.reduce((m, x) => Math.max(m, Number(x.externalId.slice(prefix.length)) + 1 || 0), 0));
     const seeds = tailoredSeeds(spec, min - have + 5, offset);
-    if (!seeds.length) break;
-    const n = await upsertFictional(seeds);
+    const n = seeds.length ? await upsertFictional(seeds) : 0;
     added += n;
-    if (!n) break;
+    const before = have;
     have = await unseenFittingRoles(userId, c);
+    // Nothing new (every combination of this block is taken or already seen): vary the templates — the next block
+    // brings team variants of the titles at other companies / cities, so narrow goals never run dry.
+    if (!n || have <= before) jump = (Math.floor(offset / VARIANT_SPAN) + 1) * VARIANT_SPAN;
   }
   return added;
 }

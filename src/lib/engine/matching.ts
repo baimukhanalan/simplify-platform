@@ -1,7 +1,24 @@
 import { REGIONS, ROLE_FAMILIES, SENIORITY_LABEL, fmtMoney, seniorityIndex, seniorityFromYears, classifyRole, normalizeLanguage, wordRe } from "./taxonomy";
-import { fmtYearsRu } from "../ru";
+import { fmtYearsRu, placeRu } from "../ru";
 
 const WORK_MODE_WORD: Record<string, string> = { remote: "удалённо", hybrid: "гибрид", onsite: "в офисе" };
+
+const COUNTRY_RU_SHORT: Record<string, string> = { US: "США", GB: "Великобритания", AE: "ОАЭ", "*": "весь мир" };
+let regionNames: Intl.DisplayNames | null = null;
+/** ISO country code → Russian name («KZ» → «Казахстан», «US» → «США»); unknown codes stay as written. */
+export function countryRu(code: string): string {
+  const c = code.trim().toUpperCase();
+  if (COUNTRY_RU_SHORT[c]) return COUNTRY_RU_SHORT[c];
+  if (!/^[A-Z]{2}$/.test(c)) return placeRu(code); // legacy lines name the country in English ("Germany")
+  try {
+    regionNames ??= new Intl.DisplayNames(["ru"], { type: "region" });
+    const name = regionNames.of(c);
+    return name && name !== c ? name : code;
+  } catch {
+    return code;
+  }
+}
+const countriesRu = (codes: string[]) => codes.map(countryRu).join(", ");
 
 /**
  * Blocker / gap lines written by older engine versions in English, as stored on existing opportunities → the current
@@ -9,9 +26,11 @@ const WORK_MODE_WORD: Record<string, string> = { remote: "удалённо", hyb
  */
 export function blockerRu(line: string): string {
   return line
+    // Stored lines carry ISO codes («Страна вне цели: DE, NL»): names, not codes, in the UI.
+    .replace(/^(Страна вне цели|Нужно право на работу): ((?:[A-Z]{2}|\*)(?:, (?:[A-Z]{2}|\*))*)(?=$| —)/, (_, head: string, list: string) => `${head}: ${countriesRu(list.split(", "))}`)
     .replace(/^Onsite\/hybrid, спонсорство визы недоступно$/, "Офис или гибрид, спонсорство визы недоступно")
     .replace(/^Требуется переезд, relocation выключен$/, "Требуется переезд, а переезд у тебя выключен")
-    .replace(/^(.+) authorization required$/, "Нужно право на работу: $1 — спонсорство не указано")
+    .replace(/^(.+) authorization required$/, (_, list: string) => `Нужно право на работу: ${countriesRu(list.split(/,\s*/))} — спонсорство не указано`)
     .replace(/^Только onsite — /, "Только в офисе — ")
     .replace(/^Формат (remote|hybrid|onsite) вне предпочтений$/, (_, m: string) => `Формат «${WORK_MODE_WORD[m]}» вне предпочтений`);
 }
@@ -145,7 +164,7 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date(), opts: S
   const auth = new Set(c.workAuth);
   const anywhere = targets.has("*");
   const jobInTarget = job.countries.length === 0 || anywhere || job.countries.some((x) => targets.has(x) || x === "*");
-  if (!jobInTarget) (c.permissions?.outsideCountries ? softGaps : blockers).push(`Страна вне цели: ${job.countries.join(", ")}`);
+  if (!jobInTarget) (c.permissions?.outsideCountries ? softGaps : blockers).push(`Страна вне цели: ${countriesRu(job.countries)}`);
   if (salaryFit < 1 && c.permissions && !c.permissions.belowSalaryFloor && job.salaryMax && job.salaryMax < c.goal.minSalary) blockers.push("Зарплата ниже твоего минимума");
 
   const needsPresence = job.remote !== "remote";
@@ -156,9 +175,9 @@ export function scoreJob(c: CandidateCtx, job: JobCtx, now = new Date(), opts: S
     else softGaps.push("Нужна виза — спонсорство не указано");
   }
   if (job.workAuth.length && !job.workAuth.some((x) => auth.has(x))) {
-    if (job.sponsorship === "no" || !c.needsSponsorship) blockers.push(`Нужно право на работу: ${job.workAuth.join(", ")}`);
+    if (job.sponsorship === "no" || !c.needsSponsorship) blockers.push(`Нужно право на работу: ${countriesRu(job.workAuth)}`);
     else if (job.sponsorship === "yes") softGaps.push("Потребуется спонсорство (компания спонсирует)");
-    else blockers.push(`Нужно право на работу: ${job.workAuth.join(", ")} — спонсорство не указано`);
+    else blockers.push(`Нужно право на работу: ${countriesRu(job.workAuth)} — спонсорство не указано`);
   }
   if (!c.goal.workModes.includes(job.remote) && !c.goal.workModes.includes("any")) {
     if (job.remote === "onsite") blockers.push("Только в офисе — не входит в твои форматы");

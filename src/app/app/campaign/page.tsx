@@ -17,7 +17,7 @@ import { LegalLinks } from "../../_components/legal-page";
 import { PLAN_COOKIE, cleanPlan, type PlanKey } from "../../_components/plan-pref";
 import { handoffsWaiting, plural, questionsWaiting } from "../../_components/ru";
 
-export const metadata: Metadata = { title: "Career Campaign" };
+export const metadata: Metadata = { title: "Кампания и оплата" };
 
 const INCLUDED = [
   "Career Profile", "Настройка цели", "Поиск вакансий", "Оценка Match и проверка требований", "Ранжирование по вероятности интервью",

@@ -4,7 +4,7 @@ import { cvPdfFilename } from "@/lib/links";
 import type { Answer } from "@/lib/engine/personalize";
 import { preflight, json, withExtension } from "../_lib/auth";
 import { findOpportunityForUrl } from "../_lib/find";
-import { jobKey } from "../_lib/match";
+import { hostCheck, jobKey, stripPageUrl } from "../_lib/match";
 import { splitAnswers } from "../_lib/answers";
 
 export const OPTIONS = preflight;
@@ -12,11 +12,15 @@ export const OPTIONS = preflight;
 /** GET ?url=<page url> → the user's vacancy for that page and its application package (what the extension may fill). */
 export async function GET(req: Request) {
   return withExtension(req, async ({ userId }) => {
-    const pageUrl = new URL(req.url).searchParams.get("url") ?? "";
+    // Only origin + path + vacancy-id parameters are ever used (the extension strips the rest before sending, too).
+    const pageUrl = stripPageUrl(new URL(req.url).searchParams.get("url") ?? "") ?? "";
     const key = jobKey(pageUrl);
     if (!key) return json(req, { error: "bad url" }, 400);
     const opp = await findOpportunityForUrl(userId, pageUrl);
     if (!opp) return json(req, { matched: false, ats: key.ats });
+    // A ?gh_jid / ?ashby_jid on a host that is neither the ATS nor the vacancy's own site: no package, the popup warns.
+    const host = hostCheck(pageUrl, key, opp.job.url);
+    if (!host.ok) return json(req, { matched: false, ats: key.ats, hostMismatch: true, pageHost: host.pageHost, expectedHost: host.expectedHost });
 
     const pkg = opp.pkg;
     const cvPath = `/api/extension/cv/${opp.id}`;
@@ -24,6 +28,7 @@ export async function GET(req: Request) {
     return json(req, {
       matched: true,
       ats: key.ats,
+      pageHost: host.pageHost,
       opportunity: {
         id: opp.id,
         company: opp.job.company,

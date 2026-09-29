@@ -177,9 +177,6 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-baseline justify-between gap-3">
                   <label htmlFor={`${uid}-pw`} className="label">Пароль</label>
-                  {mode === "login" && (
-                    <Link href="/reset" className="-my-2 inline-flex min-h-10 items-center rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Не помнишь пароль?</Link>
-                  )}
                   {mode === "signup" && password && <span className="label !text-[11px]" aria-live="polite">Надёжность: <span className={cx(pw.score >= 3 ? "text-green" : pw.score === 2 ? "text-amber" : "text-rose")}>{pw.label}</span></span>}
                 </div>
                 <div className="relative">
@@ -199,6 +196,10 @@ export function AuthExperience({ initialMode, refCode, next, intent = null, plan
                     {showPw ? <EyeOff className="size-4" strokeWidth={1.7} /> : <Eye className="size-4" strokeWidth={1.7} />}
                   </button>
                 </div>
+                {/* After the field in the DOM: Tab goes email → password → «Не помнишь пароль?». */}
+                {mode === "login" && (
+                  <Link href="/reset" className="-my-1 inline-flex min-h-10 items-center self-end rounded text-[12.5px] text-teal underline decoration-line underline-offset-4 hover:text-head focus-visible:outline-2 focus-visible:outline-green">Не помнишь пароль?</Link>
+                )}
                 {mode === "signup" && (
                   <div className="grid grid-cols-4 gap-1" aria-hidden>
                     {[1, 2, 3, 4].map((k) => (

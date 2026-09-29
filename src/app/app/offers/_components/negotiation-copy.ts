@@ -19,28 +19,55 @@ const ASK: Record<Aggressiveness, (ask: string) => string> = {
   assertive: (a) => `I'd like to ask for a base of ${a}.`,
 };
 
-export function negotiationEmail(o: { role: string; company: string; name: string; level: Aggressiveness; ask: string; low: string; high: string; strengths: string[] }) {
+/** Where the ceiling comes from: the market, or the vacancy's posted range (higher than the market top). */
+type Reference = { low: string; high: string; posted?: string | null };
+
+const PACKAGE_ASK: Record<Aggressiveness, (signing: string) => string> = {
+  soft: (b) => `I was wondering whether there is room on the rest of the package — for example a signing bonus of around ${b} or an earlier compensation review.`,
+  balanced: (b) => `I was hoping we could look at the rest of the package: a signing bonus of around ${b}, a compensation review after six months, or additional learning budget.`,
+  assertive: (b) => `I'd like to ask for a signing bonus of ${b} and a compensation review after six months.`,
+};
+
+/**
+ * `mode: "no_push"` — the offer is already at or above every ceiling: the base is accepted as is and the email asks for
+ * the rest of the package; it never "asks" for the offered base or cites a market range below the offer.
+ */
+export function negotiationEmail(o: { role: string; company: string; name: string; level: Aggressiveness; ask: string; strengths: string[]; mode?: "base" | "no_push"; signing?: string } & Reference) {
+  const middle = o.mode === "no_push"
+    ? `The base works for me. ${PACKAGE_ASK[o.level](o.signing ?? "")}`
+    : `${strengthPhrase(o.strengths[0])} ${ASK[o.level](o.ask)} ${o.posted ? `That is within the range published for this role (up to ${o.posted}).` : `Market data for comparable roles puts the range at ${o.low}–${o.high}.`}`;
   return [
     "Hi,",
     `Thank you so much for the offer for the ${o.role} position — I'm genuinely excited about joining ${o.company}.`,
-    `${strengthPhrase(o.strengths[0])} ${ASK[o.level](o.ask)} Market data for comparable roles puts the range at ${o.low}–${o.high}.`,
-    "If base flexibility is limited, I'd be glad to discuss a signing bonus or an earlier compensation review.",
+    middle,
+    o.mode === "no_push" ? null : "If base flexibility is limited, I'd be glad to discuss a signing bonus or an earlier compensation review.",
     "Looking forward to finding something that works for both of us.",
     `Best regards,\n${o.name}`,
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
 }
 
 /** Talking points = what to say (English): the market argument plus the user's own results as clean sentences. */
-export function talkingPoints(o: { role: string; low: string; high: string; strengths: string[]; position?: "below" | "upper" | "top" }): string[] {
+export function talkingPoints(o: { role: string; low: string; high: string; strengths: string[]; position?: "below" | "upper" | "top"; posted?: string | null; mode?: "base" | "no_push" }): string[] {
   const where = o.position === "top" ? "and this offer is already at the top of that range" : o.position === "upper" ? "and this offer sits in the upper half of that range" : "and this offer sits below the midpoint";
-  return [
-    `Comparable ${o.role} roles pay ${o.low}–${o.high}, ${where}.`,
-    ...o.strengths.slice(0, 2).map(achievementSentence),
-  ];
+  const lead = o.mode === "no_push"
+    ? `The offer is already competitive for comparable ${o.role} roles — the conversation is about the rest of the package, not the base.`
+    : o.posted
+      ? `The range published for this ${o.role} role goes up to ${o.posted}, so there is room within the approved budget.`
+      : `Comparable ${o.role} roles pay ${o.low}–${o.high}, ${where}.`;
+  return [lead, ...o.strengths.slice(0, 2).map(achievementSentence)];
 }
 
 /** Call script: Russian coaching, with the exact English phrase to say quoted. */
-export function callScript(o: { ask: string; walkaway: string }): string[] {
+export function callScript(o: { ask: string; walkaway: string; mode?: "base" | "no_push"; signing?: string }): string[] {
+  if (o.mode === "no_push") {
+    return [
+      "Начни с благодарности и интереса к команде и задаче.",
+      `Скажи, что оклад устраивает, и назови, что обсудить: “The base works for me — could we look at a signing bonus of around ${o.signing} or a compensation review after six months?”`,
+      "Пауза. Дай им ответить первыми — не заполняй тишину.",
+      "Если бонус невозможен: спроси о дополнительных днях отпуска, бюджете на обучение или на оборудование.",
+      "Финал: договорись о следующих шагах и попроси обновлённый оффер письменно.",
+    ];
+  }
   return [
     "Начни с благодарности и интереса к команде и задаче.",
     `Назови цифру: “Based on the scope and market data, I was hoping for a base closer to ${o.ask}.”`,

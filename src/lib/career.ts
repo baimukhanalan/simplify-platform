@@ -3,7 +3,9 @@
 import "server-only";
 import { db, j } from "./db";
 import { careerScore } from "./engine/career";
-import { REGIONS, classifyRole, roleKey } from "./engine/taxonomy";
+import { REGIONS, classifyRole, roleKey, seniorityIndex } from "./engine/taxonomy";
+import { scoreJob } from "./engine/matching";
+import { jobCtx, loadCandidate } from "./engine/agent";
 import { toUSD } from "./engine/fx";
 import { userFloorUsd } from "./engine/salary";
 import { startOfToday } from "./time";
@@ -69,21 +71,35 @@ export function jobInRegions(job: { countries: string; remote: string }, regions
 /**
  * Salary Intelligence: active roles of the user's family, in the goal regions only, whose midpoint pays 25%+ above the
  * current compensation (or the expectation, see compensationKind). `count` is the full number, `list` the top `take`.
+ * Only roles the user could actually take: a role blocked for them (work authorization, region, language, plan, stop-list
+ * — the same scoreJob verdict as the agent) and roles off the goal's level (below it, or more than one level above) are
+ * left out, so the list never tempts with a role the agent would never apply to.
  */
-export async function betterPayingRoles(c: Pick<CareerData, "family" | "currentSalary" | "regions">, take = 6) {
+export async function betterPayingRoles(c: Pick<CareerData, "family" | "currentSalary" | "regions"> & { user?: { id: string; goal: { seniority: string } | null } }, take = 6) {
   const threshold = Math.round(c.currentSalary * 1.25);
   if (!c.currentSalary) return { threshold, count: 0, list: [] };
   const rows = await db.job.findMany({
     where: { active: true, ...visibleJobsWhere(), roleFamily: c.family, currency: "USD", salaryMax: { gte: threshold } },
     orderBy: { salaryMax: "desc" },
     take: 500,
-    select: { id: true, title: true, company: true, location: true, remote: true, countries: true, salaryMin: true, salaryMax: true, url: true },
+    select: {
+      id: true, title: true, company: true, location: true, remote: true, countries: true, salaryMin: true, salaryMax: true, url: true,
+      roleFamily: true, seniority: true, technologies: true, requirements: true, minYears: true, education: true, workAuth: true, sponsorship: true,
+      languages: true, industry: true, massHiring: true, postedAt: true,
+    },
   });
   const regions = c.regions.length ? c.regions : ["WORLD"];
   const mid = (x: { salaryMin: number | null; salaryMax: number | null }) => (x.salaryMin && x.salaryMax ? (x.salaryMin + x.salaryMax) / 2 : x.salaryMax ?? x.salaryMin ?? 0);
+  // The user's own eligibility (the agent's candidate context); without a finished profile + goal only the region filter applies.
+  const candidate = c.user ? await loadCandidate(c.user.id).catch(() => null) : null;
+  const ctx = candidate?.ctx({});
+  const goalLevel = c.user?.goal?.seniority ? seniorityIndex(c.user.goal.seniority) : null;
+  const onGoalLevel = (level: string) => goalLevel == null || (seniorityIndex(level) >= goalLevel && seniorityIndex(level) <= goalLevel + 1);
   const qualifying = rows
     .filter((x) => jobInRegions(x, regions))
-    .map((x) => ({ ...x, mid: mid(x) }))
+    .filter((x) => onGoalLevel(x.seniority))
+    .filter((x) => !ctx || scoreJob(ctx, jobCtx({ ...x, description: "" })).eligibility !== "blocked")
+    .map((x) => ({ id: x.id, title: x.title, company: x.company, location: x.location, remote: x.remote, countries: x.countries, salaryMin: x.salaryMin, salaryMax: x.salaryMax, url: x.url, mid: mid(x) }))
     .filter((x) => x.mid >= threshold)
     .sort((a, b) => b.mid - a.mid)
     // One row per role: the same company + title posted in several cities is listed once (its best-paying posting).

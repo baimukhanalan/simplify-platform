@@ -16,9 +16,12 @@ const TOPIC_OF: [RegExp, string, string, string][] = [
   [/google analytics|amplitude|mixpanel/i, "analytics", "Продуктовая аналитика", "Аналитика"],
 ];
 
+/** Sample dates in the practice tasks use the current year, never a stale one. */
+const Y = new Date().getFullYear();
+
 export const PRACTICE: Record<string, PracticeQ[]> = {
   sql: [
-    { topic: "SQL", q: "Таблица orders(user_id, amount, created_at). Выручка по месяцам за 2025 год.", a: "SELECT date_trunc('month', created_at) AS m, SUM(amount) FROM orders WHERE created_at >= '2025-01-01' AND created_at < '2026-01-01' GROUP BY 1 ORDER BY 1;" },
+    { topic: "SQL", q: `Таблица orders(user_id, amount, created_at). Выручка по месяцам за ${Y} год.`, a: `SELECT date_trunc('month', created_at) AS m, SUM(amount) FROM orders WHERE created_at >= '${Y}-01-01' AND created_at < '${Y + 1}-01-01' GROUP BY 1 ORDER BY 1;` },
     { topic: "SQL", q: "Найди пользователей, у которых больше 3 заказов.", a: "SELECT user_id FROM orders GROUP BY user_id HAVING COUNT(*) > 3; — HAVING фильтрует после агрегации, WHERE — до." },
     { topic: "SQL", q: "Второй по величине заказ каждого пользователя.", a: "ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY amount DESC) AS rn, затем WHERE rn = 2. Учти ничьи: DENSE_RANK." },
   ],
@@ -33,7 +36,7 @@ export const PRACTICE: Record<string, PracticeQ[]> = {
   ],
   excel: [
     { topic: "Excel", q: "Подтянуть цену товара из другого листа по артикулу.", a: "XLOOKUP(A2; Prices!A:A; Prices!B:B) или INDEX/MATCH; VLOOKUP — только если ключ в первом столбце." },
-    { topic: "Excel", q: "Сумма продаж по региону «North» за март.", a: "SUMIFS(Sales; Region; \"North\"; Date; \">=\"&DATE(2026;3;1); Date; \"<\"&DATE(2026;4;1))." },
+    { topic: "Excel", q: "Сумма продаж по региону «North» за март.", a: `SUMIFS(Sales; Region; "North"; Date; ">="&DATE(${Y};3;1); Date; "<"&DATE(${Y};4;1)).` },
   ],
   python: [
     { topic: "Python", q: "pandas: средний чек по стране из df(country, amount).", a: "df.groupby('country')['amount'].mean().sort_values(ascending=False)" },

@@ -218,7 +218,7 @@ describe("7 · filter blocks («Не подходит тебе») vs requirement
     const v = fitVerdict({ eligibility: "blocked", match: 80, blockers: ["Зарплата ниже твоего минимума", "Нужно право на работу: US"], pInterview: 0 });
     assert.equal(v.kind, "requirement");
     assert.equal(v.headline, "Не проходишь");
-    assert.equal(v.reason, "Нужно право на работу: US");
+    assert.equal(v.reason, "Нужно право на работу: США");
     assert.equal(v.pInterview, 0);
     assert.equal(fitVerdict({ eligibility: "eligible", match: 80, blockers: [], pInterview: 0.2 }).pInterview, 0.2);
   });

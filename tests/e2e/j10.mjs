@@ -47,7 +47,7 @@ if (r.redirect) { const p = await anon.get(r.redirect.split(";")[0]); check(p.st
 r = await anon.action("onboarding.runCareerCheck", [undefined, form({ cvText: "short", target: "" })], { page: "/check" });
 check(!!r.result?.error, "J10.check.short", "short CV rejected", r.result);
 // signup edge cases
-r = await anon.action("auth.signup", [undefined, form({ name: "Dup", email: "DEMO@simplify.kz", password: "Passw0rd!23", terms: "on" })], { page: "/login" });
+r = await anon.action("auth.signup", [undefined, form({ name: "Dup", email: "ARUZHAN@simplify.kz", password: "Passw0rd!23", terms: "on" })], { page: "/login" });
 check(/уже есть/.test(r.result?.error ?? ""), "J10.signup.dup", "duplicate email (case-insensitive) rejected", r.result);
 r = await anon.action("auth.signup", [undefined, form({ name: "No terms", email: `nt-${Date.now()}@test.local`, password: "Passw0rd!23" })], { page: "/login" });
 check(!!r.result?.error, "J10.signup.terms", "signup without terms rejected", r.result);

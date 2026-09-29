@@ -3,6 +3,7 @@ import { ArrowRight, ChevronDown, LayoutGrid, List } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { currentCampaign, interviewCounts, visibleScope } from "@/lib/ops-data";
+import { isSimulation } from "@/lib/mode";
 import { APPLIED_OR_LATER } from "@/lib/engine/taxonomy";
 import { ButtonLink, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { AgentStatus, type Need } from "../../_components/agent-status";
@@ -27,12 +28,15 @@ const GROUPS = [
 // Groups holding statuses worth telling apart show a status chip on each card. «Ждём ответа» doesn't: submitted and
 // pending mean the same to the user there, and the group label already says it.
 const MULTI = new Set(["interview", "offer"]);
+/** ≥ sm the board reads as a pipeline (GROUPS reversed); static class names so Tailwind keeps them. */
+const BOARD_ORDER = ["sm:order-4", "sm:order-3", "sm:order-2", "sm:order-1"];
 
-const header = (
+// Simulation: statuses only move on their own, so the manual status change is not mentioned.
+const Header = () => (
   <PageHeader
     eyebrow="Applications"
     title={<>Твои <Script>заявки</Script></>}
-    sub="Каждая заявка двигается по этапам сама — по письмам работодателей. Если что-то произошло вне почты, статус можно поменять на странице заявки."
+    sub={isSimulation() ? "Каждая заявка двигается по этапам сама — по ответам работодателей." : "Каждая заявка двигается по этапам сама — по письмам работодателей. Если что-то произошло вне почты, статус можно поменять на странице заявки."}
     actions={
       <Link href="/app/insights" className="inline-flex min-h-10 items-center gap-1.5 rounded text-[13.5px] text-teal underline-offset-4 hover:text-head hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green">
         Стратегия агента<ArrowRight className="size-3.5" aria-hidden />
@@ -48,7 +52,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   if (!campaign) {
     return (
       <>
-        {header}
+        <Header />
         <Empty title="Заявок пока нет" sub="Запусти кампанию — агент будет подавать на сильные вакансии и показывать здесь каждую заявку." action={<ButtonLink href="/app/campaign">Начать кампанию</ButtonLink>} />
       </>
     );
@@ -69,7 +73,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     const blocking = needsList(waiting, ["offer", "interview", "assessments"]);
     return (
       <>
-        {header}
+        <Header />
         {blocking.length > 0 && <AgentStatus needs={blocking} className="-mt-3 mb-5" />}
         <Empty title="Заявок пока нет" sub="Агент подаёт на вакансии выше твоего порога Match — и на те, где ты нажимаешь Apply. Первые заявки появятся здесь." action={<ButtonLink href="/app/opportunities" variant="glass" size="sm">Смотреть Opportunities</ButtonLink>} />
       </>
@@ -93,15 +97,15 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
 
   return (
     <div className="flex flex-col gap-5">
-      {header}
+      <Header />
 
       <AgentStatus needs={needs} className="-mt-3" />
 
       <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
         <Summary k={plural(apps.length, ["заявка", "заявки", "заявок"])} v={apps.length} />
         <Summary k={plural(responded, ["ответ", "ответа", "ответов"])} v={responded} hint={`${Math.round((responded / apps.length) * 100)}%`} />
-        {/* «в процессе» = applications with a round still ahead (interviewCounts.activeRounds), not a status left over from a past call. */}
-        <Summary k="в процессе" v={ic.activeRounds} />
+        {/* «в процессе» = the Tests + Interviews groups below, so the number always equals those two columns. */}
+        <Summary k="в процессе" v={n("assessment") + n("interview")} />
         <Summary k={plural(n("offer"), ["оффер", "оффера", "офферов"])} v={n("offer")} tone={n("offer") ? "green" : undefined} />
       </dl>
 
@@ -113,10 +117,11 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
       </div>
 
       {board ? (
-        /* Board: responsive grid — every column fits the viewport, nothing scrolls off-screen. */
+        /* Board: responsive grid — every column fits the viewport, nothing scrolls off-screen. One column (phone): the most
+           advanced stage first (Offer → Interviews → Tests → Waiting); wider: the pipeline left to right (Waiting → Offer). */
         <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
-          {[...groups].reverse().map((g) => (
-            <section key={g.key} aria-labelledby={`col-${g.key}`} className="flex min-w-0 flex-col rounded-[20px] border border-stroke bg-white/35 p-2">
+          {groups.map((g, i) => (
+            <section key={g.key} aria-labelledby={`col-${g.key}`} className={cx("flex min-w-0 flex-col rounded-[20px] border border-stroke bg-white/35 p-2", BOARD_ORDER[i])}>
               <h2 id={`col-${g.key}`} className="flex items-center justify-between px-2 pb-2 pt-1">
                 <span className="flex items-center gap-2 text-[13px] font-medium text-head"><span className={cx("size-1.5 rounded-full", g.dot)} aria-hidden />{g.label}</span>
                 <span className="num rounded-full bg-white/80 px-2 py-0.5 text-[11.5px] text-ink-3">{g.items.length}</span>

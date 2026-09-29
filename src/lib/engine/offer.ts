@@ -20,37 +20,71 @@ export const minimumInOfferCurrency = (minimum: { amount: number; currency: stri
  * Negotiation plan for one style. With the user's goal `minimum`: the walk-away floor never sits below it (converted
  * into the offer currency), nor do target and ask; `belowMinimum` + `minimumLine` («Оффер ниже твоего минимума ($60 000)»)
  * say when the offer itself is under it. `upside` = [target − base, ask − base] — the range shown always reaches the ask.
+ *
+ * The ceiling is the market top (range.high ≈ p85). When the offer already sits at or above it, the vacancy's own posted
+ * range (`posted`, in the offer currency) is the ceiling instead if it is higher (`capSource: "posted"`). With no room left
+ * under either, the plan switches to `mode: "no_push"`: the base is not argued at all (target = ask = walk-away = base) and
+ * the copy asks for a signing bonus, an earlier review or extra benefits instead.
  */
-export function negotiationPlan(o: { company: string; role: string; base: number; currency: string; range: { low: number; mid: number; high: number }; strengths: string[]; name: string; level: Aggressiveness; minimum?: { amount: number; currency: string } | null }) {
+export function negotiationPlan(o: { company: string; role: string; base: number; currency: string; range: { low: number; mid: number; high: number }; strengths: string[]; name: string; level: Aggressiveness; minimum?: { amount: number; currency: string } | null; posted?: { low: number; high: number } | null }) {
   const k = o.level === "soft" ? 0.4 : o.level === "balanced" ? 0.65 : 0.9;
   const minimum = minimumInOfferCurrency(o.minimum, o.currency);
   const belowMinimum = minimum > 0 && o.base < minimum;
   const minimumLine = belowMinimum && o.minimum ? `Оффер ниже твоего минимума (${fmtMoney(o.minimum.amount, o.minimum.currency)})` : null;
-  // Never ask above the market's top (range.high ≈ p85): an ask past it reads as uninformed, not assertive. An offer that
-  // is already at or above the top is not pushed further (cap = the offer itself). The user's own minimum overrides the cap.
-  const cap = Math.max(o.range.high, Math.ceil(o.base / 1000) * 1000);
-  const target0 = Math.min(cap, roundK(Math.max(o.base * 1.05, o.base + (o.range.high - o.base) * k)));
-  const walkaway = Math.max(minimum, Math.min(target0, roundK(Math.max(o.base, o.base + (target0 - o.base) * 0.35))));
-  const target = Math.max(target0, walkaway);
-  const ask = Math.max(target, walkaway, Math.min(cap, roundK(target0 * (o.level === "assertive" ? 1.04 : 1.02))));
+  const postedHigh = o.posted && o.posted.high > 0 ? o.posted.high : 0;
+  const capSource: "market" | "posted" = o.base >= o.range.high && postedHigh > o.range.high && postedHigh > o.base ? "posted" : "market";
+  const top = capSource === "posted" ? postedHigh : o.range.high;
+  // Never ask above the ceiling: an ask past it reads as uninformed, not assertive. An offer already at or above it is not
+  // pushed further (cap = the offer itself). The user's own minimum overrides the cap.
+  const cap = Math.max(top, Math.ceil(o.base / 1000) * 1000);
+  const target0 = Math.min(cap, roundK(Math.max(o.base * 1.05, o.base + (top - o.base) * k)));
+  let walkaway = Math.max(minimum, Math.min(target0, roundK(Math.max(o.base, o.base + (target0 - o.base) * 0.35))));
+  let target = Math.max(target0, walkaway);
+  let ask = Math.max(target, walkaway, Math.min(cap, roundK(target0 * (o.level === "assertive" ? 1.04 : 1.02))));
+  // No real room on base (less than ~1% or 1 000 over the offer): don't ask for the base the offer already gives.
+  const mode: "base" | "no_push" = !belowMinimum && ask - o.base < Math.max(1000, o.base * 0.01) ? "no_push" : "base";
+  if (mode === "no_push") { target = o.base; ask = o.base; walkaway = Math.max(minimum, o.base); }
   const upside = { low: Math.max(0, target - o.base), high: Math.max(0, ask - o.base) };
+  const signingBonus = mode === "no_push" ? Math.max(1000, roundK(o.base * 0.05)) : Math.max(3000, (target - o.base) * 0.6);
   const position = o.base < o.range.mid ? "the offer sits below the midpoint" : o.base < o.range.high ? "the offer sits in the upper half of that range" : "the offer is already at the top of that range";
   const money = (n: number) => `${o.currency === "USD" ? "$" : ""}${Math.round(n / 1000)}k${o.currency !== "USD" ? ` ${o.currency}` : ""}`;
-  const args = [
-    `Market data: comparable ${o.role} roles pay ${money(o.range.low)}–${money(o.range.high)}; ${position}.`,
-    ...o.strengths.slice(0, 2).map((s) => `Impact: ${s}`),
-    "Enthusiasm first — make it clear you want to join; negotiation is about fit, not leverage.",
-  ];
-  const email = `Hi,\n\nThank you so much for the offer for the ${o.role} position — I'm genuinely excited about joining ${o.company}.\n\nBased on my experience with ${o.strengths[0] ?? "the core of this role"} and the scope we discussed, I was hoping we could explore a base closer to ${money(ask)}. Market data for comparable roles puts the range at ${money(o.range.low)}–${money(o.range.high)}.\n\nIf base flexibility is limited, I'd be glad to discuss a signing bonus or an earlier compensation review.\n\nLooking forward to finding something that works for both of us.\n\nBest regards,\n${o.name}`;
-  const callScript = [
-    "Open: thank them, restate excitement about the team and the problem.",
-    `Anchor: "Based on the scope and market data, I was hoping for a base closer to ${money(ask)}."`,
-    "Pause. Let them respond first — don't fill the silence.",
-    `If they push back: ask what flexibility exists on base, signing bonus, or a 6-month review.`,
-    `Floor: don't go below ${money(walkaway)} without a compensating component.`,
-    "Close: confirm next steps and ask for the revised offer in writing.",
-  ];
-  return { target, ask, walkaway, upside, belowMinimum, minimum, minimumLine, capped: ask >= cap && cap === o.range.high, args, email, callScript, fallback: [`Бонус за выход (signing bonus) ≈ ${money(Math.max(3000, (target - o.base) * 0.6))}`, "Пересмотр компенсации через 6 месяцев", "Дополнительные дни отпуска или бюджет на обучение", "Гибкость по удалённой работе или бюджет на оборудование"] };
+  const args = mode === "no_push"
+    ? [
+        `The offer is already competitive for comparable ${o.role} roles; the conversation is about the rest of the package, not the base.`,
+        ...o.strengths.slice(0, 2).map((s) => `Impact: ${s}`),
+        "Enthusiasm first — make it clear you want to join; negotiation is about fit, not leverage.",
+      ]
+    : [
+        capSource === "posted"
+          ? `The posted range for this role goes up to ${money(postedHigh)}; the market for comparable ${o.role} roles tops out at ${money(o.range.high)}.`
+          : `Market data: comparable ${o.role} roles pay ${money(o.range.low)}–${money(o.range.high)}; ${position}.`,
+        ...o.strengths.slice(0, 2).map((s) => `Impact: ${s}`),
+        "Enthusiasm first — make it clear you want to join; negotiation is about fit, not leverage.",
+      ];
+  const email = mode === "no_push"
+    ? `Hi,\n\nThank you so much for the offer for the ${o.role} position — I'm genuinely excited about joining ${o.company}.\n\nThe base works for me. Before I sign, I was hoping we could look at the rest of the package: a signing bonus of around ${money(signingBonus)}, a compensation review after six months, or additional learning budget or vacation days.\n\nLooking forward to finding something that works for both of us.\n\nBest regards,\n${o.name}`
+    : `Hi,\n\nThank you so much for the offer for the ${o.role} position — I'm genuinely excited about joining ${o.company}.\n\nBased on my experience with ${o.strengths[0] ?? "the core of this role"} and the scope we discussed, I was hoping we could explore a base closer to ${money(ask)}. ${capSource === "posted" ? `That is within the range published for this role (up to ${money(postedHigh)}).` : `Market data for comparable roles puts the range at ${money(o.range.low)}–${money(o.range.high)}.`}\n\nIf base flexibility is limited, I'd be glad to discuss a signing bonus or an earlier compensation review.\n\nLooking forward to finding something that works for both of us.\n\nBest regards,\n${o.name}`;
+  const callScript = mode === "no_push"
+    ? [
+        "Open: thank them, restate excitement about the team and the problem.",
+        `Package: "The base works for me — could we look at a signing bonus of around ${money(signingBonus)} or a compensation review after six months?"`,
+        "Pause. Let them respond first — don't fill the silence.",
+        "If they push back: ask about extra vacation days, a learning budget or an equipment stipend.",
+        "Close: confirm next steps and ask for the revised offer in writing.",
+      ]
+    : [
+        "Open: thank them, restate excitement about the team and the problem.",
+        `Anchor: "Based on the scope and market data, I was hoping for a base closer to ${money(ask)}."`,
+        "Pause. Let them respond first — don't fill the silence.",
+        `If they push back: ask what flexibility exists on base, signing bonus, or a 6-month review.`,
+        `Floor: don't go below ${money(walkaway)} without a compensating component.`,
+        "Close: confirm next steps and ask for the revised offer in writing.",
+      ];
+  return {
+    target, ask, walkaway, upside, belowMinimum, minimum, minimumLine, mode, capSource, ceiling: top, signingBonus,
+    capped: ask >= cap && cap === o.range.high, args, email, callScript,
+    fallback: [`Бонус за выход (signing bonus) ≈ ${money(signingBonus)}`, "Пересмотр компенсации через 6 месяцев", "Дополнительные дни отпуска или бюджет на обучение", "Гибкость по удалённой работе или бюджет на оборудование"],
+  };
 }
 
 const roundK = (n: number) => Math.round(n / 1000) * 1000;

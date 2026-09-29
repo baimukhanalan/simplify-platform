@@ -27,7 +27,8 @@ let agent: typeof import("../src/lib/engine/agent");
 let crypto: typeof import("../src/lib/crypto");
 
 type Call = { method: string; url: URL; headers: Record<string, string>; body: URLSearchParams };
-type Handler = (c: Call) => { status?: number; json?: unknown; headers?: Record<string, string> } | undefined;
+type Reply = { status?: number; json?: unknown; headers?: Record<string, string> } | undefined;
+type Handler = (c: Call) => Reply | Promise<Reply>;
 let calls: Call[] = [];
 let handler: Handler = () => undefined;
 const realFetch = globalThis.fetch;
@@ -65,7 +66,7 @@ beforeEach(() => {
     const c: Call = { method: init?.method ?? "GET", url: new URL(String(input)), headers, body: new URLSearchParams(typeof init?.body === "string" ? init.body : "") };
     calls.push(c);
     // The application token is always available unless a test says otherwise.
-    const r = handler(c) ?? (c.url.pathname === "/token" && c.body.get("grant_type") === "client_credentials" ? { json: { access_token: "APP", token_type: "bearer" } } : { status: 404, json: { errors: [{ type: "not_found" }] } });
+    const r = (await handler(c)) ?? (c.url.pathname === "/token" && c.body.get("grant_type") === "client_credentials" ? { json: { access_token: "APP", token_type: "bearer" } } : { status: 404, json: { errors: [{ type: "not_found" }] } });
     return new Response(r.json === undefined ? null : JSON.stringify(r.json), { status: r.status ?? 200, headers: { "content-type": "application/json", ...r.headers } });
   }) as typeof fetch;
 });
@@ -225,8 +226,11 @@ describe("user tokens", () => {
     const resumes = await hh.myResumes(user.id);
     assert.equal(resumes[0].visibility, "Видно всем");
     const row = await db.integration.findUniqueOrThrow({ where: { userId_provider: { userId: user.id, provider: "hh" } } });
-    assert.equal(crypto.decrypt(row.accessToken), "AT-new");
-    assert.equal(crypto.decrypt(row.refreshToken), "RT-new");
+    const aad = crypto.tokenAad(user.id, "hh");
+    assert.ok(row.accessToken.startsWith("v2."), "new writes are v2 (bound to the user)");
+    assert.equal(crypto.decrypt(row.accessToken, aad), "AT-new");
+    assert.equal(crypto.decrypt(row.refreshToken, aad), "RT-new");
+    assert.equal(crypto.decrypt(row.accessToken, crypto.tokenAad("someone-else", "hh")), "", "another user's AAD never decrypts it");
     assert.notEqual(row.accessToken, "AT-new", "never stored in plain text");
     assert.ok(row.expiresAt! > new Date(Date.now() + 13 * 86400000));
   });
@@ -248,6 +252,58 @@ describe("user tokens", () => {
     await assert.rejects(hh.myResumes(other.user.id), hh.HhAuthError);
     const row = await db.integration.findUniqueOrThrow({ where: { userId_provider: { userId: other.user.id, provider: "hh" } } });
     assert.equal(JSON.parse(row.meta).status, "reconnect");
+  });
+
+  test("refresh race: another instance refreshed first — its new token is used, no reconnect", async () => {
+    const { user } = await makeUser();
+    await connect(user.id, { expiresAt: new Date(Date.now() - 1000) });
+    handler = async (c) => {
+      if (c.url.pathname !== "/token") return undefined;
+      // The other instance spends the single-use refresh token and stores its pair before our request lands.
+      await hh.storeTokens(user.id, { access_token: "AT-other", refresh_token: "RT-other", expires_in: 1209600 });
+      return { status: 400, json: { error: "invalid_grant" } };
+    };
+    assert.equal(await hh.userAccessToken(user.id), "AT-other");
+    const row = await db.integration.findUniqueOrThrow({ where: { userId_provider: { userId: user.id, provider: "hh" } } });
+    assert.notEqual(JSON.parse(row.meta).status, "reconnect");
+  });
+
+  test("crypto: v2 boxes bound to their owner, v1 still readable, a malformed ENCRYPTION_KEY fails loudly in production", () => {
+    const aad = crypto.tokenAad("u1", "hh");
+    const v2 = crypto.encrypt("secret", aad);
+    assert.ok(v2.startsWith("v2."));
+    assert.equal(crypto.decrypt(v2, aad), "secret");
+    assert.equal(crypto.decrypt(v2), "", "a v2 box never decrypts without its owner");
+    assert.equal(crypto.decrypt(v2, crypto.tokenAad("u2", "hh")), "");
+    assert.equal(crypto.decrypt(crypto.encrypt("legacy"), aad), "legacy", "v1 boxes written before v2 still read");
+    const env = process.env as Record<string, string | undefined>;
+    const [k0, n0] = [env.ENCRYPTION_KEY, env.NODE_ENV];
+    try {
+      env.ENCRYPTION_KEY = "too-short";
+      env.NODE_ENV = "production";
+      assert.throws(() => crypto.encrypt("x", aad), /ENCRYPTION_KEY/);
+    } finally {
+      if (k0 === undefined) delete env.ENCRYPTION_KEY; else env.ENCRYPTION_KEY = k0;
+      if (n0 === undefined) delete env.NODE_ENV; else env.NODE_ENV = n0;
+    }
+  });
+
+  test("reconnecting a different hh account clears the chosen resume; the same account keeps it", async () => {
+    const { user } = await makeUser();
+    await connect(user.id, { resumeId: "res-A" });
+    await hh.storeTokens(user.id, { access_token: "A", refresh_token: "R", expires_in: 100 }, { externalUserId: `hh-user-${user.id}` });
+    assert.equal((await hh.hhIntegration(user.id))?.resumeId, "res-A");
+    await hh.storeTokens(user.id, { access_token: "B", refresh_token: "R2", expires_in: 100 }, { externalUserId: "another-hh-account" });
+    const row = await hh.hhIntegration(user.id);
+    assert.equal(row?.resumeId, "");
+    assert.equal(row?.externalUserId, "another-hh-account");
+  });
+
+  test("one hh account links to one user only (DB unique)", async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    await hh.storeTokens(a.user.id, { access_token: "A", refresh_token: "R", expires_in: 100 }, { externalUserId: "shared-hh" });
+    await assert.rejects(hh.storeTokens(b.user.id, { access_token: "B", refresh_token: "R", expires_in: 100 }, { externalUserId: "shared-hh" }), (e: { code?: string }) => e.code === "P2002");
   });
 });
 

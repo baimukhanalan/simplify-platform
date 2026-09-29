@@ -100,7 +100,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
 
   const [{ submitted }, windowOpps, waiting, counts, total, rows, candidate] = await Promise.all([
     windowNumbers(campaign.id, since, threshold),
-    db.opportunity.findMany({ where: { ...base, ...(since ? { createdAt: { gte: since } } : {}) }, select: { status: true, match: true, eligibility: true, submittedAt: true } }),
+    db.opportunity.findMany({ where: { ...base, ...(since ? { createdAt: { gte: since } } : {}) }, select: { status: true, match: true, eligibility: true, blockers: true, submittedAt: true } }),
     needsYouCached(user.id),
     Promise.all(tabs.map((t) => db.opportunity.count({ where: { ...base, ...tabWhere[t.key], ...search } }))),
     db.opportunity.count({ where }),
@@ -201,7 +201,7 @@ export default async function OpportunitiesPage({ searchParams }: { searchParams
           {tab !== defaultTab() && <input type="hidden" name="tab" value={tab} />}
           <label htmlFor="opp-q" className="sr-only">Поиск по роли, компании или городу</label>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-ink-4" aria-hidden />
-          <input id="opp-q" name="q" type="search" defaultValue={q} placeholder="Роль, компания, город" className="field !rounded-full !py-2 !pl-10 !text-[14px]" />
+          <input id="opp-q" name="q" type="search" defaultValue={q} placeholder="Роль, компания, город" className="field !h-10 min-h-10 !rounded-full !py-2 !pl-10 !text-[14px]" />
         </form>
       </div>
 

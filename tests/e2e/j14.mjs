@@ -10,7 +10,7 @@
 //  9. Russian labels for lanes on the Insights screen (the shared LANE labels).
 // The cron time budget (deferral) is not configurable by env; it is covered at unit level in tests/cron-budget.test.ts.
 import { createHmac } from "node:crypto";
-import { Client, db, form, check, findings, ENV_TEXT, BASE } from "./lib.mjs";
+import { Client, db, form, check, findings, ENV_TEXT, BASE, isSim } from "./lib.mjs";
 import { newPaidUser, payInvoice } from "./j1.mjs";
 
 const envVal = (k) => ENV_TEXT.match(new RegExp(`^${k}="?([^"\\n]*)"?`, "m"))?.[1];
@@ -101,7 +101,8 @@ async function opportunityCards(c, tab = "all") {
     const html = (await c.get(`/app/opportunities?tab=${tab}&page=${page}`)).text.replace(/<!-- -->/g, "");
     // Only the rendered list: the RSC payload in <script> repeats card markup (ids + markers) as data.
     const list = html.replace(/<script[\s\S]*?<\/script>/g, "").split('aria-label="Вакансии"')[1] ?? "";
-    const chunks = list.split('<li class="glass flex flex-col gap-4 p-5').slice(1);
+    // One card = one <li class="glass flex flex-col …"> (its spacing classes changed with the mobile layout; don't pin them).
+    const chunks = list.split(/<li class="glass flex flex-col[^"]*"/).slice(1);
     for (const ch of chunks) {
       const id = ch.match(/id="opp-([a-z0-9]+)"/)?.[1];
       if (!id) continue;
@@ -247,7 +248,8 @@ async function qualifiedAgree(c, camp, label) {
 }
 
 // ——— 6. Questions and handoffs: separate counts everywhere; standing answers reused ———
-{
+// Live mode only: in simulation nothing is ever asked or handed off, and live-feed roles never reach the user (j18).
+if (!isSim) {
   const { c, camp } = await paidUser("j14handoff");
   const uid = c.user.id;
   // A live (non-demo) vacancy the user applies to: the package is prepared, sending is a handoff.

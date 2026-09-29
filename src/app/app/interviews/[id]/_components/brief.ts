@@ -109,13 +109,17 @@ const uniq = (xs: string[]) => [...new Map(xs.filter(Boolean).map((x) => [x.toLo
 function parseJD(description: string) {
   const text = stripHtml(description);
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
-  const sentences = text.replace(/\n+/g, " ").split(/(?<=[.!?])\s+/).map((s) => s.trim()).filter((s) => s.length > 12);
+  // Per line first: JD bullets carry no full stop, and joining lines ran a whole bullet list into one «sentence».
+  const sentences = lines.flatMap((l) => l.split(/(?<=[.!?])\s+/)).map((s) => clean(s)).filter((s) => s.length > 12 && !/:\s*$/.test(s));
   return { lines, sentences };
 }
 
 export function buildBriefHeuristic(i: BriefInput): Brief {
   const { lines, sentences } = parseJD(i.description);
-  const profile = INDUSTRY.find(([re]) => re.test(`${i.industry} ${i.description.slice(0, 400)}`))?.[1];
+  // The industry field decides; the JD text is only a fallback when the field is empty or unknown (a Healthtech company
+  // whose JD mentions "payments" is still healthcare).
+  const profile = (i.industry.trim() ? INDUSTRY.find(([re]) => re.test(i.industry))?.[1] : undefined)
+    ?? INDUSTRY.find(([re]) => re.test(i.description.slice(0, 400)))?.[1];
   const industry = i.industry ? industryRu(i.industry, true) : "технологии";
 
   // "About us" style sentences, excluding the generic "X is hiring a Y" opener.

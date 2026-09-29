@@ -2,9 +2,9 @@ import "server-only";
 import { db, j } from "@/lib/db";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { regionsFor } from "@/lib/regions";
-import { currentCampaign, interviewCounts, isQualified, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, reachedAssessment, reachedInterviewRound, runningCampaign, visibleLinkedScope, visibleScope, windowNumbers } from "@/lib/ops-data";
+import { currentCampaign, interviewCounts, isQualified, nextCycleQueue, pendingApprovalsCount, pendingHandoffsCount, reachedAssessment, reachedInterviewRound, runningCampaign, visibleInterviewScope, visibleLinkedScope, visibleScope, windowNumbers } from "@/lib/ops-data";
 import { APPLIED_OR_LATER, fmtMoney } from "@/lib/engine/taxonomy";
-import { blockerRu } from "@/lib/engine/matching";
+import { blockerKind, blockerRu } from "@/lib/engine/matching";
 import { APP_TZ as TZ, startOfToday } from "@/lib/time";
 import { regionsRu } from "@/app/_components/ru";
 import { count, fmtNum, roleLabelRu, type Forms } from "@/lib/ru";
@@ -117,10 +117,15 @@ export type Totals = ReturnType<typeof totals>;
  * weaker = eligible but Match below STRONG_MATCH; blocked = fails a hard requirement; setAside = skipped by the user or as
  * a duplicate of the same role elsewhere.
  */
-export function breakdown(opps: Pick<OppRow, "status" | "match" | "eligibility" | "submittedAt">[]) {
-  const b = { found: opps.length, qualified: 0, queued: 0, prepared: 0, applied: 0, waiting: 0, weaker: 0, blocked: 0, setAside: 0 };
+export function breakdown(opps: (Pick<OppRow, "status" | "match" | "eligibility" | "submittedAt"> & { blockers?: string })[]) {
+  const b = { found: opps.length, qualified: 0, queued: 0, prepared: 0, applied: 0, waiting: 0, weaker: 0, blocked: 0, filtered: 0, setAside: 0 };
   for (const o of opps) {
-    if (o.eligibility === "blocked") b.blocked++;
+    if (o.eligibility === "blocked") {
+      b.blocked++;
+      // Blocked only by the user's own filters (the discovery feed's «вне твоих настроек поиска»), a subset of blocked.
+      const list = o.blockers ? j<string[]>(o.blockers, []) : [];
+      if (list.length && list.every((x) => blockerKind(x) === "filter")) b.filtered++;
+    }
     else if (o.status === "skipped") b.setAside++;
     else if (!isQualified(o)) b.weaker++;
     else {
@@ -147,12 +152,15 @@ const verb = (n: number, one: string, many: string) => (n === 1 || (n % 10 === 1
  *   one kind   → «Сегодня агент нашёл 4 вакансии — все не проходят по требованиям.»
  *   mixed      → «Сегодня агент нашёл 12 вакансий: 5 подходят (Match 70+), 3 — со слабым совпадением, 4 не проходят по требованиям.»
  */
-export function discoverySentence(b: Pick<Breakdown, "found" | "qualified" | "weaker" | "blocked" | "setAside">, when = "Сегодня") {
+export function discoverySentence(b: Pick<Breakdown, "found" | "qualified" | "weaker" | "blocked" | "setAside"> & { filtered?: number }, when = "Сегодня") {
   if (!b.found) return `${when} агент пока не нашёл новых вакансий.`;
+  const filtered = Math.min(b.blocked, b.filtered ?? 0);
   const kinds = [
     { n: b.qualified, one: `подходит (Match ${STRONG_MATCH}+)`, many: `подходят (Match ${STRONG_MATCH}+)`, all: `подходят (Match ${STRONG_MATCH}+)` },
     { n: b.weaker, one: "— со слабым совпадением", many: "— со слабым совпадением", all: "со слабым совпадением", she: "у неё слабое совпадение" },
-    { n: b.blocked, one: "не проходит по требованиям", many: "не проходят по требованиям", all: "не проходят по требованиям" },
+    { n: b.blocked - filtered, one: "не проходит по требованиям", many: "не проходят по требованиям", all: "не проходят по требованиям" },
+    // The same category as the discovery feed line (src/lib/engine/agent.ts): blocked only by the user's own settings.
+    { n: filtered, one: "— вне твоих настроек поиска", many: "— вне твоих настроек поиска", all: "вне твоих настроек поиска", she: "она вне твоих настроек поиска" },
     { n: b.setAside, one: "отложена (дубль или пропуск)", many: "отложены (дубли или пропуски)", all: "отложены (дубли или пропуски)" },
   ].filter((k) => k.n > 0);
   const head = `${when} агент нашёл ${count(b.found, VACANCY)}`;
@@ -237,7 +245,7 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
       where: { userId, receivedAt: { gte: since }, ...visibleLinkedScope() },
       orderBy: { receivedAt: "desc" },
       take: 60,
-      include: { opportunity: { select: { id: true, job: { select: { company: true } }, interviews: { select: { id: true, round: true }, orderBy: { createdAt: "desc" } } } } },
+      include: { opportunity: { select: { id: true, job: { select: { company: true, title: true } }, interviews: { select: { id: true, round: true }, orderBy: { createdAt: "desc" } } } } },
     }),
   ]);
 
@@ -278,7 +286,9 @@ export async function loadTimeline(userId: string, campaignId: string, since: Da
   }
 
   for (const m of inbox) {
-    const company = m.opportunity?.job.company ?? m.fromAddr.split("@")[1]?.split(".")[0] ?? "Работодатель";
+    // «Fernvale Payments · Data Analyst: отказ» — the role is named, so two applications to one company never read alike.
+    const job = m.opportunity?.job;
+    const company = job ? `${job.company}${job.title ? ` · ${job.title}` : ""}` : m.fromAddr.split("@")[1]?.split(".")[0] ?? "Работодатель";
     const copy = RESPONSE_COPY[m.classification];
     if (!copy) continue;
     const c = copy(company);
@@ -310,7 +320,7 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
   const [opps, day, approvals, handoffs, upcoming, offers, responsesToday, timeline, ivCounts] = await Promise.all([
     db.opportunity.findMany({
       where: { campaignId: campaign.id, ...visibleScope() },
-      select: { status: true, match: true, eligibility: true, createdAt: true, submittedAt: true, interviews: { select: { round: true } }, _count: { select: { offers: true } } },
+      select: { status: true, match: true, eligibility: true, blockers: true, createdAt: true, submittedAt: true, interviews: { select: { round: true } }, _count: { select: { offers: true } } },
     }),
     windowNumbers(campaign.id, dayStart, autonomy.autoApplyMinMatch),
     // Only the running campaign's questions: a finished campaign no longer asks anything.
@@ -318,13 +328,13 @@ export async function loadToday(user: { id: string; autonomy: string; goal: { pr
     pendingHandoffsCount(user.id),
     // Only rounds still ahead (a past round waiting for «Как прошло?» is not «upcoming»): the same rule as interviewCounts.
     db.interview.findMany({
-      where: { userId: user.id, status: "upcoming", OR: [{ scheduledAt: null, round: "assessment" }, { scheduledAt: { gte: new Date(now) } }] },
+      where: { userId: user.id, status: "upcoming", OR: [{ scheduledAt: null, round: "assessment" }, { scheduledAt: { gte: new Date(now) } }], ...visibleInterviewScope() },
       orderBy: { scheduledAt: "asc" },
       take: 6,
       select: { id: true, round: true, scheduledAt: true, opportunity: { select: { job: { select: { company: true, title: true } } } } },
     }),
-    db.offer.findMany({ where: { userId: user.id, status: { in: ["received", "negotiating"] } }, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, company: true, role: true } }),
-    db.inboxMessage.count({ where: { userId: user.id, receivedAt: { gte: dayStart }, classification: { in: ["interview", "assessment", "offer", "rejection"] } } }),
+    db.offer.findMany({ where: { userId: user.id, status: { in: ["received", "negotiating"] }, ...visibleLinkedScope() }, orderBy: { createdAt: "desc" }, take: 3, select: { id: true, company: true, role: true } }),
+    db.inboxMessage.count({ where: { userId: user.id, receivedAt: { gte: dayStart }, classification: { in: ["interview", "assessment", "offer", "rejection"] }, ...visibleLinkedScope() } }),
     loadTimeline(user.id, campaign.id, new Date(now - 3 * DAY)),
     interviewCounts(user.id, new Date(now)),
   ]);

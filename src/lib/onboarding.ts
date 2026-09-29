@@ -255,6 +255,9 @@ const fmtSalary = (min: number | null, max: number | null, cur: string) => {
   return min && max ? fmtMoneyRange(min, max, cur) : fmtMoney((min || max)!, cur);
 };
 
+/** The /check sample vacancy must be a strong, same-family fit; below this there is no sample. */
+const CHECK_SAMPLE_MIN_MATCH = 70;
+
 /** Anonymous Career Check: parse → readiness → best vacancy → positioning example. Nothing is invented. */
 export async function buildCareerCheck(cvText: string, targetRaw: string): Promise<CheckResult> {
   const { data: parsed, by } = await parseCV(cvText);
@@ -309,23 +312,29 @@ export async function buildCareerCheck(cvText: string, targetRaw: string): Promi
     goal: { primaryRole: roleLabel, extraRoles: [], seniority, minSalary: 0, countries, workModes, industries: [], dreamCompanies: [], blockedCompanies: [], mode: "autonomous" },
     allocation: {},
   };
-  const rank = (m: MatchResult, fam: string) => (m.eligibility === "blocked" ? 0 : m.eligibility === "soft" ? 1 : 2) * 1000 + (fam === family ? 200 : 0) + m.match;
-  let best: { job: (typeof jobs)[number]; m: MatchResult; r: number } | null = null;
+  // The sample vacancy is only ever one of the target role family that the candidate passes with Match ≥ 70: a stray
+  // «Менеджер по продажам» under an SMM check reads as a misread CV. None such → no sample (the page says why).
+  let best: { job: (typeof jobs)[number]; m: MatchResult } | null = null;
   for (const job of jobs) {
+    if (job.roleFamily !== family || family === "other") continue;
     const m = scoreJob(ctx, jobCtx(job));
-    const r = rank(m, job.roleFamily);
-    if (!best || r > best.r) best = { job, m, r };
+    if (m.eligibility === "blocked") continue;
+    if (!best || m.match > best.m.match) best = { job, m };
   }
+  const sample = best && best.m.match >= CHECK_SAMPLE_MIN_MATCH ? best : null;
 
   let positioning: CheckResult["positioning"] = null;
   let jobOut: CheckResult["job"] = null;
-  if (best) {
-    const { job, m } = best;
-    const jl = jobCtx(job);
+  if (sample) {
+    const { job, m } = sample;
     jobOut = {
       title: job.title, company: job.company, location: job.location, remote: job.remote, salary: fmtSalary(job.salaryMin, job.salaryMax, job.currency), industry: job.industry,
       match: m.match, reasons: m.reasons, eligibility: m.eligibility, blockers: m.blockers, softGaps: m.softGaps, pInterview: m.pInterview,
     };
+  }
+  // Positioning is shown against the closest role of the target family (the sample when there is one).
+  if (best) {
+    const jl = jobCtx(best.job);
     const profile: ProfileLite = {
       name: cv.name || "Candidate", email: "", phone: "", location: cv.location, headline: cv.headline, summary: cv.summary, skills: cv.skills,
       yearsExperience: cv.yearsExperience, englishLevel: english, workAuth: ["KZ"], needsSponsorship: true, relocation: false,

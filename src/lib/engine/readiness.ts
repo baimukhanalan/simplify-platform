@@ -140,7 +140,7 @@ export function assessReadiness(input: ReadinessInput): Readiness {
 
   // CV quality
   const cvLen = profile.cvText.length;
-  const withMetrics = facts.filter((f) => (f.kind === "employment" || f.kind === "project") && f.metrics).length;
+  const withMetrics = facts.filter((f) => (f.kind === "employment" || f.kind === "project" || f.kind === "achievement") && f.metrics).length;
   const work = facts.filter((f) => f.kind === "employment" || f.kind === "project").length;
   const cvScore = Math.min(100, (cvLen > 800 ? 40 : cvLen > 300 ? 25 : 5) + Math.min(40, withMetrics * 15) + (profile.summary ? 20 : 5));
   push({ key: "cv", label: "Качество CV", score: cvScore, weight: 1, note: withMetrics ? `${count(withMetrics, ["пункт", "пункта", "пунктов"])} с измеримым результатом` : "Нет измеримых результатов" });

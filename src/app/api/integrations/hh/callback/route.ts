@@ -28,10 +28,16 @@ export async function GET(req: NextRequest) {
     const tokens = await exchangeCode(code, redirectUri);
     const me = await getMe(tokens.access_token);
     if (me.is_applicant === false) return back("not-applicant");
-    // One hh account ↔ one Simplify account.
+    // One hh account ↔ one Simplify account: checked here for a clear answer, enforced by the DB unique
+    // (provider, externalUserId) — a concurrent link of the same account from another user fails with P2002.
     const taken = await db.integration.findFirst({ where: { provider: "hh", externalUserId: String(me.id), userId: { not: userId } }, select: { id: true } });
     if (taken) return back("taken");
-    await storeTokens(userId, tokens, { externalUserId: String(me.id), meta: { name: meName(me) } });
+    try {
+      await storeTokens(userId, tokens, { externalUserId: String(me.id), meta: { name: meName(me) } });
+    } catch (e) {
+      if ((e as { code?: string }).code === "P2002") return back("taken");
+      throw e;
+    }
     // Exactly one resume: pre-select it (the user can change it on /app/agent).
     try {
       const resumes = await myResumes(userId);

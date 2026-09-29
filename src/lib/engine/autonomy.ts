@@ -25,7 +25,11 @@ export const AUTONOMY_DEFAULTS: Autonomy = {
   autoApplyMinMatch: 85,
 };
 
-export function readAutonomy(raw: string | null | undefined): Autonomy {
+/**
+ * The user's own stored settings (defaults filled in), without the simulation's standing values. Writers use this so the
+ * simulation overlay (SIMULATION_AUTONOMY) is never persisted as if the user had chosen it.
+ */
+export function readStoredAutonomy(raw: string | null | undefined): Autonomy {
   let parsed: Partial<Autonomy> = {};
   try {
     parsed = raw ? (JSON.parse(raw) as Partial<Autonomy>) : {};
@@ -35,6 +39,11 @@ export function readAutonomy(raw: string | null | undefined): Autonomy {
   const a = { ...AUTONOMY_DEFAULTS, ...parsed };
   if (a.sensitive !== "ask" && a.sensitive !== "decline") a.sensitive = "ask";
   a.autoApplyMinMatch = normalizeThreshold(a.autoApplyMinMatch);
+  return a;
+}
+
+export function readAutonomy(raw: string | null | undefined): Autonomy {
+  const a = readStoredAutonomy(raw);
   // Simulation mode: the agent does everything end to end — these standing values always hold (SIMULATION_AUTONOMY).
   return isSimulation() ? { ...a, ...SIMULATION_AUTONOMY } : a;
 }
@@ -87,4 +96,34 @@ export function answerRu(answer: string) {
   if (/^yes$/i.test(a)) return "Да";
   if (/^no$/i.test(a)) return "Нет";
   return answer;
+}
+
+/** The only switches the Agent form shows in simulation (the rest are standing rules or hidden there). */
+export const SIMULATION_FORM_FIELDS = ["findJobs", "personalizeCv"] as const;
+
+/**
+ * The Agent form applied to the stored settings. In simulation the form shows only SIMULATION_FORM_FIELDS: every other
+ * field keeps the user's stored value (never replaced by the simulation's standing values or by absent inputs).
+ */
+export function mergeAutonomyForm(before: Autonomy, form: Pick<FormData, "get">, simulation: boolean): Autonomy | { error: string } {
+  if (simulation) {
+    const kept: Autonomy = { ...before };
+    for (const k of SIMULATION_FORM_FIELDS) kept[k] = form.get(k) === "on";
+    return kept;
+  }
+  const next: Autonomy = { ...AUTONOMY_DEFAULTS };
+  for (const { key } of AUTONOMY_LABELS) next[key] = form.get(key) === "on";
+
+  const sensitive = String(form.get("sensitive") ?? "");
+  if (sensitive !== "ask" && sensitive !== "decline") return { error: "Выбери, как агент отвечает на чувствительные вопросы." };
+  next.sensitive = sensitive;
+
+  // One control, two fields (the same ones the Opportunities switch writes): the switch is submitApplications,
+  // the slider is the threshold. The threshold is always kept, so turning auto-apply back on restores it.
+  next.submitApplications = form.get("submitApplications") === "on";
+  const raw = String(form.get("autoApplyMinMatch") ?? "").trim();
+  const n = Number(raw);
+  if (!raw || !Number.isFinite(n) || n < 50 || n > 100) return { error: "Порог Match должен быть от 50 до 100%." };
+  next.autoApplyMinMatch = Math.round(n);
+  return next;
 }

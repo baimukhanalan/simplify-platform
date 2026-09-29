@@ -42,14 +42,15 @@ const fromYears = (n: number) => (n % 1 === 0 ? plural(n, ["года", "лет",
 
 /**
  * Interview probability as a number with a plain-language comparison: "22% — выше среднего".
- * pInterview is capped at 0.6 by the engine; typical strong roles land at 0.1–0.3, so ~6–15% is "around average".
+ * Calibrated on the shown (rounded) percent so the words never disagree with the number: < 8% «ниже среднего»,
+ * 8–15% «средняя», > 15% «выше среднего».
  */
 export function interviewChance(o: { eligibility: string; pInterview: number }) {
   const pct = Math.round(Math.max(0, Math.min(1, o.pInterview)) * 100);
   const [qual, tone] =
     o.eligibility === "blocked" ? (["не проходишь по требованиям", "rose"] as const)
-    : o.pInterview >= 0.15 ? (["выше среднего", "green"] as const)
-    : o.pInterview >= 0.06 ? (["около среднего", "teal"] as const)
+    : pct > 15 ? (["выше среднего", "green"] as const)
+    : pct >= 8 ? (["средняя", "teal"] as const)
     : (["ниже среднего", "amber"] as const);
   return { pct, qual, tone, label: `${pct}% — ${qual}` };
 }

@@ -7,7 +7,7 @@ import { placeRu } from "@/lib/ru";
 import { isEnglish, type StoredBrief } from "./brief";
 import { DebugLine, RegenerateForm } from "./regenerate-form";
 
-type Props = { id: string; debug?: boolean; brief: StoredBrief; company: string; role: string; skills: string[]; technologies: string[]; jobUrl: string; location: string; remote: string };
+type Props = { id: string; debug?: boolean; brief: StoredBrief; company: string; role: string; skills: string[]; technologies: string[]; jobUrl: string; location: string; remote: string; fictional?: boolean };
 
 const BulletList = ({ items, tone = "teal", en }: { items: string[]; tone?: "teal" | "green"; en?: boolean }) => (
   <ul className="flex flex-col gap-2" lang={en ? "en" : undefined}>
@@ -46,7 +46,7 @@ function Block({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export function BriefTab({ id, debug, brief, company, role, skills, technologies, jobUrl, location, remote }: Props) {
+export function BriefTab({ id, debug, brief, company, role, skills, technologies, jobUrl, location, remote, fictional }: Props) {
   const have = new Set(skills.map((s) => s.toLowerCase()));
   const covered = (req: string) => technologies.some((t) => have.has(t.toLowerCase()) && req.toLowerCase().includes(t.toLowerCase()));
   const gap = (req: string) => technologies.some((t) => !have.has(t.toLowerCase()) && req.toLowerCase().includes(t.toLowerCase()));
@@ -85,6 +85,8 @@ export function BriefTab({ id, debug, brief, company, role, skills, technologies
             {brief.company.products.length ? <Bullets items={brief.company.products} /> : <p className="text-[14px] text-ink-3">Продукты в вакансии не названы.</p>}
           </Block>
         </div>
+        {/* No outside research for a company of the internal corpus: there is nothing to find in the news. */}
+        {!fictional && (
         <div className="rounded-2xl border border-line bg-white/55 p-4">
           <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2">
             <Label>{byClaude ? "Последние события" : "Последние события · проверь перед звонком"}</Label>
@@ -94,6 +96,7 @@ export function BriefTab({ id, debug, brief, company, role, skills, technologies
           </div>
           <Bullets items={brief.company.recent} />
         </div>
+        )}
       </Card>
 
       <Card className="flex flex-col gap-6">

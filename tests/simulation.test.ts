@@ -20,7 +20,7 @@ process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.ANTHROPIC_AUTH_TOKEN;
 const MODE0 = process.env.SIMPLIFY_MODE;
-delete process.env.SIMPLIFY_MODE;
+process.env.SIMPLIFY_MODE = "simulation";
 
 type Db = typeof import("../src/lib/db").db;
 let db: Db;
@@ -44,20 +44,22 @@ after(async () => {
   if (MODE0 === undefined) delete process.env.SIMPLIFY_MODE; else process.env.SIMPLIFY_MODE = MODE0;
 });
 
-afterEach(() => { delete process.env.SIMPLIFY_MODE; });
+afterEach(() => { process.env.SIMPLIFY_MODE = "simulation"; });
 
 describe("mode switch", () => {
-  test("simulation is the default; SIMPLIFY_MODE=live switches it off", () => {
+  test("live is the default; only SIMPLIFY_MODE=simulation switches the simulation on", () => {
     delete process.env.SIMPLIFY_MODE;
-    assert.equal(simplifyMode(), "simulation");
-    assert.equal(isSimulation(), true);
+    assert.equal(simplifyMode(), "live");
+    assert.equal(isSimulation(), false);
     process.env.SIMPLIFY_MODE = " LIVE ";
     assert.equal(simplifyMode(), "live");
     assert.equal(isSimulation(), false);
-    process.env.SIMPLIFY_MODE = "simulation";
+    process.env.SIMPLIFY_MODE = " Simulation ";
     assert.equal(isSimulation(), true);
     process.env.SIMPLIFY_MODE = "anything-else";
-    assert.equal(isSimulation(), true);
+    assert.equal(isSimulation(), false, "an unknown value never turns the simulation on");
+    process.env.SIMPLIFY_MODE = "";
+    assert.equal(isSimulation(), false);
   });
 
   test("staff tools are hidden from regular and showcase accounts in simulation mode", () => {
@@ -275,7 +277,7 @@ describe("employer simulation (DB)", () => {
     assert.equal(await sim.maybeSimulateEmployers(user.id), 0);
     assert.deepEqual(await sim.simulateAllEmployers([user.id]), { users: 0, steps: 0 });
     assert.equal(await db.inboxMessage.count({ where: { opportunityId: o.id } }), 0);
-    delete process.env.SIMPLIFY_MODE;
+    process.env.SIMPLIFY_MODE = "simulation";
     await sim.maybeSimulateEmployers(user.id);
     // In simulation mode the lazy helper runs once, then the guard holds for 6 h unless a known reply became due.
     assert.equal(await sim.maybeSimulateEmployers(user.id), 0);
@@ -300,6 +302,29 @@ describe("employer simulation (DB)", () => {
     assert.deepEqual([...new Set(notes.map((n) => n.type))].sort(), ["assessment", "interview", "offer"]);
     const invite = await db.inboxMessage.findFirstOrThrow({ where: { opportunityId: ids[0] } });
     assert.match(invite.fromAddr, /^Kumbez Pay0 Recruiting <talent@[a-z0-9]+\.[a-z.]+>$/);
+  });
+
+  test("concurrent runs (cron + page view in another instance) never write the same employer reply twice", async () => {
+    const { user, campaign } = await makeUser();
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i++) ids.push((await submittedOpp(campaign.id, (await makeJob(FICTIONAL_SOURCE, { company: `Parallel Co ${i}` })).id, 30, 0.4)).id);
+    const [a, b] = await Promise.all([sim.simulateEmployerActivity(user.id), sim.simulateEmployerActivity(user.id)]);
+    const mail = await db.inboxMessage.findMany({ where: { opportunityId: { in: ids } }, select: { opportunityId: true, subject: true } });
+    assert.equal(mail.length, a.steps + b.steps, "every played step wrote exactly one email");
+    const keys = mail.map((m) => `${m.opportunityId}|${m.subject}`);
+    assert.equal(new Set(keys).size, keys.length, `no duplicate reply: ${keys.join(", ")}`);
+    const rounds = await db.interview.findMany({ where: { opportunityId: { in: ids } }, select: { opportunityId: true, round: true } });
+    assert.equal(new Set(rounds.map((r) => `${r.opportunityId}|${r.round}`)).size, rounds.length, "one Interview Room per round");
+  });
+
+  test("createInterview is upsert-safe: concurrent calls for one round give one row (DB unique)", async () => {
+    const { user, campaign } = await makeUser();
+    const o = await submittedOpp(campaign.id, (await makeJob(FICTIONAL_SOURCE)).id, 2);
+    const [x, y, z] = await Promise.all([1, 2, 3].map(() => agent.createInterview(user.id, o.id, "recruiter")));
+    assert.equal(x.id, y.id);
+    assert.equal(y.id, z.id);
+    assert.equal(await db.interview.count({ where: { opportunityId: o.id, round: "recruiter" } }), 1);
+    await assert.rejects(db.interview.create({ data: { userId: user.id, opportunityId: o.id, round: "recruiter" } }), (e: { code?: string }) => e.code === "P2002");
   });
 });
 

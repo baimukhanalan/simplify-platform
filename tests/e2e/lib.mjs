@@ -98,6 +98,34 @@ export async function signupNew(label = "u") {
   return { c, r };
 }
 
+// ——— Platform mode of the server under test (src/lib/mode.ts) ———
+// SIMPLIFY_MODE=simulation = fictional corpus only, auto-apply ≥ 70, standing answers, no approvals / handoffs;
+// unset / SIMPLIFY_MODE=live = the plain production engine. The UI never names the mode, so it is probed from behaviour:
+// only live mode has the Opportunities tab «Ждут решения» (the agent decides every role itself in simulation).
+// E2E_MODE=simulation|live skips the probe (run.mjs sets it for its children).
+const visText = (html) => html.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+async function probeMode() {
+  const forced = process.env.E2E_MODE?.trim().toLowerCase();
+  if (forced === "live" || forced === "simulation") return forced;
+  const u = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" }, select: { id: true } });
+  if (!u) throw new Error("mode probe: showcase account aruzhan@simplify.kz is missing — seed the copy (npm run seed)");
+  const c = await new Client("mode-probe").asUser(u.id);
+  const r = await c.get("/app/opportunities");
+  if (r.status !== 200) throw new Error(`mode probe: /app/opportunities -> ${r.status}`);
+  return /Ждут решения \d+ Все \d+/.test(visText(r.text)) ? "live" : "simulation";
+}
+export const MODE = await probeMode();
+export const isSim = MODE === "simulation";
+/**
+ * A journey that only makes sense in one mode calls this first: under the other mode it prints one SKIP line and exits 0
+ * (run.mjs reports it as skipped). Restart the copy with / without SIMPLIFY_MODE=simulation to run it.
+ */
+export function needsMode(mode, why = "") {
+  if (MODE === mode) return;
+  console.log(`SKIP needs SIMPLIFY_MODE=${mode} server (this one runs ${MODE})${why ? ` — ${why}` : ""}`);
+  process.exit(0);
+}
+
 export const findings = [];
 export function check(cond, id, msg, extra) {
   const line = `${cond ? "PASS" : "FAIL"} [${id}] ${msg}${extra !== undefined ? " :: " + (typeof extra === "string" ? extra : JSON.stringify(extra)).slice(0, 500) : ""}`;

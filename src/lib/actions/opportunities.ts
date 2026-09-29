@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { db, s } from "../db";
 import { APPLIED_OR_LATER } from "../engine/taxonomy";
-import { readAutonomy } from "../engine/autonomy";
+import { readAutonomy, readStoredAutonomy } from "../engine/autonomy";
+import { isSimulation } from "../mode";
 import { QUEUE_MATCH, blockingQuestions, currentEligibility, duplicateOf, logEvent, prepare, settleSharedAnswers, submit } from "../engine/agent";
 import { blockerKind } from "../engine/matching";
 import { count } from "../ru";
@@ -158,9 +159,10 @@ export async function setAutoApply(enabled: boolean): Promise<{ ok: boolean; ena
     raw = {};
   }
   const current = readAutonomy(fresh?.autonomy);
-  const min = current.autoApplyMinMatch;
-  // Server actions are callable with any payload: only a real boolean changes anything.
-  if (typeof enabled !== "boolean") return { ok: false, enabled: current.submitApplications, min };
+  // Server actions are callable with any payload: only a real boolean changes anything. In simulation auto-apply is a
+  // standing rule (the switch is not shown): nothing is written, so the user's stored settings are never overwritten.
+  if (typeof enabled !== "boolean" || isSimulation()) return { ok: false, enabled: current.submitApplications, min: current.autoApplyMinMatch };
+  const min = readStoredAutonomy(fresh?.autonomy).autoApplyMinMatch;
   await db.user.update({ where: { id: user.id }, data: { autonomy: s({ ...raw, submitApplications: enabled, autoApplyMinMatch: min }) } });
   await logEvent(user.id, "autonomy", enabled ? `Автоподача включена: Match ≥ ${min}%` : "Автоподача выключена: агент подаёт только на вакансии, отмеченные тобой");
   revalidatePath("/app", "layout");

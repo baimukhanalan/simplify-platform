@@ -155,7 +155,7 @@ export function DebriefTab({ iv, debrief, debug }: Props) {
       </div>
 
       <details className="glass group p-5 sm:p-6">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg text-[14.5px] font-medium text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-lg text-[14.5px] font-medium text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
           Пересказать заново
           <span aria-hidden className="text-ink-4 transition-transform group-open:rotate-45">+</span>
         </summary>

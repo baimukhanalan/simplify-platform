@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { ButtonLink, Chip, Empty, PageHeader, Script, cx } from "@/components/ui";
 import { ROUND_CHAIN, ROUND_LABEL, ROUND_TONE, IV_STATUS_LABEL, IV_STATUS_TONE } from "@/lib/rounds";
-import { interviewCounts } from "@/lib/ops-data";
+import { interviewCounts, visibleInterviewScope, visibleLinkedScope } from "@/lib/ops-data";
 import { assessmentDeadline, count, plural } from "../../_components/ru";
 import { nowMs, relDays } from "./_components/format";
 
@@ -13,7 +13,7 @@ export const metadata = { title: "Интервью" };
 type Row = Awaited<ReturnType<typeof load>>[number];
 const load = (userId: string) =>
   db.interview.findMany({
-    where: { userId },
+    where: { userId, ...visibleInterviewScope() },
     include: { opportunity: { include: { job: { select: { company: true, title: true, massHiring: true } } } }, _count: { select: { mocks: true } } },
     orderBy: { scheduledAt: "asc" },
   });
@@ -43,7 +43,7 @@ export default async function InterviewsPage() {
   const next = future.find((i) => i.round !== "assessment") ?? future[0];
   const rest = future.filter((i) => i !== next);
   const reached = (r: string) => new Set(all.filter((i) => i.round === r).map((i) => i.opportunityId)).size;
-  const offers = await db.offer.count({ where: { userId: user.id } });
+  const offers = await db.offer.count({ where: { userId: user.id, ...visibleLinkedScope() } });
   // Two live calls within an hour of each other: one of them has to move.
   const calls = future.filter((i) => i.round !== "assessment" && i.scheduledAt);
   const conflicts = calls.flatMap((a, k) => calls.slice(k + 1).filter((b) => Math.abs(b.scheduledAt!.getTime() - a.scheduledAt!.getTime()) < 3600000).map((b) => [a, b] as const));

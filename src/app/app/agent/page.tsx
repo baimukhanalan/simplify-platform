@@ -37,7 +37,9 @@ export default async function AgentPage({ searchParams }: { searchParams: Promis
       <PageHeader
         eyebrow="Agent"
         title={<>Autonomy — что агент делает <Script>сам</Script></>}
-        sub="Ты задаёшь границы один раз. Всё, что внутри них, Simplify делает без тебя; всё, что за ними, — только с твоего разрешения."
+        sub={isSimulation()
+          ? "Агент сам ищет вакансии, адаптирует CV и подаёт заявки — тебе остаются интервью и решение по офферу."
+          : "Ты задаёшь границы один раз. Всё, что внутри них, Simplify делает без тебя; всё, что за ними, — только с твоего разрешения."}
       />
 
       <AgentStatus
@@ -96,11 +98,11 @@ export default async function AgentPage({ searchParams }: { searchParams: Promis
           {/* hh.kz only when the integration is configured on the server — no «coming soon» placeholder. */}
           {hhEnabled() && <HhCard userId={user.id} notice={hhNotice} />}
 
-          <Card className="flex flex-col gap-2">
+          {!isSimulation() && <Card className="flex flex-col gap-2">
             <h2 className="label">Расширение Apply Assist</h2>
             <p className="text-[13.5px] leading-relaxed text-ink-2">Заполняет официальную форму работодателя из твоего пакета — отправляешь ты сам.</p>
             <Link href="/app/extension" className="self-start text-[13.5px] text-teal underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-green">Подключить расширение →</Link>
-          </Card>
+          </Card>}
 
           {!isSimulation() && <Card className="flex flex-col gap-3">
             <h2 className="label">Когда агент спрашивает тебя</h2>

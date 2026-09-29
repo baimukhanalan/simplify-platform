@@ -53,7 +53,7 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
   const edu = facts.filter((f) => f.kind === "education");
   const certs = facts.filter((f) => f.kind === "certification");
 
-  const yrs = yearsForEmployer(p.yearsExperience) ?? "hands-on project"; // "3+ years", never "3.4 years"
+  const yrs = yearsForEmployer(p.yearsExperience); // "3+ years", never "3.4 years"; null when unknown — the clause is then left out
   // "Recently …" is only about the current role (open-ended dates); a result from an earlier job is not recent.
   const current = work.find((f) => isCurrent(f));
   const topMetric = current?.metrics || undefined;
@@ -62,8 +62,8 @@ export function buildPackageHeuristic(p: ProfileLite, facts: FactLite[], job: Jo
   // One language per summary: a Russian CV gets a Russian summary; an English summary never splices in a Russian bullet.
   const russianCv = isRussianCv(work);
   const summary = russianCv
-    ? `${roleLabel}: ${yearsRu(p.yearsExperience)}${tools ? `. Ключевые инструменты: ${tools}` : ""}.${topMetric && CYRILLIC.test(topMetric) ? ` Недавний результат: ${lcFirstWord(tidyAchievement(topMetric))}.` : ""}`
-    : `${roleLabel}-focused professional with ${yrs} of experience ${framing}. Core tools: ${tools}.${topMetric && !CYRILLIC.test(topMetric) ? (topClause ? ` Recently ${topClause}.` : ` Recent result: ${lcFirstWord(tidyAchievement(topMetric))}.`) : ""}`;
+    ? `${roleLabel}${yearsRu(p.yearsExperience) ? `: ${yearsRu(p.yearsExperience)}` : ""}${tools ? `. Ключевые инструменты: ${tools}` : ""}.${topMetric && CYRILLIC.test(topMetric) ? ` Недавний результат: ${lcFirstWord(tidyAchievement(topMetric))}.` : ""}`
+    : `${roleLabel}-focused professional${yrs ? ` with ${yrs} of experience` : ""} ${framing}. Core tools: ${tools}.${topMetric && !CYRILLIC.test(topMetric) ? (topClause ? ` Recently ${topClause}.` : ` Recent result: ${lcFirstWord(tidyAchievement(topMetric))}.`) : ""}`;
 
   /** Whole achievements (one per CV line), original order; if a role lists more than MAX_BULLETS, keep the most job-relevant ones. */
   const bullets = (f: FactLite) => {
@@ -130,7 +130,7 @@ function isRussianCv(work: FactLite[]) {
 }
 
 const yearsRu = (y: number) => {
-  if (!(y >= 1)) return "опыт на проектах";
+  if (!(y >= 1)) return "";
   const n = Math.floor(y);
   const m = n % 100, d = n % 10;
   const w = m > 10 && m < 20 ? "лет" : d === 1 ? "год" : d > 1 && d < 5 ? "года" : "лет";

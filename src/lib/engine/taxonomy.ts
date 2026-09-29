@@ -28,6 +28,7 @@ export const SKILL_DICTIONARY = [
   "Figma", "User research", "Prototyping", "Design systems", "Jira", "Confluence", "Notion", "Roadmapping",
   "Selenium", "Cypress", "Playwright", "Postman", "Manual testing",
   "SEO", "Copywriting", "Paid ads", "HubSpot", "Salesforce", "CRM", "Zendesk", "Intercom", "Negotiation", "Cold outreach",
+  "SMM", "Canva", "1C", "Sales", "Analytics",
 ];
 
 export const REGIONS: Record<string, { label: string; countries: string[] }> = {
@@ -241,11 +242,43 @@ function shortSkillIn(skill: string, text: string, longHits: Set<string>) {
   return false;
 }
 
+/**
+ * Russian (and common alternate) wording → the canonical skill: a Russian CV rarely writes "Paid ads" or "Copywriting".
+ * Broad words ("sales", "analytics") count only through these phrases (SYNONYM_ONLY), never as a bare English token,
+ * so "work with the sales team" in a vacancy doesn't turn into a Sales requirement.
+ */
+const B = String.raw`(?<![\p{L}\p{N}])`;
+const E = String.raw`(?![\p{L}\p{N}])`;
+const SKILL_SYNONYMS: [RegExp, string][] = [
+  [new RegExp(`${B}(?:smm|смм|ведение\\s+(?:соц\\.?\\s*сетей|соцсетей|социальных\\s+сетей|instagram|инстаграм\\p{L}*))${E}`, "iu"), "SMM"],
+  [new RegExp(`${B}(?:таргет\\p{L}*|контекстн\\p{L}*\\s+реклам\\p{L}*|яндекс[.\\s]?директ\\p{L}*|google\\s+ads|facebook\\s+ads|meta\\s+ads|performance[-\\s]маркетинг\\p{L}*|платн\\p{L}*\\s+реклам\\p{L}*)${E}`, "iu"), "Paid ads"],
+  [new RegExp(`${B}(?:копирайт\\p{L}*|написани\\p{L}*\\s+текстов)${E}`, "iu"), "Copywriting"],
+  [new RegExp(`${B}канва${E}`, "iu"), "Canva"],
+  [new RegExp(`${B}(?:эксел\\p{L}*|эксель\\p{L}*|ms\\s*excel)${E}`, "iu"), "Excel"],
+  [new RegExp(`${B}1\\s?[сc](?::\\s?\\p{L}+)?${E}`, "iu"), "1C"],
+  [new RegExp(`${B}(?:продажи|продажам|продажами|продажах|активные\\s+продаж\\p{L}*|b2[bc][-\\s]продаж\\p{L}*|sales\\s+manag\\p{L}*|b2[bc]\\s+sales)${E}`, "iu"), "Sales"],
+  [new RegExp(`${B}(?:срм|amo\\s?crm|амо\\s?срм|битрикс\\s?24|bitrix\\s?24)${E}`, "iu"), "CRM"],
+  [new RegExp(`${B}фигм\\p{L}*${E}`, "iu"), "Figma"],
+  [new RegExp(`${B}(?:аналитика|аналитику|аналитикой|веб-аналитик\\p{L}*|анализ\\s+данных|продуктов\\p{L}*\\s+аналитик\\p{L}*|web\\s+analytics|data\\s+analysis|product\\s+analytics)${E}`, "iu"), "Analytics"],
+  [new RegExp(`${B}(?:гугл|google)\\s+таблиц\\p{L}*${E}`, "iu"), "Google Sheets"],
+  [new RegExp(`${B}(?:a\\/b|аб|а\\/б)[-\\s]тест\\p{L}*${E}`, "iu"), "A/B testing"],
+  [new RegExp(`${B}статистик\\p{L}*${E}`, "iu"), "Statistics"],
+  [new RegExp(`${B}ручно\\p{L}*\\s+тестировани\\p{L}*${E}`, "iu"), "Manual testing"],
+  [new RegExp(`${B}прототипировани\\p{L}*${E}`, "iu"), "Prototyping"],
+  [new RegExp(`${B}(?:исследовани\\p{L}*\\s+пользовател\\p{L}*|ux[-\\s]исследовани\\p{L}*|custdev|кастдев)${E}`, "iu"), "User research"],
+  [new RegExp(`${B}(?:сео|seo[-\\s]продвижени\\p{L}*)${E}`, "iu"), "SEO"],
+  [new RegExp(`${B}переговор\\p{L}*${E}`, "iu"), "Negotiation"],
+  [new RegExp(`${B}холодн\\p{L}*\\s+(?:звонк\\p{L}*|продаж\\p{L}*|рассылк\\p{L}*)${E}`, "iu"), "Cold outreach"],
+  [new RegExp(`${B}(?:машинн\\p{L}*\\s+обучени\\p{L}*)${E}`, "iu"), "Machine Learning"],
+];
+const SYNONYM_ONLY = new Set(["Sales", "Analytics"]);
+
 export function extractSkills(text: string): string[] {
   const clean = stripContacts(text);
-  const long = SKILL_DICTIONARY.filter((s) => s.length > 2 && tokenRe(s).test(clean));
+  const long = SKILL_DICTIONARY.filter((s) => s.length > 2 && !SYNONYM_ONLY.has(s) && tokenRe(s).test(clean));
   const longHits = new Set(long.map((s) => s.toLowerCase()));
-  return SKILL_DICTIONARY.filter((s) => (s.length > 2 ? longHits.has(s.toLowerCase()) : shortSkillIn(s, clean, longHits)));
+  for (const [re, skill] of SKILL_SYNONYMS) if (re.test(clean)) longHits.add(skill.toLowerCase());
+  return SKILL_DICTIONARY.filter((s) => longHits.has(s.toLowerCase()) || (s.length <= 2 && shortSkillIn(s, clean, longHits)));
 }
 
 /* ——— Languages ——— */

@@ -8,6 +8,7 @@ import { regionsFor } from "@/lib/regions";
 import { OfferDesk } from "./_components/offer-desk";
 import { ClosedOffer } from "./_components/closed-offer";
 import { AddOfferForm } from "./_components/offer-forms";
+import { visibleLinkedScope, visibleScope } from "@/lib/ops-data";
 
 export const metadata = { title: "Offer Desk" };
 
@@ -16,10 +17,10 @@ const LEVELS: Aggressiveness[] = ["soft", "balanced", "assertive"];
 export default async function OffersPage({ searchParams }: { searchParams: Promise<{ level?: string }> }) {
   const [sp, user] = await Promise.all([searchParams, requireUser()]);
   const [offers, facts, opps] = await Promise.all([
-    db.offer.findMany({ where: { userId: user.id }, orderBy: [{ createdAt: "desc" }] }),
+    db.offer.findMany({ where: { userId: user.id, ...visibleLinkedScope() }, orderBy: [{ createdAt: "desc" }] }),
     db.fact.findMany({ where: { userId: user.id, verified: true, NOT: { metrics: "" } }, select: { metrics: true, kind: true }, orderBy: { createdAt: "asc" } }),
     db.opportunity.findMany({
-      where: { campaign: { userId: user.id }, status: { in: ["recruiter", "hiring_manager", "technical", "final", "offer"] } },
+      where: { campaign: { userId: user.id }, ...visibleScope(), status: { in: ["recruiter", "hiring_manager", "technical", "final", "offer"] } },
       include: { job: { select: { company: true, title: true } } },
       orderBy: { updatedAt: "desc" },
       take: 30,

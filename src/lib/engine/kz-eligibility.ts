@@ -77,9 +77,18 @@ const LOC_REMOTE_ONLY_RE = re(
     "(?:[\\s\\-–—,/()·]*(?:remote|first|ok|only|friendly|position|role|job|work))*[\\s\\-–—,/()·]*$",
 );
 const LOC_HYBRID_RE = re("\\bhybrid\\b|\\bon[- ]?site\\b|\\bin[- ]office\\b|\\boffice\\b|\\bгибрид\\p{L}*|\\bофис\\p{L}*");
-const KZ_TOKENS_RE = re(
+const KZ_PLACES_SRC =
   "\\bkazakhstan\\b|\\bказахстан\\p{L}*|\\balmaty\\b|\\bалматы\\b|\\bastana\\b|\\bастана\\b|\\bnur-sultan\\b|\\bshymkent\\b|\\bшымкент\\b|\\bkaraganda\\b|\\bкараганд\\p{L}*" +
-    "|\\bcentral asia\\b|\\bцентральн\\p{L}* ази\\p{L}*|\\bcis\\b|\\bснг\\b|\\beurasia\\b|\\bевраз\\p{L}*",
+  "|\\bcentral asia\\b|\\bцентральн\\p{L}* ази\\p{L}*|\\bснг\\b|\\beurasia\\b|\\bевраз\\p{L}*";
+/** In a location field every token is a place, CIS included. */
+const KZ_TOKENS_RE = re(`${KZ_PLACES_SRC}|\\bcis\\b`);
+/**
+ * In a title «CIS» is often not a region («CIS Security Engineer»: Center for Internet Security, «CIS Controls»): it counts
+ * only in a place context — after a separator («Sales Manager, CIS», «Head of Sales (CIS)») or as «CIS region / markets»,
+ * «in / for / across the CIS».
+ */
+const KZ_TITLE_RE = re(
+  `${KZ_PLACES_SRC}|[,(/|–—-]\\s*cis\\b(?!\\s*(?:security|controls?|benchmarks?|compliance|hardening|level))|\\bcis\\s+(?:region|markets?|countries|territory|cluster)\\b|\\b(?:in|for|across|within|covering)\\s+(?:the\\s+)?cis\\b(?!\\s*(?:security|controls?|benchmarks?|compliance|hardening))`,
 );
 // Role-level sentences that pin a bare-remote posting elsewhere (company blurbs like «remote-first» never count).
 const NEG_TEXT_RE = re(
@@ -198,7 +207,7 @@ export function openFromKazakhstan(job: { title: string; location?: string; desc
   const text = `${title} ${(job.description ?? "").slice(0, 6000).toLowerCase()}`;
   const pinned = (reason: string) => verdict("pinned", reason, { pin: pinCodes(loc, title, text) });
 
-  if (KZ_TOKENS_RE.test(`${loc} ${title}`)) return verdict("open", "names Kazakhstan / Central Asia / CIS", { named: true });
+  if (KZ_TOKENS_RE.test(loc) || KZ_TITLE_RE.test(title)) return verdict("open", "names Kazakhstan / Central Asia / CIS", { named: true });
   if (job.workplace === "onsite" || job.workplace === "hybrid") return pinned(`${job.workplace} role outside Kazakhstan`);
 
   if (loc && !LOC_REMOTE_ONLY_RE.test(loc)) {

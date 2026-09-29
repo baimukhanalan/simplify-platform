@@ -106,7 +106,7 @@ export function Nav({ counts, role, campaign, userName, quietQueue = false }: { 
                   onClick={() => setOpen(false)}
                   aria-current={active ? "page" : undefined}
                   className={cx(
-                    "flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green lg:min-h-0",
+                    "flex min-h-10 items-center gap-2.5 rounded-lg px-3 py-1.5 text-[13px] transition-colors focus-visible:outline-2 focus-visible:outline-green",
                     active ? "bg-white/80 text-head" : "text-ink-3 hover:bg-white/50 hover:text-head",
                   )}
                 >

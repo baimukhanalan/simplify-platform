@@ -12,6 +12,7 @@ import { latestEmployment, type Pack } from "@/lib/engine/interview";
 import { readAutonomy } from "@/lib/engine/autonomy";
 import { salaryTarget, userFloorUsd } from "@/lib/engine/salary";
 import type { Debrief } from "@/lib/actions/interview";
+import { isFictionalJob } from "@/lib/mode";
 import { deadlineText, fmtDate, nowMs, relDays } from "../_components/format";
 import { buildBriefHeuristic, type StoredBrief } from "./_components/brief";
 import { BriefTab } from "./_components/brief-tab";
@@ -90,7 +91,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
     const o = j<{ overall?: number }>(x.feedback, {}).overall;
     return typeof o === "number" ? Math.max(m ?? 0, o) : m;
   }, null);
-  const readiness = roomReadiness({ match: iv.opportunity.match, bestMock, stories: stories.length, hasPack: Boolean(pack) });
+  const readiness = roomReadiness({ match: iv.opportunity.match, bestMock, stories: stories.length, hasPack: Boolean(pack), assessment: isAssessment });
   const upcoming = iv.status === "upcoming";
   // Debrief is secondary until the call has actually happened.
   const beforeCall = upcoming && (iv.scheduledAt?.getTime() ?? Infinity) > now;
@@ -160,7 +161,7 @@ export default async function InterviewRoom({ params, searchParams }: { params: 
         {(tab === "brief" || tab === "assessment") && (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
             {tab === "brief" ? (
-              <BriefTab id={iv.id} debug={debug} brief={brief} company={job.company} role={job.title} skills={skills} technologies={technologies} jobUrl={job.url} location={job.location} remote={job.remote} />
+              <BriefTab id={iv.id} debug={debug} brief={brief} company={job.company} role={job.title} skills={skills} technologies={technologies} jobUrl={job.url} location={job.location} remote={job.remote} fictional={isFictionalJob(job)} />
             ) : (
               <AssessmentTab
                 interviewId={iv.id}

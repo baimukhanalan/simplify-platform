@@ -1,5 +1,5 @@
 // Journey 3: Opportunities decisions, auto-apply toggle, detail actions, Applications kanban, application detail, CV PDF.
-import { Client, db, form, check, findings, signupNew, isNotFound } from "./lib.mjs";
+import { Client, db, form, check, findings, signupNew, isNotFound, isSim } from "./lib.mjs";
 import { newPaidUser, payInvoice } from "./j1.mjs";
 
 const { c, inv } = await newPaidUser("j3", { quiet: true });
@@ -71,21 +71,35 @@ check(r.result?.error && (await byId(q3.id)).status !== "skipped", "J3.foreign",
 r = await other.action("ops.setOpportunityStatus", [form({ id: q3.id, status: "skipped" })], { page: "/app/opportunities" });
 check((await byId(q3.id)).status !== "skipped", "J3.foreign.move", "foreign user cannot move status");
 
-// Auto-apply toggle
-r = await c.action("opportunities.setAutoApply", [false], { page: "/app/opportunities" });
-let u = await db.user.findUnique({ where: { id: c.user.id } });
-check(r.result?.ok && JSON.parse(u.autonomy).submitApplications === false, "J3.autoapply.off", "auto-apply off persisted", u.autonomy);
-pg = await c.get("/app/opportunities");
-check(/aria-checked="false"/.test(pg.text), "J3.autoapply.render", "toggle renders off after reload");
-const agentPg = await c.get("/app/agent");
-check(!/name="submitApplications"[^>]*checked/.test(agentPg.text), "J3.autoapply.agent", "Agent screen shows Submit applications OFF too");
-r = await c.action("opportunities.setAutoApply", [true], { page: "/app/opportunities" });
-u = await db.user.findUnique({ where: { id: c.user.id } });
-check(JSON.parse(u.autonomy).submitApplications === true, "J3.autoapply.on", "auto-apply on persisted");
-r = await c.action("opportunities.setAutoApply", ["yes please"], { page: "/app/opportunities" });
-u = await db.user.findUnique({ where: { id: c.user.id } });
-check(typeof JSON.parse(u.autonomy).submitApplications === "boolean", "J3.autoapply.type", "setAutoApply stores a boolean even for non-boolean input", u.autonomy);
-await c.action("opportunities.setAutoApply", [true], { page: "/app/opportunities" });
+// Auto-apply toggle (live mode). Simulation mode has no toggle: the agent always applies from Match 70 (SIMULATION_AUTONOMY),
+// and whatever setAutoApply stores does not change that.
+let u;
+if (isSim) {
+  // Simulation: auto-apply is a standing rule — no switch on the page, and setAutoApply writes nothing (ok:false), so the
+  // user's stored settings survive a later switch back to live mode.
+  const storedBefore = (await db.user.findUnique({ where: { id: c.user.id } })).autonomy;
+  r = await c.action("opportunities.setAutoApply", [false], { page: "/app/opportunities" });
+  const storedAfter = (await db.user.findUnique({ where: { id: c.user.id } })).autonomy;
+  check(r.result?.ok === false && r.result?.enabled === true && storedAfter === storedBefore, "J3.autoapply.sim.write", "simulation: setAutoApply(false) is refused and stores nothing", { res: r.result, storedBefore, storedAfter });
+  const pgSim = (await c.get("/app/opportunities")).text.replace(/<!-- -->/g, "");
+  const shown = pgSim.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  check(!/aria-checked=/.test(pgSim) && /Автоподача включена · Match от 70%/.test(shown), "J3.autoapply.sim", "simulation: no auto-apply toggle; the page says auto-apply is on from Match 70%", shown.match(/Автоподача.{0,60}/)?.[0]);
+} else {
+  r = await c.action("opportunities.setAutoApply", [false], { page: "/app/opportunities" });
+  u = await db.user.findUnique({ where: { id: c.user.id } });
+  check(r.result?.ok && JSON.parse(u.autonomy).submitApplications === false, "J3.autoapply.off", "auto-apply off persisted", u.autonomy);
+  pg = await c.get("/app/opportunities");
+  check(/aria-checked="false"/.test(pg.text), "J3.autoapply.render", "toggle renders off after reload");
+  const agentPg = await c.get("/app/agent");
+  check(!/name="submitApplications"[^>]*checked/.test(agentPg.text), "J3.autoapply.agent", "Agent screen shows Submit applications OFF too");
+  r = await c.action("opportunities.setAutoApply", [true], { page: "/app/opportunities" });
+  u = await db.user.findUnique({ where: { id: c.user.id } });
+  check(JSON.parse(u.autonomy).submitApplications === true, "J3.autoapply.on", "auto-apply on persisted");
+  r = await c.action("opportunities.setAutoApply", ["yes please"], { page: "/app/opportunities" });
+  u = await db.user.findUnique({ where: { id: c.user.id } });
+  check(typeof JSON.parse(u.autonomy).submitApplications === "boolean", "J3.autoapply.type", "setAutoApply stores a boolean even for non-boolean input", u.autonomy);
+  await c.action("opportunities.setAutoApply", [true], { page: "/app/opportunities" });
+}
 
 // Opportunity detail
 const found = await opp({ status: { in: ["found", "qualified"] }, decision: "" });
@@ -102,7 +116,8 @@ pg = await c.get(`/app/opportunities/${found.id}`);
 check(pg.status === 200, "J3.detail.after", "detail renders after prepare", pg.status);
 
 // Applications kanban: submit something first
-const sub = await db.opportunity.findFirst({ where: { campaignId: camp.id, status: "prepared" } });
+// Simulation mode submits every prepared role in the first cycle already: then Apply the previewed role instead.
+const sub = (await db.opportunity.findFirst({ where: { campaignId: camp.id, status: "prepared" } })) ?? (await byId(found.id));
 // Answer every open question through the real action (round 10: shared standing-question cards may sit on other roles,
 // and only resolveApproval propagates the answer into every package that waits for it).
 for (const a of await db.approval.findMany({ where: { userId: c.user.id, status: "pending", kind: { not: "handoff" } } })) {

@@ -24,7 +24,7 @@
     e.preventDefault();
     const token = $("token").value.trim();
     const baseUrl = normalizeBase($("baseUrl").value) || "";
-    if (!baseUrl) return status("Адрес должен начинаться с https:// (или http://localhost для разработки).", "err");
+    if (!baseUrl) return status(`Адрес Simplify: ${window.SimplifyApi.ALLOWED_BASES[0]} (для разработки — http://localhost:3210).`, "err");
     if (!/^[A-Za-z0-9_-]{32,128}$/.test(token)) return status("Похоже, ключ скопирован не полностью. Скопируй его ещё раз.", "err");
     $("save").disabled = true;
     status("Проверяем ключ…");

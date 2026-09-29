@@ -87,11 +87,15 @@ import { placeRu as placeRuLib } from "@/lib/ru";
 export const INDUSTRY_RU: Record<string, string> = {
   fintech: "Финтех", banking: "Банкинг", telecom: "Телеком", consulting: "Консалтинг", govtech: "Госсектор", government: "Госсектор",
   logistics: "Логистика", media: "Медиа", retail: "Ритейл", gaming: "Игры", games: "Игры", finance: "Финансы", education: "Образование", healthcare: "Здравоохранение",
+  healthtech: "Медтех / здравоохранение", medtech: "Медтех / здравоохранение", edtech: "Эдтех / онлайн-образование", "e-commerce": "Электронная коммерция", ecommerce: "Электронная коммерция",
+  insurtech: "Страховые технологии", cybersecurity: "Кибербезопасность", security: "Кибербезопасность", mobility: "Транспорт и мобильность", travel: "Путешествия",
+  "ai / data": "ИИ и данные", ai: "ИИ и данные", saas: "B2B-софт (SaaS)", software: "Разработка ПО", marketplace: "Маркетплейсы", proptech: "Недвижимость (проптех)",
 };
 export function industryRu(industry: string, inSentence = false) {
   const ru = INDUSTRY_RU[industry.trim().toLowerCase()];
   if (!ru) return industry;
-  return inSentence ? ru.toLowerCase() : ru;
+  // In a sentence only an ordinary first word is lower-cased: «b2b-софт», never «ии и данные».
+  return inSentence && !/^\p{Lu}[\p{Lu}\d-]/u.test(ru) ? ru.charAt(0).toLowerCase() + ru.slice(1) : ru;
 }
 export const industriesRu = (xs: string[]) => xs.map((x) => industryRu(x)).join(", ");
 

@@ -1,12 +1,13 @@
 // Platform mode (pure; client- and server-safe). One switch for the showcase period:
 //
-//   SIMPLIFY_MODE=simulation (default when unset) — the fictional-company corpus is live: the agent applies to its roles
+//   SIMPLIFY_MODE=simulation (only when set explicitly) — the fictional-company corpus is live: the agent applies to its roles
 //     through the internal ATS adapter and its employers answer on their own (src/lib/engine/simulation.ts). The user does
 //     nothing operational: the agent applies to every qualified role within the daily limit, standing answers are given
 //     automatically (no approvals, no handoffs), assessments and interview rounds progress on their own. Only the human
 //     moments stay: interview prep, debrief (optional), the offer decision. Live-feed vacancies (real companies) keep being
 //     ingested for later but never reach discovery, queues, counts or lists (visibleOpportunities / visibleJobsWhere).
-//   SIMPLIFY_MODE=live — no automatic employer activity; everything behaves as the plain production engine.
+//   SIMPLIFY_MODE=live, unset or anything else — no automatic employer activity; everything behaves as the plain
+//     production engine. Unknown values fall back to live so a typo can never turn the simulation on.
 //
 // Nothing in the UI names the mode. It only decides what the engine does.
 
@@ -14,7 +15,7 @@ export type SimplifyMode = "simulation" | "live";
 
 export function simplifyMode(): SimplifyMode {
   const m = process.env.SIMPLIFY_MODE?.trim().toLowerCase();
-  return m === "live" ? "live" : "simulation";
+  return m === "simulation" ? "simulation" : "live";
 }
 
 export const isSimulation = () => simplifyMode() === "simulation";

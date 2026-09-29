@@ -2,6 +2,7 @@
 // Agent C — mutations for the campaign operating screens (pipeline, approvals, inbox, opportunity detail).
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
+import { isSimulation } from "../mode";
 import { db, noNul } from "../db";
 import { PIPELINE, APPLIED_OR_LATER } from "../engine/taxonomy";
 import { ingestEmail, logEvent, settleSharedAnswers, submit, STANDING_KINDS } from "../engine/agent";
@@ -114,6 +115,7 @@ export type IngestState = {
 /** Paste an employer email → Inbox Intelligence classifies it and moves the pipeline. */
 export async function ingestPastedEmail(_prev: IngestState, form: FormData): Promise<IngestState> {
   const user = await requireUser();
+  if (isSimulation()) return { error: "Сейчас недоступно." };
   const fields = { from: str(form, "from").slice(0, 200), subject: str(form, "subject").slice(0, 300), body: str(form, "body").slice(0, 20000) };
   if (!fields.subject && !fields.body) return { error: "Вставь хотя бы тему или текст письма.", fields };
   if (fields.body.length < 20) return { error: "Текст письма слишком короткий для классификации — вставь письмо целиком.", fields };

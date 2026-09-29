@@ -1,6 +1,9 @@
 // Journey 4: Approvals (approve/edit/reject/handoff), Inbox paste per class, notifications API + mark-read, push moment dismissal.
-import { Client, db, form, check, findings, signupNew } from "./lib.mjs";
+import { Client, db, form, check, findings, signupNew, needsMode } from "./lib.mjs";
 import { newPaidUser, payInvoice } from "./j1.mjs";
+
+// Approvals and handoffs exist only in live mode: in simulation the agent answers every question itself (standingAnswer).
+needsMode("live", "approvals / handoffs");
 
 const { c, inv } = await newPaidUser("j4", { quiet: true });
 await payInvoice(c, inv, "success");

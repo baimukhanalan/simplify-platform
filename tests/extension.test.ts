@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { inflateRawSync } from "node:zlib";
 
-import { jobKey, normalizeUrl, sameJob, urlNeedle } from "../src/app/api/extension/_lib/match";
+import { externalIdMatches, hostCheck, jobKey, normalizeUrl, sameJob, stripPageUrl, urlNeedle } from "../src/app/api/extension/_lib/match";
 import { splitAnswers, SENSITIVE_RE } from "../src/app/api/extension/_lib/answers";
 import { crc32, zip } from "../src/app/api/extension/_lib/zip";
 import type { Answer } from "../src/lib/engine/personalize";
@@ -71,6 +71,37 @@ describe("URL matching", () => {
     assert.ok(!sameJob("https://example.com/careers/123", "https://example.com/careers/124"));
     assert.equal(urlNeedle(jobKey("https://example.com/careers/123")!), "example.com");
     for (const bad of ["", "not a url", "javascript:alert(1)", "chrome://extensions", "ftp://x.com/a"]) assert.equal(jobKey(bad), null, bad);
+  });
+});
+
+describe("host check for id parameters + URL stripping", () => {
+  const stored = "https://boards.greenhouse.io/acme/jobs/4012345";
+  test("gh_jid / ashby_jid count only on the ATS host or the vacancy's own site", () => {
+    const k = (u: string) => jobKey(u)!;
+    assert.equal(hostCheck("https://evil.example/apply?gh_jid=4012345", k("https://evil.example/apply?gh_jid=4012345"), stored).ok, false);
+    const bad = hostCheck("https://evil.example/apply?gh_jid=4012345", k("https://evil.example/apply?gh_jid=4012345"), stored);
+    assert.deepEqual([bad.pageHost, bad.expectedHost], ["evil.example", "boards.greenhouse.io"]);
+    assert.equal(hostCheck("https://job-boards.greenhouse.io/embed/job_app?gh_jid=4012345", k("https://job-boards.greenhouse.io/embed/job_app?gh_jid=4012345"), stored).ok, true);
+    const career = "https://www.acme.com/careers?gh_jid=4012345";
+    assert.equal(hostCheck(career, k(career), "https://acme.com/careers/data-analyst?gh_jid=4012345").ok, true, "the stored Job.url's own host");
+    assert.equal(hostCheck(career, k(career), stored).ok, false, "another site than the stored one");
+    const ash = "https://look-alike.example/jobs?ashby_jid=5f1c2b3a-1234-4abc-9def-0123456789ab";
+    assert.equal(hostCheck(ash, k(ash), "https://jobs.ashbyhq.com/acme/5f1c2b3a-1234-4abc-9def-0123456789ab").ok, false);
+    const ashOk = "https://jobs.ashbyhq.com/acme/x?ashby_jid=5f1c2b3a-1234-4abc-9def-0123456789ab";
+    assert.equal(hostCheck(ashOk, k(ashOk), null).ok, true);
+    // Ids from the path of an ATS host are tied to that host already.
+    assert.equal(hostCheck(stored, k(stored), null).ok, true);
+  });
+  test("only origin + path + vacancy-id parameters are kept", () => {
+    assert.equal(stripPageUrl("https://acme.com/careers/x?gh_jid=42&utm_source=li&email=a%40b.kz#top"), "https://acme.com/careers/x?gh_jid=42");
+    assert.equal(stripPageUrl("https://hh.kz/applicant/vacancy_response?vacancyId=98765432&hhtmFrom=vacancy"), "https://hh.kz/applicant/vacancy_response?vacancyId=98765432");
+    assert.equal(stripPageUrl("javascript:alert(1)"), null);
+  });
+  test("ATS externalId `board:id` matches the page's ATS id", () => {
+    assert.ok(externalIdMatches(jobKey("https://boards.greenhouse.io/acme/jobs/4099999")!, { source: "greenhouse", externalId: "acme:4099999" }));
+    assert.ok(externalIdMatches(jobKey("https://jobs.lever.co/acme/5F1C2B3A-1234-4ABC-9DEF-0123456789AB")!, { source: "lever", externalId: "acme:5f1c2b3a-1234-4abc-9def-0123456789ab" }));
+    assert.ok(!externalIdMatches(jobKey("https://boards.greenhouse.io/acme/jobs/99999")!, { source: "greenhouse", externalId: "acme:4099999" }), "suffix must be a whole id");
+    assert.ok(!externalIdMatches(jobKey("https://boards.greenhouse.io/acme/jobs/4099999")!, { source: "lever", externalId: "acme:4099999" }), "same source only");
   });
 });
 
@@ -200,6 +231,14 @@ describe("token auth + match + mark-submitted (DB)", () => {
     assert.equal(await find.findOpportunityForUrl(userId, "https://boards.greenhouse.io/acme/jobs/401234"), null);
     assert.equal(await find.findOpportunityForUrl(userId, "https://jobs.lever.co/globex/5f1c2b3a-1234-4abc-9def-0123456789ab/apply"), null);
     assert.ok(await find.findOpportunityForUrl(otherId, "https://jobs.lever.co/globex/5f1c2b3a-1234-4abc-9def-0123456789ab/apply"));
+  });
+
+  test("an ATS page finds a vacancy stored under a career-site URL by its externalId `board:id`", async () => {
+    const camp = await db.campaign.findFirstOrThrow({ where: { userId } });
+    const job = await db.job.create({ data: { source: "greenhouse", externalId: "acme:4099999", dedupeKey: "gh-acme-4099999", company: "Acme", title: "BI Analyst", postedAt: new Date(), url: "https://acme.com/careers/bi-analyst" } });
+    const o = await db.opportunity.create({ data: { campaignId: camp.id, jobId: job.id, status: "qualified" } });
+    assert.equal((await find.findOpportunityForUrl(userId, "https://boards.greenhouse.io/acme/jobs/4099999"))?.id, o.id);
+    assert.equal(await find.findOpportunityForUrl(userId, "https://boards.greenhouse.io/acme/jobs/99999"), null);
   });
 
   test("mark-submitted: owner-scoped, needs a package, goes through submit(…, 'user'), closes the handoff, logs the event", async () => {

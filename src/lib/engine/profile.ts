@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { aiJSON } from "../ai";
 import { extractSkills, classifyRole } from "./taxonomy";
-import { findRanges, hasRange, reliableYears, yearsFromFacts } from "./dates";
+import { findRanges, hasRange, reliableYears } from "./dates";
 
 export { yearsFromFacts, reliableYears, fmtFactPeriod, fmtFactDate, experienceFromFacts } from "./dates";
 
@@ -128,6 +128,13 @@ export function parseCVHeuristic(text: string, now = new Date()): ParsedCV {
       cur.details.push(line.replace(BULLET, ""));
       // Keep the fact's text current so a title taken from this line can be removed from it (see above).
       cur.fact.details = cur.details.join("\n");
+    } else if (section !== "edu" && i > 1 && line.length <= 200) {
+      // A result outside any dated role («Продажи выросли на 25%» in a CV without dates) is still a measurable result.
+      const metric = extractMetric(line);
+      if (metric && facts.filter((f) => f.kind === "achievement").length < 6) {
+        const t = line.replace(BULLET, "");
+        facts.push({ kind: "achievement", title: t.length > 90 ? `${t.slice(0, 89).trimEnd()}…` : t, org: "", startDate: "", endDate: "", details: t, metrics: metric, tech: extractSkills(t) });
+      }
     }
   }
   close();
@@ -137,11 +144,33 @@ export function parseCVHeuristic(text: string, now = new Date()): ParsedCV {
   return {
     name, headline, location, email, phone, linkedin, github,
     englishLevel: english,
-    yearsExperience: yearsFromFacts(facts, now),
+    // Dated roles win; with none, a stated total («Опыт 3 года», "5+ years of experience") is the best evidence left.
+    yearsExperience: reliableYears(statedYears(text), facts, now),
     skills: extractSkills(text),
     summary: "",
     facts,
   };
+}
+
+const YEARS_NUM = String.raw`(\d{1,2}(?:[.,]5)?)\s*\+?`;
+const YEARS_RU = String.raw`(?:год(?:а|ов)?|лет)`;
+const YEARS_EN = String.raw`(?:years?|yrs?)`;
+/** Stated total experience: «Опыт 3 года», «опыт работы — 5 лет», «опыт работы более 2 лет», «3 года опыта», "3 years of experience", "Experience: 5+ years". 0 when absent. */
+const STATED_YEARS: RegExp[] = [
+  new RegExp(String.raw`(?<![\p{L}])опыт(?:а|ом)?(?:\s+(?:работы|в\s+\p{L}+|коммерческой\s+разработки|работы\s+в\s+\p{L}+))?\s*[:—–-]?\s*(?:более|больше|свыше|около|от|почти|>)?\s*${YEARS_NUM}\s*${YEARS_RU}(?![\p{L}])`, "iu"),
+  new RegExp(String.raw`(?<![\p{L}\p{N}])${YEARS_NUM}\s*${YEARS_RU}\s+(?:коммерческого\s+|профессионального\s+)?опыта(?![\p{L}])`, "iu"),
+  new RegExp(String.raw`(?<![\p{L}\p{N}])${YEARS_NUM}\s*${YEARS_EN}\s+(?:of\s+)?(?:professional\s+|commercial\s+|work\s+|relevant\s+|hands-on\s+)?(?:work\s+)?experience(?![\p{L}])`, "iu"),
+  new RegExp(String.raw`(?<![\p{L}])experience\s*[:—–-]\s*(?:over\s+|more\s+than\s+)?${YEARS_NUM}\s*${YEARS_EN}(?![\p{L}])`, "iu"),
+];
+export function statedYears(text: string): number {
+  for (const re of STATED_YEARS) {
+    const m = text.match(re);
+    if (m) {
+      const n = Number(m[1].replace(",", "."));
+      if (n > 0 && n <= 50) return n;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -180,7 +209,7 @@ const METRIC_PATTERNS: RegExp[] = [
   // "reduced churn by 12%", "cut costs by $40k", "increased retention by 3 pp", "сократил время на 30%"
   new RegExp(String.raw`(?<![\p{L}])(?:reduc|cut|decreas|lower|increas|grew|grow|boost|improv|rais|sav|shrank|shrunk|accelerat|speed|sped|halv|doubl|tripl|сократ|снизи|увелич|ускор|вырос|подня|сэконом)\p{L}*[^.\n]{0,60}?(?:by|на)\s+${NUM}\s*${UNIT}?(?![\p{L}])`, "iu"),
   // "halved", "doubled", "3x faster", «увеличил конверсию в 2 раза», «в 1,5 раза быстрее», «в 3 раза»
-  /(?<![\p{L}])(?:halved|doubled|tripled|вдвое|втрое)(?![\p{L}])|\d+(?:[.,]\d+)?\s?[xх](?![\p{L}\p{N}])|(?<![\p{L}])в\s+\d+(?:[.,]\d+)?\s+раз(?:а)?(?![\p{L}])/iu,
+  /(?<![\p{L}])(?:halved|doubled|tripled|вдвое|втрое)(?![\p{L}])|\d+(?:[.,]\d+)?\s?[xх](?![\p{L}\p{N}])|(?<![\p{L}])в\s+(?:\d+(?:[.,]\d+)?|полтора|два|три|четыре|пять|десять)\s+раз(?:а)?(?![\p{L}])/iu,
   // scale of the work: «для 50 магазинов», «для 12 отделов», "for 200 stores", "across 30 teams" (never a span of years)
   /(?<![\p{L}])(?:для|на|по|for|across|in)\s+\d[\d\s]*\+?\s+(?!(?:лет|года?|месяц\p{L}*|years?|months?)(?![\p{L}]))\p{L}{3,}/iu,
   // bare figures: "12%", "$40k", "3.5k tickets", "10 000 users"
@@ -195,7 +224,8 @@ const isYearSpan = (m: string) => {
 
 /** The first sentence (or bullet) with a measurable result — "Cut monthly reporting from 3 days to 4 hours". Decimals don't split sentences. */
 export function extractMetric(text: string): string {
-  const sentences = text.split(/\n|(?<!\d)[.!?](?!\d)/).map((x) => x.replace(/^[-•*·]\s*/, "").trim()).filter(Boolean);
+  // «п.п.» (percentage points) is a unit, not two sentence ends.
+  const sentences = text.replace(/(?<![\p{L}])п\.\s?п\./gu, "п\u0000п\u0000").split(/\n|(?<!\d)[.!?](?!\d)/).map((x) => x.replace(/\u0000/g, ".")).map((x) => x.replace(/^[-•*·]\s*/, "").trim()).filter(Boolean);
   for (const re of METRIC_PATTERNS) {
     const hit = sentences.find((x) => {
       const m = x.match(re);
@@ -217,7 +247,8 @@ export async function parseCV(text: string) {
     prompt: `CV:\n"""\n${text.slice(0, 30000)}\n"""`,
     fallback: () => parseCVHeuristic(text),
   });
-  return { ...res, data: { ...res.data, yearsExperience: reliableYears(res.data.yearsExperience, res.data.facts) } };
+  const stated = res.data.yearsExperience > 0 ? res.data.yearsExperience : statedYears(text);
+  return { ...res, data: { ...res.data, yearsExperience: reliableYears(stated, res.data.facts) } };
 }
 
 /** AI mini-interview: questions that turn thin CV bullets into concrete, quantified facts. */

@@ -45,7 +45,9 @@ const snap = (v: Record<string, boolean>, sensitive: string, autoOn: boolean, th
 
 /**
  * `standing`: auto-apply, standard answers and sensitive questions are fixed standing rules of the agent (it applies to
- * every qualified role and answers everything itself) — those controls are not shown and their values are sent as is.
+ * every qualified role and answers everything itself) — those controls, and the «Только с твоего разрешения» switches,
+ * are not shown and not sent at all: the server keeps the user's stored values for them (mergeAutonomyForm), so saving
+ * here never overwrites them. A static «Подача заявок» row states the standing rule instead.
  */
 export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = false }: { initial: Autonomy; rows: Row[]; autoSubmitConsent: boolean; standing?: boolean }) {
   const { state, pending, formAction, onSubmit: submit } = useActionForm<AutonomyState>(saveAutonomy, {});
@@ -77,17 +79,17 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = fals
               key={r.key} name={r.key} label={r.label} hint={r.hint} checked={v[r.key]} onChange={(x) => setV((p) => ({ ...p, [r.key]: x }))}
             />
           ))}
+          {standing && (
+            <div className="flex items-start justify-between gap-4 py-3.5">
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <span className="text-[15px] text-head">Подача заявок</span>
+                <span className="text-[13px] text-ink-3">Агент сам подаёт на каждую подходящую вакансию в пределах дневного лимита и отвечает на вопросы анкеты</span>
+              </div>
+              <span className="mt-0.5 inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] uppercase tracking-[.08em] text-green"><Check className="size-4" aria-hidden />Всегда</span>
+            </div>
+          )}
         </div>
       </fieldset>
-
-      {standing && (
-        <>
-          <input type="hidden" name="answerStandard" value={v.answerStandard ? "on" : ""} />
-          <input type="hidden" name="submitApplications" value={autoOn ? "on" : ""} />
-          <input type="hidden" name="autoApplyMinMatch" value={threshold} />
-          <input type="hidden" name="sensitive" value={sensitive} />
-        </>
-      )}
 
       {!standing && <fieldset id="auto-apply" aria-labelledby="auto-h" className="glass scroll-mt-24 p-5 sm:p-6">
         <h2 id="auto-h" className="label mb-1">Автоподача</h2>
@@ -130,14 +132,14 @@ export function AutonomyForm({ initial, rows, autoSubmitConsent, standing = fals
         </div>
       </fieldset>}
 
-      <fieldset aria-labelledby="ask-h" className="glass p-5 sm:p-6">
+      {!standing && <fieldset aria-labelledby="ask-h" className="glass p-5 sm:p-6">
         <h2 id="ask-h" className="label mb-1">Только с твоего разрешения</h2>
         <div className="divide-y divide-line">
           {askRows.map((r) => (
             <Switch key={r.key} name={r.key} label={r.label} hint={r.hint} checked={v[r.key]} onChange={(x) => setV((p) => ({ ...p, [r.key]: x }))} />
           ))}
         </div>
-      </fieldset>
+      </fieldset>}
 
       {!standing && <fieldset className="glass p-5 sm:p-6" aria-describedby="sensitive-help">
         <legend className="mb-1 float-left w-full"><h2 className="label">Деликатные вопросы</h2></legend>

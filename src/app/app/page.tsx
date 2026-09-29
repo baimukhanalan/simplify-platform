@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
 import { currentCampaign, type NeedsYou } from "@/lib/ops-data";
 import { maybeSimulateEmployers } from "@/lib/engine/simulation";
-import { decisionsWaiting, needsYouCached } from "../_components/global-needs";
+import { decisionsWaiting, ENABLE_AUTOSUBMIT, needsYouCached } from "../_components/global-needs";
 import { ago } from "@/lib/ops";
 import { ButtonLink, Card, Chip, Label, Script, cx } from "@/components/ui";
 import { dayKey, greeting, hhmm, loadToday, type Today } from "./_components/today-data";
@@ -50,7 +50,8 @@ function pickNext(d: Today, n: NeedsYou): { action: NextAction; also: { label: s
     href: `/app/interviews/${i.id}`, cta: "Подготовиться", icon: CalendarClock,
   });
   if (soonIv) cands.push(iv(soonIv, "Интервью"));
-  const a = assessments[0];
+  // needsYou.assessments is 0 when assessments are not the user's task (simulation: they progress on their own).
+  const a = n.assessments ? assessments[0] : undefined;
   if (a) cands.push({
     eyebrow: "Тестовое задание",
     title: `Тестовое задание от ${a.opportunity.job.company}`,
@@ -79,6 +80,12 @@ function pickNext(d: Today, n: NeedsYou): { action: NextAction; also: { label: s
   const later = interviews.find((i) => i !== soonIv);
   if (later) cands.push(iv(later, "Скоро интервью"));
 
+  if (n.enableAutoSubmit) cands.unshift({
+    eyebrow: "Автоподача",
+    title: ENABLE_AUTOSUBMIT.text,
+    sub: "Без твоего согласия агент не может отправлять заявки. Одно переключение — дальше он всё делает сам.",
+    href: ENABLE_AUTOSUBMIT.href, cta: "Включить", icon: ShieldCheck,
+  });
   const [action, ...rest] = cands;
   return { action: action ?? null, also: rest.slice(0, 3).map((c) => ({ label: c.title, href: c.href })) };
 }

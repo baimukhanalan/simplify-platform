@@ -671,6 +671,14 @@ const REGION_COUNTRY: Partial<Record<Region, string>> = { KZ: "KZ", UK: "GB", US
 const USD_PER: Record<string, number> = { USD: 1, EUR: 1.08, GBP: 1.27, AED: 0.27, KZT: 1 / 500 };
 
 /** Deterministic roles for one goal spec. The same spec always yields the same roles (and the same keys). */
+/**
+ * Index blocks of tailoredSeeds: indices in block k > 0 are team variants of the goal's titles («Data Analyst, Payments»),
+ * so a narrow goal whose title × company × city combinations are all taken still gets new, distinct roles.
+ */
+export const VARIANT_SPAN = 1000;
+const TEAMS_EN = ["Payments", "Growth", "Platform", "Risk", "Marketplace", "Operations", "Customer Experience", "Logistics", "B2B", "Retail", "Fintech", "Internal Tools"];
+const TEAMS_RU = ["платежи", "рост", "платформа", "риски", "маркетплейс", "операции", "клиентский опыт", "логистика", "B2B", "розница", "финтех", "внутренние сервисы"];
+
 export function tailoredSeeds(spec: TailorSpec, count: number, offset = 0): Seed[] {
   const f = FAMILIES[spec.family];
   const dict = new Set(SKILL_DICTIONARY.map((x) => x.toLowerCase()));
@@ -696,7 +704,10 @@ export function tailoredSeeds(spec: TailorSpec, count: number, offset = 0): Seed
     const companies = COMPANIES.filter((c) => c.places.includes(place.id));
     if (!companies.length) continue;
     const company = pick(r, companies);
-    const title = f ? pick(r, f.titles[spec.level]).title : spec.level === "senior" && !/[Ѐ-ӿ]/.test(spec.title) ? `Senior ${spec.title}` : spec.level === "junior" && !/[Ѐ-ӿ]/.test(spec.title) ? `Junior ${spec.title}` : spec.title;
+    const baseTitle = f ? pick(r, f.titles[spec.level]).title : spec.level === "senior" && !/[Ѐ-ӿ]/.test(spec.title) ? `Senior ${spec.title}` : spec.level === "junior" && !/[Ѐ-ӿ]/.test(spec.title) ? `Junior ${spec.title}` : spec.title;
+    const variant = Math.floor(i / VARIANT_SPAN);
+    const team = variant ? Math.floor(variant * 3 + r() * 3) % TEAMS_EN.length : -1;
+    const title = team < 0 ? baseTitle : /[Ѐ-ӿ]/.test(baseTitle) ? `${baseTitle} (${TEAMS_RU[team]})` : `${baseTitle}, ${TEAMS_EN[team]}`;
     if (out.some((s) => dedupe(s.company, s.title, s.location) === dedupe(company.name, title, place.loc))) continue;
     const stack = stackBase.length ? pickN(r, stackBase, Math.min(stackBase.length, 3 + Math.floor(r() * 2))) : [];
     // A stated salary never sits under the user's minimum; when the market here can't meet it, the posting names none.

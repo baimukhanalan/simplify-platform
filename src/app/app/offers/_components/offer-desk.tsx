@@ -1,10 +1,10 @@
 import type { Offer } from "@prisma/client";
 import { ArrowDown, Check } from "lucide-react";
-import { j } from "@/lib/db";
 import { Card, Chip, Field, Label, Script, cx } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { benchmarkOffer, negotiationPlan, negotiationUpside, type Aggressiveness } from "@/lib/engine/offer";
-import { fxToUsd } from "@/lib/engine/fx";
+import { fromUSD, fxToUsd, toUSD } from "@/lib/engine/fx";
+import { db, j } from "@/lib/db";
 import { fmtMoney, fmtMoneyRange } from "@/lib/engine/taxonomy";
 import { WORK_MODE_RU, count, marketBasisRu } from "../../../_components/ru";
 import { noticeRu } from "@/lib/ru";
@@ -31,7 +31,12 @@ const ordinal = (n: number) => `${n}-м`;
 type Minimum = { amount: number; currency: string };
 type Props = { offer: Offer; level: Aggressiveness; roleFamily: string; seniority: string; regions: string[]; strengths: string[]; name: string; minimum?: Minimum };
 
-export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, strengths, name, minimum }: Props) {
+export async function OfferDesk({ offer: o, level, roleFamily, seniority, regions, strengths, name, minimum }: Props) {
+  // The vacancy's posted range (in the offer currency): the ceiling when the offer already sits at the market top.
+  const job = o.opportunityId ? (await db.opportunity.findUnique({ where: { id: o.opportunityId }, select: { job: { select: { salaryMin: true, salaryMax: true, currency: true } } } }))?.job : null;
+  const postedHigh = job ? fromUSD(toUSD(job.salaryMax ?? job.salaryMin ?? 0, job.currency), o.currency) : 0;
+  const postedLow = job ? fromUSD(toUSD(job.salaryMin ?? job.salaryMax ?? 0, job.currency), o.currency) : 0;
+  const posted = postedHigh > 0 ? { low: postedLow || postedHigh, high: postedHigh } : null;
   const minLabel = minimum?.amount ? fmtMoney(minimum.amount, minimum.currency) : "";
   const fx = fxToUsd(o.currency); // the market model is USD; convert back so every number speaks the offer currency
   const bm = benchmarkOffer({ base: Math.round(o.base * fx), roleFamily, seniority, regions });
@@ -39,14 +44,16 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
   const plans = Object.fromEntries(
     STYLES.map((s) => {
       // With the goal minimum the lib keeps walk-away, target and ask at or above it (and says belowMinimum).
-      const plan = negotiationPlan({ company: o.company, role: o.role, base: o.base, currency: o.currency, range, strengths, name, level: s.level, minimum });
+      const plan = negotiationPlan({ company: o.company, role: o.role, base: o.base, currency: o.currency, range, strengths, name, level: s.level, minimum, posted });
       const m = (n: number) => kMoney(n, o.currency);
+      const postedRef = plan.capSource === "posted" ? m(plan.ceiling) : null;
+      const signing = fmtMoney(plan.signingBonus, o.currency);
       return [s.level, {
         ...plan,
-        args: talkingPoints({ role: o.role, low: m(range.low), high: m(range.high), strengths, position: o.base < range.mid ? "below" : o.base < range.high ? "upper" : "top" }),
-        callScript: callScript({ ask: m(plan.ask), walkaway: fmtMoney(plan.walkaway, o.currency) }),
-        fallback: fallbackLevers(fmtMoney(Math.max(3000, (plan.target - o.base) * 0.6), o.currency)),
-        email: negotiationEmail({ role: o.role, company: o.company, name, level: s.level, ask: m(plan.ask), low: m(range.low), high: m(range.high), strengths }),
+        args: talkingPoints({ role: o.role, low: m(range.low), high: m(range.high), strengths, position: o.base < range.mid ? "below" : o.base < range.high ? "upper" : "top", posted: postedRef, mode: plan.mode }),
+        callScript: callScript({ ask: m(plan.ask), walkaway: fmtMoney(plan.walkaway, o.currency), mode: plan.mode, signing }),
+        fallback: fallbackLevers(signing),
+        email: negotiationEmail({ role: o.role, company: o.company, name, level: s.level, ask: m(plan.ask), low: m(range.low), high: m(range.high), posted: postedRef, strengths, mode: plan.mode, signing }),
       }];
     }),
   ) as Record<Aggressiveness, ReturnType<typeof negotiationPlan>>;
@@ -57,7 +64,9 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
   const { low: upLow, high: upHigh } = negotiationUpside(plans, o.base);
   const { belowMinimum: belowMin, minimum: minInOffer, minimumLine } = plans.balanced;
   const upside = upHigh > 0 ? `+${upLow === upHigh || upLow <= 0 ? k(upHigh) : fmtMoneyRange(Math.max(0, upLow), upHigh, o.currency)}` : "—";
-  const negotiate = bm.recommend || belowMin;
+  // A posted range above the offer: the percentile alone would say «top of the market» while the vacancy budgets more.
+  const postedAbove = Boolean(posted && posted.high > o.base && plans.balanced.mode === "base");
+  const negotiate = bm.recommend || belowMin || postedAbove;
   const ids = { neg: `neg-${o.id}`, decide: `decide-${o.id}`, h: `offer-h-${o.id}` };
 
   return (
@@ -173,7 +182,8 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
           </div>
           <p className="mt-3 text-[13.5px] text-ink-2">
             Оффер на <span className="num text-head">{ordinal(bm.percentile)}</span> перцентиле рынка
-            {bm.gap > 0 ? <> · до медианы <span className="num text-head">{k(Math.round(bm.gap / fx))}</span></> : null}.
+            {bm.gap > 0 ? <> · до медианы <span className="num text-head">{k(Math.round(bm.gap / fx))}</span></> : null}
+            {postedAbove ? <> · вилка вакансии — до <span className="num text-head">{k(posted!.high)}</span>, запас по окладу есть</> : null}.
           </p>
           <p className="mt-auto pt-4 text-[12px] text-ink-3">
             Рынок для уровня {marketBasisRu(bm.basis)}{o.currency !== "USD" ? ` · пересчёт по примерному курсу ${o.currency} → USD` : ""}. Ориентир, а не гарантия.
@@ -188,9 +198,11 @@ export function OfferDesk({ offer: o, level, roleFamily, seniority, regions, str
         <p className="mt-2 max-w-2xl text-[14px] text-white/65">
           {belowMin
             ? <>Оффер ниже твоего минимума (<span className="num">{minLabel}</span>) — сначала поторгуйся: нижняя граница в плане не ниже минимума. Когда условия устроят, прими оффер здесь.</>
-            : negotiate
+            : bm.recommend
             ? <>Оффер ниже медианы рынка — есть смысл сначала поторговаться. Когда условия устроят, прими оффер здесь.</>
-            : <>Оффер на уровне рынка или выше. Можно принимать — или всё равно попробовать поднять оклад.</>}
+            : postedAbove
+            ? <>Оффер выше рынка, но опубликованная вилка вакансии выше оффера — можно попросить оклад в её пределах. Когда условия устроят, прими оффер здесь.</>
+            : <>Оффер на уровне рынка или выше. Оклад можно не обсуждать — при желании попроси бонус за подписание или пересмотр через 6 месяцев.</>}
           {" "}Принятие завершает кампанию статусом HIRED: агент перестаёт подавать заявки.
         </p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start">
@@ -267,6 +279,20 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths, atMinimum }
   const delta = (n: number) => (n > o.base ? `+${money(n - o.base)} к офферу` : "на уровне оффера");
   return (
     <div className="flex flex-col gap-6">
+      {plan.mode === "no_push" ? (
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-line bg-white/60 px-4 py-4 sm:px-5">
+          <div className="label">Оклад</div>
+          <div className="num mt-1.5 text-[clamp(32px,5vw,44px)] leading-none text-head">{money(o.base)}</div>
+          <div className="mt-1.5 text-[12.5px] text-ink-3">уже выше рынка · оклад не обсуждаем</div>
+        </div>
+        <div className="rounded-2xl border border-green/20 bg-green-soft px-4 py-4 sm:px-5">
+          <div className="label !text-green">Что попросить</div>
+          <div className="num mt-1.5 text-[clamp(32px,5vw,44px)] leading-none text-green">{money(plan.signingBonus)}</div>
+          <div className="mt-1.5 text-[12.5px] text-ink-3">бонус за подписание · или пересмотр через 6 месяцев</div>
+        </div>
+      </div>
+      ) : (
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-2xl border border-green/20 bg-green-soft px-4 py-4 sm:px-5">
           <div className="label !text-green">Контрпредложение</div>
@@ -279,6 +305,7 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths, atMinimum }
           <div className="mt-1.5 text-[12.5px] text-ink-3">{atMinimum ? "твой минимум из цели · ниже — только с компенсацией" : "нижняя граница оклада · ниже — только с компенсацией"}</div>
         </div>
       </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="flex flex-col gap-6">
@@ -301,7 +328,7 @@ function PlanPanel({ offer: o, level, label, plan, saved, strengths, atMinimum }
             </ol>
           </div>
           <div>
-            <div className="label mb-2.5">Если оклад не двигается</div>
+            <div className="label mb-2.5">{plan.mode === "no_push" ? "Что ещё можно обсудить" : "Если оклад не двигается"}</div>
             <ul className="flex flex-wrap gap-1.5">{plan.fallback.map((f) => <li key={f} className="max-w-full"><Chip tone="teal" wrap>{f}</Chip></li>)}</ul>
           </div>
         </div>

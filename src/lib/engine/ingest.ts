@@ -55,6 +55,9 @@ export function kzCountries(countries: string[], remote: string, kz: KzVerdict):
   return countries.length ? countries : ["*"];
 }
 
+/** A location that names no place but the whole world: the role is remote. */
+export const REMOTE_LOCATION = /\b(anywhere|world\s*-?\s*wide|global(ly)?|remote)\b/i;
+
 export function normalize(raw: RawJob) {
   return normalizeWithVerdict(raw).job;
 }
@@ -70,7 +73,8 @@ function normalizeWithVerdict(raw: RawJob) {
   const loc = r.location || "";
   let countries = COUNTRY_WORDS.filter(([re]) => re.test(loc)).map(([, c]) => c);
   if (countries.includes("EU*")) countries = [...countries.filter((c) => c !== "EU*"), ...EU];
-  const remote = r.workplace ?? (r.remoteHint || /\bremote\b/i.test(loc) ? "remote" : /hybrid/i.test(`${loc} ${plain.slice(0, 1500)}`) ? "hybrid" : "onsite");
+  // "Anywhere" / "Worldwide" / "Global(ly)" as a location is a remote role, not an office somewhere.
+  const remote = r.workplace ?? (r.remoteHint || /\bremote\b/i.test(loc) || REMOTE_LOCATION.test(loc) ? "remote" : /hybrid/i.test(`${loc} ${plain.slice(0, 1500)}`) ? "hybrid" : "onsite");
   const kz = openFromKazakhstan({ title: r.title, location: loc, description: plain, workplace: remote });
   countries = kzCountries(countries, remote, kz);
   const roleFamily = classifyRole(r.title);

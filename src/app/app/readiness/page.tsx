@@ -32,13 +32,14 @@ export default async function ReadinessPage() {
     );
   }
 
-  const { readiness: r, range, goal, family } = data;
+  const { readiness: r, goal, family } = data;
   const view = readinessView(data);
   const fixSeniority = r.suggestedSeniority !== goal.seniority;
   // The market model is yearly USD; the fix lowers the minimum to that median in the goal's own currency (₸ stays ₸).
   const usdMid = marketRange(family, goal.seniority, goal.countries).mid;
   const salaryTarget = usdToGoalAmount(usdMid, goal.currency);
-  const fixSalary = toUSD(goal.minSalary, goal.currency) > usdMid && salaryTarget > 0;
+  // An offer at or above the minimum already proves it: never suggest lowering it then.
+  const fixSalary = toUSD(goal.minSalary, goal.currency) > usdMid && salaryTarget > 0 && !data.offerMeetsMinimum;
   const roles = r.suggestedRoles.filter((x) => x !== goal.primaryRole && !goal.extraRoles.includes(x)).slice(0, 2);
 
   const needs: Need[] = [];

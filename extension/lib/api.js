@@ -3,22 +3,54 @@
 "use strict";
 
 const DEFAULT_BASE = "https://simplify-platform-tau.vercel.app";
+/** The only servers the key is ever sent to: production, and the local dev server (same list as manifest host_permissions). */
+const ALLOWED_BASES = [DEFAULT_BASE, "http://localhost:3210", "http://127.0.0.1:3210"];
+
+// The key is a secret: keep chrome.storage.local out of reach of content scripts (injected into employer pages).
+try {
+  const p = chrome.storage.local.setAccessLevel && chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  if (p && p.catch) p.catch(() => undefined);
+} catch { /* older Chrome: content scripts never read storage here anyway */ }
 
 async function getSettings() {
   const s = await chrome.storage.local.get({ token: "", baseUrl: DEFAULT_BASE });
   return { token: String(s.token || "").trim(), baseUrl: normalizeBase(s.baseUrl) || DEFAULT_BASE };
 }
 
-/** "https://host[:port]" only — no path, no trailing slash; http only for localhost. */
+/** One of ALLOWED_BASES as "scheme://host[:port]", or "" for anything else (another host must never receive the key). */
 function normalizeBase(raw) {
   try {
-    const u = new URL(String(raw || "").trim());
-    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
-    if (u.protocol !== "https:" && !(u.protocol === "http:" && local)) return "";
-    return u.origin;
+    const origin = new URL(String(raw || "").trim()).origin;
+    return ALLOWED_BASES.includes(origin) ? origin : "";
   } catch {
     return "";
   }
+}
+
+/** Query parameters that identify a vacancy; everything else in the tab URL (tracking, emails, sessions) stays local. */
+const ID_PARAMS = ["gh_jid", "ashby_jid", "token", "for", "vacancyId"];
+
+/** origin + path + vacancy-id parameters only (mirrors stripPageUrl in src/app/api/extension/_lib/match.ts). */
+function stripPageUrl(raw) {
+  try {
+    const u = new URL(String(raw || ""));
+    if (u.protocol !== "https:" && u.protocol !== "http:") return "";
+    const out = new URL(u.origin + u.pathname);
+    for (const k of ID_PARAMS) {
+      const v = u.searchParams.get(k);
+      if (v) out.searchParams.set(k, v);
+    }
+    return out.toString();
+  } catch {
+    return "";
+  }
+}
+
+/** Hosts of the ATS forms Apply Assist is built for: only there the CV is attached automatically. */
+function isAtsHost(host) {
+  const h = String(host || "").toLowerCase().replace(/^www\./, "");
+  const under = (base) => h === base || h.endsWith(`.${base}`);
+  return under("greenhouse.io") || under("lever.co") || h === "jobs.ashbyhq.com" || h === "apply.workable.com" || under("hh.kz") || under("hh.ru") || under("headhunter.kz");
 }
 
 class ApiError extends Error {
@@ -56,4 +88,4 @@ async function blobToBase64(blob) {
 }
 
 // Exposed for popup.js / options.js (plain scripts, no bundler).
-window.SimplifyApi = { DEFAULT_BASE, getSettings, normalizeBase, api, ApiError, blobToBase64 };
+window.SimplifyApi = { DEFAULT_BASE, ALLOWED_BASES, getSettings, normalizeBase, stripPageUrl, isAtsHost, api, ApiError, blobToBase64 };

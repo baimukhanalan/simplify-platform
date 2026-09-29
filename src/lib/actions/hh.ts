@@ -3,9 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { db } from "../db";
-import { decrypt } from "../crypto";
 import { logEvent } from "../engine/agent";
-import { hhIntegration, myResumes, patchHhMeta, revokeToken } from "../hh/client";
+import { hhAccessToken, hhIntegration, myResumes, patchHhMeta, revokeToken } from "../hh/client";
 
 export type HhActionState = { ok?: boolean; error?: string; savedAt?: number } | undefined;
 
@@ -34,7 +33,7 @@ export async function disconnectHh() {
   const user = await requireUser();
   const row = await hhIntegration(user.id);
   if (!row) return;
-  const token = decrypt(row.accessToken);
+  const token = hhAccessToken(row);
   if (token) await revokeToken(token); // best effort at hh; our copy is deleted regardless
   await db.integration.delete({ where: { id: row.id } });
   await logEvent(user.id, "integration", "hh.kz отключён: токены доступа удалены");

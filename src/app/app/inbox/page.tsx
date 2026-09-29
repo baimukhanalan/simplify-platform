@@ -10,6 +10,8 @@ import { visibleLinkedScope } from "@/lib/ops-data";
 import { INBOX_CLASS, fmtDateTime } from "@/lib/ops";
 import { agoRu } from "../opportunities/_lib/when";
 import { ButtonLink, Chip, Empty, PageHeader, cx } from "@/components/ui";
+import { isSimulation } from "@/lib/mode";
+import { PasteEmail } from "./_components/paste-email";
 import { AgentStatus, type Need } from "../../_components/agent-status";
 import { needsList, needsYouCached } from "../../_components/global-needs";
 import { assessmentDeadline, plural, statusRu } from "../../_components/ru";
@@ -148,6 +150,21 @@ export default async function ResponsesPage({ searchParams }: { searchParams: Pr
         </ul>
       )}
 
+      {/* Live mode: until a mailbox is connected, employer mail can be pasted by hand (Inbox Intelligence). */}
+      {!isSimulation() && (
+        <details className="group rounded-[var(--radius-card)] border border-dashed border-line bg-white/30">
+          <summary className="flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-2 px-5 py-4 text-[13.5px] text-ink-3 hover:text-head focus-visible:outline-2 focus-visible:outline-green [&::-webkit-details-marker]:hidden">
+            <span className="label !text-[11px]">Инструменты</span>
+            <span>Вставить письмо вручную</span>
+            <span className="ml-auto font-mono text-[11px] text-ink-3 group-open:hidden">Показать</span>
+            <span className="ml-auto hidden font-mono text-[11px] text-ink-3 group-open:inline">Скрыть</span>
+          </summary>
+          <div className="flex flex-col gap-2 border-t border-line px-5 pb-6 pt-5">
+            <p className="text-[13.5px] text-ink-2">Пока почта не подключена, перешли письмо сюда — агент разберёт его так же, как будет делать автоматически.</p>
+            <PasteEmail />
+          </div>
+        </details>
+      )}
     </div>
   );
 }

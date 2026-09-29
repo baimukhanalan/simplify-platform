@@ -1,4 +1,5 @@
 // Journey LIVE: Kaspi gating when the server runs in production mode WITHOUT KASPI_MODE (the default must be "live").
+// Independent of SIMPLIFY_MODE (payments behave the same in simulation and live): run it under both.
 // Not part of the default run: restart the isolated copy with KASPI_MODE removed from its .env, then
 //   E2E_APP_DIR=… BASE=… node tests/e2e/run.mjs jlive
 // It refuses to run when the copy's .env still sets KASPI_MODE (the mock journeys need it).
@@ -28,6 +29,11 @@ const mockPay = await c.json("POST", `/api/payments/kaspi/mock/${inv.data?.invoi
 check(mockPay.status === 404, "JL.mock.404", "mock gateway route -> 404", mockPay.status);
 const anonMock = await new Client("anon").json("POST", `/api/payments/kaspi/mock/${inv.data?.invoiceId}/pay`, {});
 check(anonMock.status === 404, "JL.mock.404.anon", "mock gateway route -> 404 for anonymous callers too", anonMock.status);
+// The confirm alias (POST /api/payments/kaspi/confirm/[id]) is the same built-in gateway: off without KASPI_MODE=mock.
+const confirm = await c.json("POST", `/api/payments/kaspi/confirm/${inv.data?.invoiceId}`, { outcome: "success" });
+const anonConfirm = await new Client("anon").json("POST", `/api/payments/kaspi/confirm/${inv.data?.invoiceId}`, {});
+const stillPending = (await db.payment.findUnique({ where: { externalId: inv.data?.invoiceId } }))?.status;
+check(confirm.status === 404 && anonConfirm.status === 404 && stillPending !== "paid", "JL.confirm.404", "confirm alias -> 404 (owner and anonymous), invoice stays unpaid", { owner: confirm.status, anon: anonConfirm.status, stillPending });
 
 const page = await c.get(`/pay/kaspi/${inv.data?.invoiceId}`);
 check(page.status === 200 && !/тестовая оплата/.test(page.text) && /Kaspi/.test(page.text), "JL.page", "pay page shows the real «confirm in Kaspi» flow, no test-payment buttons", page.status);

@@ -14,7 +14,7 @@
 //     result metrics written as spans/deltas are captured.
 // 11. Offer Desk: the negotiation ask never exceeds the market top for an offer below the top.
 // 12. Account deletion redirects to /?deleted=1 and the landing confirms it (only when signed out).
-import { Client, db, form, check, findings, signupNew } from "./lib.mjs";
+import { Client, db, form, check, findings, signupNew, isSim } from "./lib.mjs";
 import { userWithApps, email, INTERVIEW, ASSESS } from "./setup.mjs";
 
 const visible = (html) => html.replace(/<script[\s\S]*?<\/script>/g, " ").replace(/<!-- -->/g, "").replace(/<[^>]+>/g, " ").replace(/&nbsp;| /g, " ").replace(/&#x27;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&").replace(/\s+/g, " ");
@@ -63,6 +63,10 @@ const u = c.user;
 {
   const ag = visible((await c.get("/app/agent")).text);
   const want = ["Искать вакансии", "Адаптировать CV", "Отвечать на стандартные вопросы", "Менять ожидания по зарплате", "Подавать вне выбранных стран", "Подавать ниже минимальной зарплаты"];
+  // Simulation mode pins «Отвечать на стандартные вопросы» on (SIMULATION_AUTONOMY): the Agent screen does not offer that switch.
+  // Simulation mode: the standing rules are not switches — only «Искать вакансии» / «Адаптировать CV» and the static
+  // «Подача заявок · Всегда» row; the «Только с твоего разрешения» switches are hidden (their stored values are kept).
+  if (isSim) want.splice(0, want.length, "Искать вакансии", "Адаптировать CV", "Подача заявок");
   check(want.every((w) => ag.includes(w)), "J15.labels.autonomy", "Agent screen shows the Russian autonomy labels", want.filter((w) => !ag.includes(w)));
   const en = ["Find jobs", "Personalize CV", "Answer standard questions", "Change salary expectation", "Apply outside selected countries", "Apply below salary floor", "ASK ME", "prefer not to say"].filter((w) => ag.toLowerCase().includes(w.toLowerCase()));
   check(!en.length, "J15.labels.autonomy.en", "no English autonomy labels on the Agent screen", en);
@@ -114,7 +118,8 @@ check(!!iv1 && !!iv2, "J15.iv.created", "interview + assessment rounds created f
 }
 
 // ——— 4 · nextCycleQueue reasons ———
-{
+// Live mode only: the auto-apply threshold is pinned at 70 in simulation, so a 99% threshold hold cannot happen there.
+if (!isSim) {
   const sa = await c.action("agent.saveAutonomy", [{}, form({ findJobs: "on", personalizeCv: "on", answerStandard: "on", sensitive: "ask", submitApplications: "on", autoApplyMinMatch: "99" })], { page: "/app/agent" });
   check(sa.result?.ok === true, "J15.queue.autonomy", "auto-apply threshold raised to 99", sa.result ?? sa.text.slice(0, 200));
   const ev = await db.event.findFirst({ where: { userId: u.id, type: "autonomy" }, orderBy: { createdAt: "desc" } });

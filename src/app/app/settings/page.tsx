@@ -10,6 +10,7 @@ import { ActionForm, FormSubmit } from "../profile/_components/action-form";
 import { SectionTitle } from "../profile/_components/bits";
 import { DeleteAccount } from "./_components/delete-account";
 import { AgentStatus } from "../../_components/agent-status";
+import { isSimulation } from "@/lib/mode";
 
 export const metadata: Metadata = { title: "Приватность и данные" };
 
@@ -19,6 +20,11 @@ const CONSENTS = [
   { key: "copilot", title: "Copilot во время интервью", text: "Подсказки во время интервью — из твоего профиля и STAR-историй. Используй Copilot только там, где это допускают правила интервью." },
   { key: "analytics", title: "Продуктовая аналитика", text: "Обезличенные метрики использования, чтобы улучшать продукт. Simplify не продаёт и не передаёт твои данные рекламным сетям." },
 ] as const;
+/** Simulation: there are no manual approval or manual status flows to describe — the same consents, neutral wording. */
+const CONSENT_TEXT_SIM: Partial<Record<(typeof CONSENTS)[number]["key"], string>> = {
+  autoSubmit: "Агент подаёт заявки от твоего имени в пределах дневного лимита. Выключено — агент перестаёт отправлять новые заявки.",
+  emailScan: "Simplify классифицирует ответы работодателей (подтверждение, отказ, тестовое задание, интервью, оффер) и обновляет статусы в Applications.",
+};
 
 const PER_PAGE = 20;
 const LIMIT = 100;
@@ -26,6 +32,7 @@ const LIMIT = 100;
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const [user, sp] = await Promise.all([requireUser(), searchParams]);
   const consents = j<Consents>(user.consents, {});
+  const sim = isSimulation();
   const events = await db.event.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: LIMIT, select: { id: true, type: true, message: true, createdAt: true } });
   const pages = Math.max(1, Math.ceil(events.length / PER_PAGE));
   const page = Math.min(pages, Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1));
@@ -42,7 +49,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <AgentStatus
         needs={[]}
         hereNeeds
-        working={consents.autoSubmit === false ? "Автоподача выключена — агент готовит пакеты, а отправляешь ты." : "Агент действует в рамках этих согласий."}
+        working={consents.autoSubmit === false ? (sim ? "Автоподача выключена — новые заявки не отправляются." : "Автоподача выключена — агент готовит пакеты, а отправляешь ты.") : "Агент действует в рамках этих согласий."}
         className="-mt-3 mb-8"
       />
 
@@ -57,7 +64,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
                     <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-4 has-[:focus-visible]:outline-green">
                       <span className="flex flex-col gap-1">
                         <span className="text-[15px] text-head">{c.title}</span>
-                        <span className="max-w-2xl text-[13.5px] text-ink-3">{c.text}</span>
+                        <span className="max-w-2xl text-[13.5px] text-ink-3">{(sim && CONSENT_TEXT_SIM[c.key]) || c.text}</span>
                       </span>
                       <input type="checkbox" role="switch" name={c.key} defaultChecked={Boolean(consents[c.key])} className="peer sr-only" />
                       <span className="relative mt-0.5 h-6 w-11 shrink-0 rounded-full bg-head/15 transition-colors peer-checked:bg-green after:absolute after:left-0.5 after:top-0.5 after:size-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5" aria-hidden />

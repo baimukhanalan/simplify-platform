@@ -290,7 +290,7 @@ model Approval {
   question      String
   proposed      String       @default("")
   answer        String       @default("")
-  status        String       @default("pending") // pending | approved | edited | rejected
+  status        String       @default("pending") // pending | approved | edited | rejected | auto (simulation auto-answer, never a standing answer in live mode)
   createdAt     DateTime     @default(now())
   resolvedAt    DateTime?
 }
@@ -326,6 +326,8 @@ model Interview {
   createdAt     DateTime    @default(now())
 
   mocks MockSession[]
+
+  @@unique([opportunityId, round]) // one Interview Room per round (createInterview is upsert-safe on P2002)
 }
 
 model MockSession {
@@ -417,11 +419,12 @@ model Integration {
   refreshToken   String    @default("") // encrypted
   tokenHash      String?   @unique // sha256 of the extension token
   expiresAt      DateTime?
-  externalUserId String    @default("")
+  externalUserId String? // hh: the account id (null = none; one hh account ↔ one user, enforced below)
   resumeId       String    @default("") // hh: chosen resume for applications
   meta           String    @default("{}")
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   @@unique([userId, provider])
+  @@unique([provider, externalUserId])
 }

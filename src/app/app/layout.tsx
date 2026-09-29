@@ -2,7 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { isSimulation } from "@/lib/mode";
 import { logout } from "@/lib/actions/auth";
-import { currentCampaign, interviewCounts, unreadMoments } from "@/lib/ops-data";
+import { currentCampaign, interviewCounts, unreadMoments, visibleLinkedScope } from "@/lib/ops-data";
 import { needsYouCached } from "../_components/global-needs";
 import { Nav } from "./nav";
 import { PushMoment } from "./_components/push-moment";
@@ -16,13 +16,13 @@ async function shellData(userId: string) {
   const [waiting, responses, interviews, offers, openOffers, campaign, moments] = await Promise.all([
     // needsYou: the same numbers as every «Нужно от тебя» block; the badge = everything on the «Подтверждения» screen.
     needsYouCached(userId),
-    db.inboxMessage.count({ where: { userId, receivedAt: { gte: since }, classification: { in: ["interview", "assessment", "offer"] } } }),
+    db.inboxMessage.count({ where: { userId, receivedAt: { gte: since }, classification: { in: ["interview", "assessment", "offer"] }, ...visibleLinkedScope() } }),
     // Upcoming interview rounds in the future — the same number as Today, Applications and Interviews (interviewCounts).
     interviewCounts(userId).then((c) => c.upcoming),
     // Offers join the primary nav only once one exists; declined ones don't count.
-    db.offer.count({ where: { userId, status: { not: "declined" } } }),
+    db.offer.count({ where: { userId, status: { not: "declined" }, ...visibleLinkedScope() } }),
     // Same filter as Today's «Следующий шаг» offer (loadToday): when it's there, Today doesn't repeat it as a push.
-    db.offer.count({ where: { userId, status: { in: ["received", "negotiating"] } } }),
+    db.offer.count({ where: { userId, status: { in: ["received", "negotiating"] }, ...visibleLinkedScope() } }),
     currentCampaign(userId),
     unreadMoments(userId),
   ]);

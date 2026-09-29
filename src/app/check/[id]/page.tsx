@@ -192,6 +192,13 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
           </section>
         )}
 
+        {!r.job && (
+          <Card className="flex flex-col gap-1.5">
+            <Label>Подходящая вакансия</Label>
+            <p className="text-[14px] leading-relaxed text-ink-2">Сейчас в базе нет вакансии «{title}», где ты проходишь по требованиям с Match от 70%. Базу пополняем каждый день — после регистрации агент покажет такие вакансии, как только они появятся.</p>
+          </Card>
+        )}
+
         {/* Positioning */}
         {r.positioning && (
           <section className="flex flex-col gap-3">
@@ -206,7 +213,7 @@ export default async function CheckResultPage({ params }: { params: Promise<{ id
                 <div className="flex flex-wrap gap-1.5">{r.positioning.skillsBefore.map((x) => <Chip key={x}>{x}</Chip>)}</div>
               </Card>
               <Card strong className="flex flex-col gap-3 ring-1 ring-green/15">
-                <Label className="!text-green">Стало · под вакансию {r.job ? `«${r.job.title}»` : ""}</Label>
+                <Label className="!text-green">{r.job ? `Стало · под вакансию «${r.job.title}»` : `Стало · под роль «${title}»`}</Label>
                 <p className="text-[14.5px] leading-relaxed text-head">{r.positioning.after}</p>
                 <Label className="mt-2">Навыки по релевантности</Label>
                 <div className="flex flex-wrap gap-1.5">

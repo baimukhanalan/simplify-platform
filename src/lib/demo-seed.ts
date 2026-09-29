@@ -229,7 +229,17 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
     const mark = new Date();
     await db.opportunity.update({ where: { id: offerOpp.id }, data: { status: "final" } });
     const iv = await createInterview(user.id, offerOpp.id, "final", new Date(realNow - 2 * DAY));
-    await db.interview.update({ where: { id: iv.id }, data: { status: "passed", debrief: s({ questions: ["Walk me through your segmentation project", "SQL window functions"], hard: "Stakeholder conflict question", nextSteps: "Offer expected this week", salaryDiscussed: true, score: 78 }) } });
+    await db.interview.update({ where: { id: iv.id }, data: { status: "passed", debrief: s({
+      questions: ["Расскажи о проекте по сегментации клиентов", "Оконные функции в SQL"],
+      hard: "Вопрос про конфликт со стейкхолдером",
+      // "Ответ обещали" agrees with nextSteps: the answer is due today, the day the offer arrives.
+      nextSteps: "Решение по офферу — в ближайшие дни",
+      answerBy: new Date(realNow).toISOString().slice(0, 10),
+      outcome: "passed",
+      salaryDiscussed: true,
+      salaryNote: "Обсуждали вилку оклада",
+      score: 78,
+    }) } });
     await shiftSince(user.id, campaign.id, mark, realNow - 5 * DAY); // the final was set up 5 days ago…
     await db.interview.update({ where: { id: iv.id }, data: { scheduledAt: new Date(realNow - 2 * DAY) } }); // …and held 2 days ago
     await playStep(user.id, offerOpp.id, "offer", new Date(realNow - 90 * 60000));
@@ -257,7 +267,7 @@ export async function seedDemo(opts: { staff: boolean; staffPassword?: string } 
     const users = await db.campaign.findMany({ where: { status: { in: ["active", "paused"] } }, select: { userId: true }, distinct: ["userId"] });
     for (const u of users) {
       const r = await settleSimulationChores(u.userId);
-      if (r.removed || r.answered || r.closed) log(`  settled ${u.userId}: removed ${r.removed}, answered ${r.answered}, closed ${r.closed}`);
+      if (r.answered || r.closed) log(`  settled ${u.userId}: answered ${r.answered}, closed ${r.closed}`);
     }
   }
 

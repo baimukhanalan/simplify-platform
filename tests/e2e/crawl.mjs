@@ -1,7 +1,7 @@
 // Crawl every internal href reachable from the seed pages as a given client. Reports non-2xx/3xx and error pages.
 import { Client, BASE } from "./lib.mjs";
 
-const SEEDS = ["/", "/app", "/app/agent", "/app/applications", "/app/approvals", "/app/campaign", "/app/career", "/app/goal", "/app/hired", "/app/inbox", "/app/insights", "/app/interviews", "/app/offers", "/app/opportunities", "/app/pipeline", "/app/profile", "/app/readiness", "/app/settings", "/onboarding", "/onboarding?step=1", "/onboarding?step=2", "/onboarding?step=3", "/onboarding?step=4", "/onboarding?step=5", "/check", "/login", "/signup", "/privacy", "/terms", "/partners", "/admin"];
+const SEEDS = ["/", "/app", "/app/agent", "/app/applications", "/app/approvals", "/app/campaign", "/app/career", "/app/goal", "/app/hired", "/app/inbox", "/app/insights", "/app/interviews", "/app/offers", "/app/opportunities", "/app/pipeline", "/app/profile", "/app/readiness", "/app/settings", "/app/extension", "/onboarding", "/onboarding?step=1", "/onboarding?step=2", "/onboarding?step=3", "/onboarding?step=4", "/onboarding?step=5", "/check", "/login", "/signup", "/privacy", "/terms", "/partners", "/admin"];
 
 const decode = (h) => h.replace(/&amp;/g, "&").replace(/&#x27;/g, "'").replace(/&quot;/g, '"');
 

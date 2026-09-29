@@ -2,7 +2,7 @@
 // Popup: find the vacancy of the active tab in the user's Simplify, fill the form ONLY on the user's click, show what was
 // filled and what needs attention, and let the user record that THEY submitted. Nothing here clicks Submit.
 (() => {
-  const { getSettings, api, blobToBase64 } = window.SimplifyApi;
+  const { getSettings, api, blobToBase64, stripPageUrl, isAtsHost } = window.SimplifyApi;
   const view = document.getElementById("view");
 
   // ——— tiny DOM helper: text only, never innerHTML with server data ———
@@ -53,11 +53,26 @@
     render(note(text, "err"), withSettings ? h("div", { class: "actions" }, h("button", { class: "btn btn-glass", onclick: () => chrome.runtime.openOptionsPage() }, "Настройки")) : null);
   }
 
+  const tabHost = () => {
+    try { return new URL((state.tab && state.tab.url) || "").hostname.replace(/^www\./, ""); } catch { return ""; }
+  };
+  /** The CV is attached automatically only on the ATS forms the extension is built for — never on any other site. */
+  const cvAutoAttach = () => isAtsHost(tabHost());
+
   function jobCard() {
     const m = state.match;
+    const host = h("div", { class: "muted" }, `Страница: ${tabHost() || "—"}`);
+    if (m && m.hostMismatch) {
+      return h("div", { class: "card job" },
+        h("h2", {}, "Адрес страницы не совпадает с вакансией"),
+        host,
+        h("p", { class: "note err" }, `Вакансия в Simplify размещена на ${m.expectedHost || "другом сайте"}, а эта страница — ${m.pageHost || tabHost()}. Проверь адрес: CV и ответы сюда не подставляются, можно заполнить только контакты.`),
+      );
+    }
     if (!m || !m.matched) {
       return h("div", { class: "card job" },
         h("h2", {}, "Вакансии нет в твоём Simplify"),
+        host,
         h("p", { class: "muted" }, "Можно заполнить только контакты и ссылки из профиля. CV под вакансию, письмо и ответы есть только у вакансий из Simplify."),
       );
     }
@@ -67,6 +82,7 @@
     return h("div", { class: "card job" },
       h("h2", {}, o.title),
       h("div", { class: "company" }, o.company),
+      host,
       h("div", { class: "chips" },
         h("span", { class: `chip ${submitted ? "chip-green" : "chip-neutral"}` }, submitted ? "Отправлено" : STATUS_RU[o.status] || o.status),
         p ? h("span", { class: "chip chip-green" }, "CV под вакансию") : h("span", { class: "chip chip-amber" }, "Пакет не готов"),
@@ -87,6 +103,7 @@
     const warn = [];
     for (const a of r.attention) warn.push(h("li", { class: "warn" }, h("span", { class: "mark" }, "!"), `${a.field}: ${a.reason}`));
     if (r.resume === "no-input" && state.match && state.match.package && state.match.ats !== "hh") warn.push(h("li", { class: "warn" }, h("span", { class: "mark" }, "!"), "Поле для CV не найдено — прикрепи файл вручную"));
+    if (r.resume === "skipped-host") warn.push(h("li", { class: "warn" }, h("span", { class: "mark" }, "!"), `CV не прикреплён автоматически на ${tabHost()} — прикрепи файл вручную`));
     if (r.resume === "failed") warn.push(h("li", { class: "err" }, h("span", { class: "mark" }, "×"), "CV не удалось прикрепить — прикрепи вручную"));
     const held = (state.match && state.match.package && state.match.package.held) || [];
     return h("div", { class: "card check" },
@@ -139,7 +156,7 @@
       const m = state.match;
       const profile = await api("/api/extension/profile");
       let cv = null;
-      if (m && m.matched && m.package) {
+      if (m && m.matched && m.package && cvAutoAttach()) {
         try {
           const blob = await api(m.package.cv.path, { as: "blob" });
           cv = { base64: await blobToBase64(blob), fileName: m.package.cv.fileName };
@@ -180,7 +197,8 @@
     } catch {
       results = await run(false); // a cross-origin frame we have no access to — fill the top page only
     }
-    const merged = { frames: 0, filled: [], attention: [], resume: "none", cvFetchFailed: Boolean(state.match && state.match.package && !payload.cv) };
+    const skippedHost = Boolean(state.match && state.match.matched && state.match.package && !cvAutoAttach());
+    const merged = { frames: 0, filled: [], attention: [], resume: skippedHost ? "skipped-host" : "none", cvFetchFailed: Boolean(state.match && state.match.package && !payload.cv && !skippedHost) };
     const rank = { attached: 3, failed: 2, "no-input": 1, none: 0 };
     for (const r of results || []) {
       const v = r && r.result;
@@ -188,7 +206,7 @@
       merged.frames++;
       merged.filled.push(...v.filled);
       merged.attention.push(...v.attention);
-      if ((rank[v.resume] || 0) > (rank[merged.resume] || 0)) merged.resume = v.resume;
+      if (!skippedHost && (rank[v.resume] || 0) > (rank[merged.resume] || 0)) merged.resume = v.resume;
     }
     return merged;
   }
@@ -226,7 +244,8 @@
     if (!/^https?:\/\//.test(url)) return render(note("Открой страницу вакансии или форму отклика — и нажми на значок ещё раз.", ""));
     render(h("p", { class: "muted" }, "Ищем вакансию в твоём Simplify…"));
     try {
-      state.match = await api(`/api/extension/match?url=${encodeURIComponent(url)}`);
+      // Only origin + path + vacancy-id parameters leave the browser (no tracking ids, emails or session tokens).
+      state.match = await api(`/api/extension/match?url=${encodeURIComponent(stripPageUrl(url))}`);
     } catch (err) {
       return viewError(errorText(err), err && err.status === 401);
     }

@@ -74,6 +74,9 @@ describe("openFromKazakhstan", () => {
     ["Astana on site is still open to a KZ resident", { location: "Astana", workplace: "onsite" }, "open"],
     ["Central Asia", { location: "Remote - Central Asia" }, "open"],
     ["CIS / СНГ", { location: "Удалённо, СНГ" }, "open"],
+    ["CIS in the title as a region", { title: "Sales Manager, CIS", location: "Remote" }, "open"],
+    ["CIS region in the title", { title: "Account Executive — CIS region", location: "Remote" }, "open"],
+    ["CIS as a security framework is not a region", { title: "CIS Security Engineer", location: "Remote" }, "unclear"],
     ["Eurasia", { location: "Remote, Eurasia" }, "open"],
     ["Anywhere", { location: "Anywhere" }, "open"],
     ["Worldwide", { location: "Remote - Worldwide" }, "open"],
@@ -269,6 +272,11 @@ describe("normalize() folds the KZ verdict into countries", () => {
     assert.deepEqual(countriesOf("Remote - India"), ["APAC"]);
     assert.deepEqual(countriesOf("Worldwide", { remoteHint: true, description: "You must be located in the United States." }), ["US"]);
     assert.deepEqual(countriesOf("Remote - US only"), ["US"]);
+  });
+  test("«Anywhere» / «Worldwide» / «Global(ly)» as the location is a remote role, not on-site", () => {
+    for (const loc of ["Anywhere", "Worldwide", "World-wide", "Global", "Globally", "Anywhere in the world"]) assert.equal(ingest.normalize(raw(loc)).remote, "remote", loc);
+    assert.equal(ingest.normalize(raw("Almaty, Kazakhstan")).remote, "onsite");
+    assert.equal(ingest.normalize(raw("Anywhere", { workplace: "hybrid" })).remote, "hybrid", "structured workplace still wins");
   });
   test("jobs pinned by location keep their countries; structured workplace wins over the text", () => {
     assert.deepEqual(countriesOf("Berlin, Germany"), ["DE"]);

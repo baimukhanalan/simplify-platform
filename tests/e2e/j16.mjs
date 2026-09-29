@@ -13,7 +13,7 @@
 //  8. Money and dates: one money format «$52 000» / «7 200 000 ₸» (narrow no-break space), no «$52,000», «$52k», «KZT».
 //  9. The agent-cycle event names what waits («N вакансий ждут твоего решения в Opportunities», …) only when a decision really waits (event data); never the vague «часть заявок».
 // 10. Onboarding readiness «Минимум $X (медиана рынка)» on a ₸ goal keeps the goal consistent (currency + amount).
-import { Client, db, form, check, findings, signupNew } from "./lib.mjs";
+import { Client, db, form, check, findings, signupNew, isSim } from "./lib.mjs";
 import { newPaidUser, payInvoice } from "./j1.mjs";
 import { buildTurns } from "./turns.mjs";
 
@@ -188,7 +188,9 @@ const camp = await db.campaign.findFirst({ where: { userId: c.user.id } });
   const intent = await c.get("/onboarding?step=3&role=Product%20Analyst&where=kz&salary=500000&cur=KZT");
   check(intent.status === 200 && /Product Analyst/.test(intent.text), "J16.onb.intent", "…but new first-screen answers still open the goal step to confirm them", intent.status);
 }
-{
+// 7 · opt-out wording. Live mode only: in simulation the fictional employers outside the US / UK / Canada ask no EEO
+// self-identification at all (prepare() drops it), so these packages carry no sensitive question to decline.
+if (!isSim) {
   // 7 · opt-out wording
   await saveAutonomy(c, { sensitive: "decline" });
   await newDay(camp.id);

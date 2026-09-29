@@ -28,7 +28,7 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
   const live = iv.status === "upcoming" && !isAssessment;
 
   return (
-    <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start" aria-label="Коротко об интервью">
+    <aside className="flex flex-col gap-4 lg:sticky lg:top-6 lg:self-start" aria-label={isAssessment ? "Коротко о тесте" : "Коротко об интервью"}>
       <Card strong className="!p-5">
         <Label className="mb-3">{isAssessment ? "Дедлайн" : "Когда"}</Label>
         {at ? (
@@ -60,7 +60,9 @@ export function RoomAside({ iv, readiness, pkg, now }: Props) {
           <Ring value={score} size={76} stroke={6} />
           <div className="flex flex-col gap-0.5">
             <Label>{title}</Label>
-            <p className="text-[13px] text-ink-3">{score >= 75 ? "Хорошая форма для раунда" : score >= 55 ? "Почти на уровне — пройди пробное интервью" : "Начни с обзора компании и пробного интервью"}</p>
+            <p className="text-[13px] text-ink-3">{isAssessment
+              ? (score >= 75 ? "Хорошая форма для теста" : score >= 55 ? "Почти на уровне — пройди тренировку" : "Начни с тем теста и тренировки")
+              : (score >= 75 ? "Хорошая форма для раунда" : score >= 55 ? "Почти на уровне — пройди пробное интервью" : "Начни с обзора компании и пробного интервью")}</p>
           </div>
         </div>
         <ul className="mt-4 flex flex-col gap-2">

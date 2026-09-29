@@ -9,6 +9,8 @@ export type ReadinessData = {
   /** The goal's market in the goal currency (readiness.market): per year, or per month for a ₸ / local goal. */
   range: Readiness["market"];
   family: string;
+  /** An open or accepted offer already pays at least the goal minimum: the minimum is proven, never «lower it». */
+  offerMeetsMinimum?: boolean;
   goal: { primaryRole: string; seniority: string; minSalary: number; currency: string; countries: string[]; workModes: string[]; dreamCompanies: string[]; sponsorshipNeeded: boolean; extraRoles: string[] };
   actualSeniority: string;
   yearsExperience: number;
@@ -83,7 +85,7 @@ export function readinessView(d: ReadinessData) {
   if (!d.hasLinkedin) blockers.push("Нет LinkedIn — многие формы заявок его требуют.");
   if (skills < 60 && d.missingSkills.length) blockers.push(`Не хватает ключевых навыков под роль: ${d.missingSkills.join(", ")}.`);
   if (c("seniority").status === "bad") blockers.push(`Уровень цели (${SENIORITY_LABEL[d.goal.seniority] ?? d.goal.seniority}) выше твоего опыта — ${fmtYears(d.yearsExperience)}.`);
-  if (c("salary").score < 50) blockers.push(`Минимальная зарплата выше рынка для этого уровня (медиана ${fmtMoney(d.range.mid, d.range.currency)}${perPeriod(d.range)}).`);
+  if (c("salary").score < 50 && !d.offerMeetsMinimum) blockers.push(`Минимальная зарплата выше рынка для этого уровня (медиана ${fmtMoney(d.range.mid, d.range.currency)}${perPeriod(d.range)}).`);
   if (intl && c("language").score < 75) blockers.push("Английский ниже B2 — для международных ролей этого мало.");
   const fewJobs = d.jobsForRole < 5;
   if (fewJobs) blockers.push("По этой роли сейчас мало открытых вакансий.");

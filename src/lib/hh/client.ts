@@ -1,6 +1,6 @@
 import "server-only";
 import { db, j, s } from "../db";
-import { decrypt, encrypt } from "../crypto";
+import { decrypt, encrypt, tokenAad } from "../crypto";
 
 /**
  * hh.kz / hh.ru API client (https://api.hh.ru, docs: https://github.com/hhru/api).
@@ -101,7 +101,11 @@ export const hhRuntime = {
 // ——— Low-level request ———
 
 type Query = Record<string, string | number | boolean | undefined | null | (string | number)[]>;
-export type HhRequest = { method?: "GET" | "POST" | "PUT" | "DELETE"; token?: string; query?: Query; form?: Record<string, string>; timeoutMs?: number };
+/** `deadline` (epoch ms): the request and its 429/503 retries never run past it (cron passes its remaining budget). */
+export type HhRequest = { method?: "GET" | "POST" | "PUT" | "DELETE"; token?: string; query?: Query; form?: Record<string, string>; timeoutMs?: number; deadline?: number };
+
+/** Thrown when a request with a `deadline` has no time left to start. */
+export class HhDeadlineError extends Error {}
 export type HhResponse<T> = { status: number; data: T; headers: Headers };
 
 function buildUrl(path: string, query?: Query) {
@@ -131,12 +135,18 @@ export async function hhRequest<T = unknown>(path: string, req: HhRequest = {}):
     body = new URLSearchParams(req.form).toString();
   }
   const url = buildUrl(path, req.query);
+  const left = () => (req.deadline ?? Infinity) - Date.now();
   for (let attempt = 0; ; attempt++) {
-    const res = await hhRuntime.fetch(url, { method: req.method ?? "GET", headers, body, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(req.timeoutMs ?? 15000) });
+    if (left() < 1000) throw new HhDeadlineError(`hh: no time left for ${path}`);
+    const res = await hhRuntime.fetch(url, { method: req.method ?? "GET", headers, body, redirect: "manual", cache: "no-store", signal: AbortSignal.timeout(Math.min(req.timeoutMs ?? 15000, left())) });
     if ((res.status === 429 || res.status === 503) && attempt < hhRuntime.maxRetries) {
       const retryAfter = Number(res.headers.get("retry-after"));
-      await hhRuntime.sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 30) * 1000 : hhRuntime.backoffMs * 2 ** attempt);
-      continue;
+      const wait = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 30) * 1000 : hhRuntime.backoffMs * 2 ** attempt;
+      // No retry that would end past the deadline: the error below stands and the next run tries again.
+      if (wait + 1000 < left()) {
+        await hhRuntime.sleep(wait);
+        continue;
+      }
     }
     const data = await parseBody(res);
     if (res.status >= 400) {
@@ -230,19 +240,31 @@ export async function patchHhMeta(userId: string, patch: Partial<HhMeta>) {
   await db.integration.update({ where: { id: row.id }, data: { meta: s({ ...readHhMeta(row.meta), ...patch }) } });
 }
 
-/** Save a fresh token pair (encrypted at rest). */
+/** Owner binding of the hh token boxes (AES-GCM AAD, src/lib/crypto.ts). */
+const hhAad = (userId: string) => tokenAad(userId, "hh");
+
+/** Save a fresh token pair (encrypted at rest, bound to the user). A different hh account clears the chosen resume. */
 export async function storeTokens(userId: string, t: HhTokenSet, extra: { externalUserId?: string; meta?: Partial<HhMeta> } = {}) {
   const prev = await hhIntegration(userId);
-  const meta = s({ ...readHhMeta(prev?.meta), ...extra.meta, status: "ok" });
+  const accountChanged = extra.externalUserId !== undefined && Boolean(prev?.externalUserId) && prev?.externalUserId !== extra.externalUserId;
+  const prevMeta = readHhMeta(prev?.meta);
+  // Another hh account's resume (and its title) never carries over: its id would apply with someone else's CV.
+  if (accountChanged) delete prevMeta.resumeTitle;
+  const meta = s({ ...prevMeta, ...extra.meta, status: "ok" });
   const data = {
-    accessToken: encrypt(t.access_token),
-    refreshToken: t.refresh_token ? encrypt(t.refresh_token) : prev?.refreshToken ?? "",
+    accessToken: encrypt(t.access_token, hhAad(userId)),
+    refreshToken: t.refresh_token ? encrypt(t.refresh_token, hhAad(userId)) : prev?.refreshToken ?? "",
     expiresAt: expiresAtOf(t),
-    ...(extra.externalUserId !== undefined ? { externalUserId: extra.externalUserId } : {}),
+    ...(extra.externalUserId !== undefined ? { externalUserId: extra.externalUserId || null } : {}),
+    ...(accountChanged ? { resumeId: "" } : {}),
     meta,
   };
   return db.integration.upsert({ where: { userId_provider: { userId, provider: "hh" } }, create: { userId, provider: "hh", ...data }, update: data });
 }
+
+/** The user's hh access / refresh token in plain text ("" when missing or undecryptable). */
+export const hhAccessToken = (row: { userId: string; accessToken: string } | null | undefined) => (row ? decrypt(row.accessToken, hhAad(row.userId)) : "");
+const hhRefreshToken = (row: { userId: string; refreshToken: string } | null | undefined) => (row ? decrypt(row.refreshToken, hhAad(row.userId)) : "");
 
 // hh refresh tokens are single-use: concurrent refreshes for one user share one request.
 const refreshing = new Map<string, Promise<string>>();
@@ -252,15 +274,22 @@ async function refreshFor(userId: string): Promise<string> {
   if (inflight) return inflight;
   const p = (async () => {
     const row = await hhIntegration(userId);
-    const rt = decrypt(row?.refreshToken ?? "");
+    const rt = hhRefreshToken(row);
     if (!row || !rt) throw new HhAuthError("hh: no refresh token");
     try {
       const t = await refreshTokens(rt);
       await storeTokens(userId, t);
       return t.access_token;
     } catch (e) {
-      // invalid_grant / revoked: the user has to connect again. Tokens stay until they do (or disconnect).
       if (e instanceof HhError && (e.status === 400 || e.status === 401 || e.status === 403)) {
+        // Another instance may have refreshed first (hh refresh tokens are single-use, so ours was spent by it): when
+        // the row changed since we read it, its new token is valid — use it and don't ask the user to reconnect.
+        const now = await hhIntegration(userId);
+        if (now && (now.accessToken !== row.accessToken || now.expiresAt?.getTime() !== row.expiresAt?.getTime())) {
+          const fresh = hhAccessToken(now);
+          if (fresh) return fresh;
+        }
+        // invalid_grant / revoked: the user has to connect again. Tokens stay until they do (or disconnect).
         await patchHhMeta(userId, { status: "reconnect", lastError: e.message.slice(0, 200) });
         throw new HhAuthError(`hh: refresh failed (${e.message})`);
       }
@@ -275,7 +304,7 @@ async function refreshFor(userId: string): Promise<string> {
 export async function userAccessToken(userId: string): Promise<string> {
   if (!hhEnabled()) throw new HhDisabledError();
   const row = await hhIntegration(userId);
-  const at = decrypt(row?.accessToken ?? "");
+  const at = hhAccessToken(row);
   if (!row || !at) throw new HhAuthError("hh: not connected");
   if (row.expiresAt && row.expiresAt.getTime() - Date.now() < 60_000) return refreshFor(userId);
   return at;
@@ -450,10 +479,12 @@ export type HhNegotiation = {
 };
 
 /** The user's negotiations (newest first), capped at `maxPages` × 50. */
-export async function listNegotiations(userId: string, maxPages = 4): Promise<HhNegotiation[]> {
+export async function listNegotiations(userId: string, maxPages = 4, deadline?: number): Promise<HhNegotiation[]> {
   const out: HhNegotiation[] = [];
   for (let page = 0; page < maxPages; page++) {
-    const { data } = await userRequest<{ items?: HhNegotiation[]; pages?: number }>(userId, "/negotiations", { query: { page, per_page: 50, order_by: "updated_at", order: "desc" } });
+    // Later pages are optional: out of time → sync what we have (newest first).
+    if (page > 0 && deadline !== undefined && deadline - Date.now() < 5000) break;
+    const { data } = await userRequest<{ items?: HhNegotiation[]; pages?: number }>(userId, "/negotiations", { query: { page, per_page: 50, order_by: "updated_at", order: "desc" }, deadline });
     out.push(...(data?.items ?? []));
     if (!data?.pages || page + 1 >= data.pages) break;
   }

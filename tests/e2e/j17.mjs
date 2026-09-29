@@ -13,7 +13,7 @@
 //  I. Campaign day math (nav, Today, Campaign agree); fmtMoney everywhere for the ₸ user; «Работа найдена.» after HIRED.
 //  J. /check: KZ market in ₸ per month + the user's own target title; stale session on /check, /app and a 404.
 //  K. Mock Interview: a short answer's score is capped (≤ 30) — also when the client posts its own feedback.
-import { Client, db, form, check, findings, signupNew, isNotFound } from "./lib.mjs";
+import { Client, db, form, check, findings, signupNew, isNotFound, isSim } from "./lib.mjs";
 import { payInvoice } from "./j1.mjs";
 import { buildTurns } from "./turns.mjs";
 import { email, INTERVIEW, ASSESS, OFFER } from "./setup.mjs";
@@ -96,13 +96,15 @@ async function dbNeeds(userId) {
     db.interview.count({ where: { userId, status: "upcoming", round: "assessment", OR: [{ scheduledAt: null }, { scheduledAt: { gte: now } }] } }),
     db.interview.count({ where: { userId, status: "upcoming", round: { not: "assessment" }, scheduledAt: { gte: now, lte: new Date(now.getTime() + 48 * 3600000) } } }),
   ]);
-  return { questions, handoffs, offer, assessments, interviews };
+  // Simulation mode: tests progress on their own (the employer script) — shown on Interviews, never «ждёт выполнения».
+  return { questions, handoffs, offer, assessments: isSim ? 0 : assessments, interviews };
 }
 /** Every «нужно тебе» number on every screen agrees with the others and with the DB. Returns the decisions number. */
 async function needsAgree(c, label, { expectDecisionsAtLeast = 0 } = {}) {
   const s = await snapshot(c);
   const d = await dbNeeds(c.user.id);
-  check(Object.values(s.pages).every((p) => p.status === 200), `J17.needs.${label}.render`, "Today / Opportunities / Applications / Inbox / Approvals render", Object.fromEntries(Object.entries(s.pages).map(([k, p]) => [k, p.status])));
+  // Simulation mode: «Подтверждения» is not a screen there (nothing to confirm) — /app/approvals redirects to Today.
+  check(Object.entries(s.pages).every(([k, p]) => p.status === 200 || (isSim && k === "/app/approvals" && p.status === 307)), `J17.needs.${label}.render`, "Today / Opportunities / Applications / Inbox / Approvals render", Object.fromEntries(Object.entries(s.pages).map(([k, p]) => [k, p.status])));
   // 1. Each kind: all numbers shown anywhere are one number, equal to the DB (decisions: equal across screens).
   const shown = {};
   for (const kind of ["decisions", "questions", "handoffs", "offer", "assessments", "interviews"]) {
@@ -125,7 +127,9 @@ async function needsAgree(c, label, { expectDecisionsAtLeast = 0 } = {}) {
   check(s.badge === d.questions + d.handoffs, `J17.needs.${label}.badge`, "nav badge = questions + handoffs (needsYou)", { badge: s.badge, ...d });
   // 4. Opportunities tab «Ждут решения» counts the same roles the status line says wait for the user's decision.
   const decisions = Number.isNaN(shown.decisions) ? -1 : shown.decisions;
-  check(s.tab === decisions, `J17.needs.${label}.tab`, "Opportunities tab «Ждут решения N» = «N вакансий ждут твоего решения» (Today / Applications / Inbox)", { tab: s.tab, decisions });
+  // Simulation mode: the agent decides every role itself — no «Ждут решения» tab and no «ждут твоего решения» line anywhere.
+  if (isSim) check(Number.isNaN(s.tab) && decisions === 0, `J17.needs.${label}.tab`, "simulation: no «Ждут решения» tab, nothing waits for the user's decision", { tab: s.tab, decisions });
+  else check(s.tab === decisions, `J17.needs.${label}.tab`, "Opportunities tab «Ждут решения N» = «N вакансий ждут твоего решения» (Today / Applications / Inbox)", { tab: s.tab, decisions });
   if (expectDecisionsAtLeast) check(decisions >= expectDecisionsAtLeast, `J17.needs.${label}.decisions.min`, `at least ${expectDecisionsAtLeast} Apply decision(s) waiting`, decisions);
   // 5. Today names every kind that waits (Следующий шаг + «ещё» list holds 4).
   const todayKinds = Object.entries(s.per["/app"]).filter(([, v]) => v.length).map(([k]) => k);
@@ -314,7 +318,8 @@ if (sent.length >= 3) {
   check(!!offer, "J17.offer", "offer email creates an offer", offer?.status);
   const n2 = await needsAgree(c, "full");
   console.log("  full needs:", JSON.stringify({ decisions: n2.decisions, ...n2.db }));
-  check(n2.db.offer === 1 && n2.db.assessments === 1 && n2.db.interviews === 1, "J17.needs.full.db", "offer, assessment and a near interview all wait", n2.db);
+  // (Simulation: the test is not a chore there — dbNeeds reports 0 assessments.)
+  check(n2.db.offer === 1 && n2.db.assessments === (isSim ? 0 : 1) && n2.db.interviews === 1, "J17.needs.full.db", "offer, assessment and a near interview all wait", n2.db);
   // Offer Desk in ₸-goal account: one money format.
   const od = vis((await c.get("/app/offers")).text);
   check(!BAD_MONEY.test(od), "J17.money.offers", "Offer Desk: one money format", od.match(new RegExp(`.{0,40}(${BAD_MONEY.source}).{0,20}`))?.[0]);
@@ -398,12 +403,14 @@ const icamp = await db.campaign.findFirst({ where: { userId: ic.user.id } });
   await run(ic);
   const dOpp = await db.opportunity.findFirst({ where: { campaignId: icamp.id, jobId: dreamJob.id } });
   const oOpp = await db.opportunity.findFirst({ where: { campaignId: icamp.id, jobId: otherJob.id } });
-  check(dOpp && dOpp.status === "qualified" && dOpp.eligibility !== "blocked" && J(dOpp.softGaps).includes("Компания мечты — реши сам"), "J17.dream.qualified", "dream company blocked only by level → the user's decision («Компания мечты — реши сам»), not blocked", dOpp && { status: dOpp.status, elig: dOpp.eligibility, blockers: dOpp.blockers, soft: dOpp.softGaps });
-  check(dOpp && !(await db.applicationPackage.findUnique({ where: { opportunityId: dOpp.id } })), "J17.dream.notprepared", "the agent does not prepare the dream-company decision itself");
+  // Simulation mode: the agent decides the dream role too (Match ≥ 70 → the level lines become notes; no «реши сам»).
+  if (isSim) check(dOpp && dOpp.eligibility !== "blocked" && !J(dOpp.softGaps).includes("Компания мечты — реши сам"), "J17.dream.qualified", "simulation: a dream company blocked only by level is the agent's call (not blocked, no «реши сам»)", dOpp && { status: dOpp.status, elig: dOpp.eligibility, soft: dOpp.softGaps });
+  else check(dOpp && dOpp.status === "qualified" && dOpp.eligibility !== "blocked" && J(dOpp.softGaps).includes("Компания мечты — реши сам"), "J17.dream.qualified", "dream company blocked only by level → the user's decision («Компания мечты — реши сам»), not blocked", dOpp && { status: dOpp.status, elig: dOpp.eligibility, blockers: dOpp.blockers, soft: dOpp.softGaps });
+  if (!isSim) check(dOpp && !(await db.applicationPackage.findUnique({ where: { opportunityId: dOpp.id } })), "J17.dream.notprepared", "the agent does not prepare the dream-company decision itself");
   check(oOpp && oOpp.eligibility === "blocked", "J17.dream.other", "the same role elsewhere stays blocked by level", oOpp && { status: oOpp.status, blockers: oOpp.blockers });
   const nAfter = await needsAgree(ic, "intl.dream");
   const strong = dOpp ? (await ic.get(`/app/opportunities?q=${encodeURIComponent("J17 Dreamco")}`)).text : "";
-  check(nAfter.decisions >= 1 && dOpp && strong.includes(`opp-${dOpp.id}`), "J17.dream.needs", "the dream-company decision waits in «Ждут решения» and is counted in «ждут твоего решения»", { before: nBefore, after: nAfter.decisions, inTab: dOpp ? strong.includes(`opp-${dOpp.id}`) : null });
+  if (!isSim) check(nAfter.decisions >= 1 && dOpp && strong.includes(`opp-${dOpp.id}`), "J17.dream.needs", "the dream-company decision waits in «Ждут решения» and is counted in «ждут твоего решения»", { before: nBefore, after: nAfter.decisions, inTab: dOpp ? strong.includes(`opp-${dOpp.id}`) : null });
   if (dOpp) {
     const card = vis((await ic.get(`/app/opportunities/${dOpp.id}`)).text);
     check(/Компания мечты/.test(card) && /Apply/.test(card), "J17.dream.page", "the dream role's page explains the decision and offers Apply", card.match(/.{0,60}Компания мечты.{0,80}/)?.[0]);
@@ -444,19 +451,22 @@ const icamp = await db.campaign.findFirst({ where: { userId: ic.user.id } });
   await oneCardPerQuestion(ic.user.id, "intl");
   await eventLines(ic.user.id, "intl");
 
-  // B3 · a live role applied → handoff; numbers still agree.
-  const job = await db.job.create({ data: { source: "lever", externalId: `j17-live-${stamp}`, dedupeKey: `j17-live-${stamp}`, company: "J17 Live Co", title: "Data Analyst", location: "Remote — Worldwide", roleFamily: "data_analyst", seniority: "junior", minYears: 1, countries: JSON.stringify(["*"]), remote: "remote", technologies: JSON.stringify(["SQL", "Python"]), postedAt: new Date(), url: "https://jobs.lever.co/j17/1", active: false } });
-  const live = await db.opportunity.create({ data: { campaignId: icamp.id, jobId: job.id, match: 90, status: "qualified", eligibility: "eligible", priority: 0.3, pInterview: 0.2 } });
-  const ap = await decide(ic, live.id, "apply");
-  console.log("  live apply:", ap.result?.message);
-  // Apply waits on a shared standing question held on another role: the message should say so and link the question.
-  const liveOpen = J((await db.applicationPackage.findUnique({ where: { opportunityId: live.id } }))?.answers).filter((x) => x.status === "pending").length;
-  const liveOwn = await db.approval.count({ where: { opportunityId: live.id, status: "pending", kind: { not: "handoff" } } });
-  if (liveOpen && !liveOwn) check(/вопрос/.test(ap.result?.message ?? "") && ap.result?.href === "/app/approvals", "J17.apply.shared", "Apply that waits for a shared standing question names it and links to Подтверждения (not «Пакет готов, отправка ждёт.»)", ap.result);
-  for (const a of await db.approval.findMany({ where: { userId: ic.user.id, status: "pending", kind: { not: "handoff" } } })) await ic.action("ops.resolveApproval", [form({ id: a.id, decision: "edit", answer: a.proposed || "Yes" })], { page: "/app/approvals" });
-  if (!(await db.approval.count({ where: { opportunityId: live.id, kind: "handoff" } }))) await decide(ic, live.id, "apply");
-  const nH = await needsAgree(ic, "intl.handoff");
-  check(nH.db.handoffs >= 1, "J17.handoff", "the live role waits as a handoff", nH.db);
+  // B3 · a live role applied → handoff; numbers still agree. Live mode only: simulation never hands anything off and
+  // never shows a live-feed role (j18 covers that side).
+  if (!isSim) {
+    const job = await db.job.create({ data: { source: "lever", externalId: `j17-live-${stamp}`, dedupeKey: `j17-live-${stamp}`, company: "J17 Live Co", title: "Data Analyst", location: "Remote — Worldwide", roleFamily: "data_analyst", seniority: "junior", minYears: 1, countries: JSON.stringify(["*"]), remote: "remote", technologies: JSON.stringify(["SQL", "Python"]), postedAt: new Date(), url: "https://jobs.lever.co/j17/1", active: false } });
+    const live = await db.opportunity.create({ data: { campaignId: icamp.id, jobId: job.id, match: 90, status: "qualified", eligibility: "eligible", priority: 0.3, pInterview: 0.2 } });
+    const ap = await decide(ic, live.id, "apply");
+    console.log("  live apply:", ap.result?.message);
+    // Apply waits on a shared standing question held on another role: the message should say so and link the question.
+    const liveOpen = J((await db.applicationPackage.findUnique({ where: { opportunityId: live.id } }))?.answers).filter((x) => x.status === "pending").length;
+    const liveOwn = await db.approval.count({ where: { opportunityId: live.id, status: "pending", kind: { not: "handoff" } } });
+    if (liveOpen && !liveOwn) check(/вопрос/.test(ap.result?.message ?? "") && ap.result?.href === "/app/approvals", "J17.apply.shared", "Apply that waits for a shared standing question names it and links to Подтверждения (not «Пакет готов, отправка ждёт.»)", ap.result);
+    for (const a of await db.approval.findMany({ where: { userId: ic.user.id, status: "pending", kind: { not: "handoff" } } })) await ic.action("ops.resolveApproval", [form({ id: a.id, decision: "edit", answer: a.proposed || "Yes" })], { page: "/app/approvals" });
+    if (!(await db.approval.count({ where: { opportunityId: live.id, kind: "handoff" } }))) await decide(ic, live.id, "apply");
+    const nH = await needsAgree(ic, "intl.handoff");
+    check(nH.db.handoffs >= 1, "J17.handoff", "the live role waits as a handoff", nH.db);
+  }
 }
 
 // ——— B4 · the demo user ———

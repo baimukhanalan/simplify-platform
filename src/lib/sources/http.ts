@@ -32,7 +32,38 @@ export class DeadlineError extends Error {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type GetOpts = { deadline: number; timeoutMs?: number; retries?: number; backoffMs?: number; retryNonJson?: boolean };
+/** Largest feed body read (~10 MB). A bigger (or endless) response is cut off instead of exhausting the function's memory. */
+export const MAX_BODY_BYTES = 10 * 1024 * 1024;
+
+/** Reads a response body as text, refusing more than `max` bytes (Content-Length up front, then while streaming). */
+export async function readCapped(res: Response, max = MAX_BODY_BYTES, label = "response"): Promise<string> {
+  const tooBig = () => Object.assign(new Error(`${label} → body over ${Math.round(max / 1048576)} MB`), { fatal: true });
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > max) {
+    await res.body?.cancel().catch(() => undefined);
+    throw tooBig();
+  }
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > max) {
+      await reader.cancel().catch(() => undefined);
+      throw tooBig();
+    }
+    chunks.push(value);
+  }
+  const buf = new Uint8Array(size);
+  let off = 0;
+  for (const c of chunks) { buf.set(c, off); off += c.byteLength; }
+  return new TextDecoder().decode(buf);
+}
+
+type GetOpts = { deadline: number; timeoutMs?: number; retries?: number; backoffMs?: number; retryNonJson?: boolean; maxBytes?: number };
 
 /** GET a JSON document. Retries 429 / 5xx / network errors (and a non-JSON body when asked); 4xx fails at once. */
 export async function getJSON<T = unknown>(url: string, o: GetOpts): Promise<T> {
@@ -50,12 +81,14 @@ export async function getJSON<T = unknown>(url: string, o: GetOpts): Promise<T> 
         cache: "no-store",
       });
       if (res.status === 429 || res.status >= 500) {
+        await res.body?.cancel().catch(() => undefined);
         retryAfter = Math.min(10_000, Number(res.headers.get("retry-after")) * 1000 || 0);
         last = new Error(`${host(url)} → ${res.status}`);
       } else if (!res.ok) {
+        await res.body?.cancel().catch(() => undefined);
         throw Object.assign(new Error(`${host(url)} → ${res.status}`), { fatal: true });
       } else {
-        const body = await res.text();
+        const body = await readCapped(res, o.maxBytes ?? MAX_BODY_BYTES, host(url));
         try {
           return JSON.parse(body) as T;
         } catch {

@@ -2,9 +2,8 @@ import "server-only";
 import { db, j, s } from "../db";
 import { FICTIONAL_SOURCE, isFictionalJob, isSimulation } from "../mode";
 import { APP_TZ, snapRoundTime } from "../time";
-import { ingestEmail, rescheduleInterview, settleSharedAnswers, standingAnswer } from "./agent";
+import { AUTO_ANSWER_STATUS, ingestEmail, rescheduleInterview, settleSharedAnswers, standingAnswer } from "./agent";
 import { patchPackageAnswer } from "./approvals";
-import { APPLIED_OR_LATER } from "./taxonomy";
 import { marketRange } from "./market";
 import { companyDomain, seededRng } from "./seed-jobs";
 
@@ -185,7 +184,7 @@ function loadOpps(userId: string, onlyId?: string) {
     },
     orderBy: { submittedAt: "asc" },
     select: {
-      id: true, status: true, submittedAt: true, pInterview: true,
+      id: true, status: true, submittedAt: true, pInterview: true, updatedAt: true,
       job: { select: { source: true, roleFamily: true, massHiring: true, company: true, title: true, seniority: true, countries: true, location: true, remote: true, salaryMin: true, salaryMax: true, languages: true } },
       interviews: { select: { id: true, round: true, scheduledAt: true, status: true } },
       inbox: { select: { classification: true, receivedAt: true } },
@@ -205,8 +204,27 @@ async function backdate(userId: string, opportunityId: string, mark: Date, at: D
   await db.notification.updateMany({ where: { userId, createdAt: since, type: { in: ["interview", "assessment", "offer"] } }, data: { createdAt: at } });
 }
 
+/**
+ * Claims the step before any mail is written: only the run that moves the opportunity's updatedAt from the value it read
+ * (with the stage unchanged) plays it. A concurrent run in another instance (cron + a page view) that read the same row
+ * gets count 0 and skips, so the employer never writes the same email twice.
+ */
+// A claimed step holds a short lease: updatedAt is pushed into the future while the reply is written, so a run that read
+// the row after the claim (same status, same updatedAt) still can't claim it again. The lease ends when the step finishes
+// (releaseStep) or, after a crash, by itself.
+const LEASE_MS = 2 * 60 * 1000;
+async function claimStep(o: Pick<FullOpp, "id" | "status" | "updatedAt">) {
+  const now = new Date();
+  if (o.updatedAt > now) return false; // another run holds the lease
+  const r = await db.opportunity.updateMany({ where: { id: o.id, status: o.status, updatedAt: o.updatedAt }, data: { updatedAt: new Date(now.getTime() + LEASE_MS) } });
+  return r.count > 0;
+}
+const releaseStep = (id: string) => db.opportunity.update({ where: { id }, data: { updatedAt: new Date() } });
+
+/** Plays one employer reply. Returns false when another run already claimed it (nothing written). */
 async function applyStep(userId: string, o: FullOpp, step: SimStep) {
   if (!isFictionalJob(o.job)) throw new Error("simulation: live-feed vacancy"); // never, by construction — a hard guard
+  if (!(await claimStep(o))) return false;
   const r = seededRng(`mail:${o.id}:${step.kind}`);
   const ru = j<string[]>(o.job.languages, []).includes("Russian") && !j<string[]>(o.job.languages, []).includes("English");
   const first = (o.campaign.user.name ?? "").trim().split(/\s+/)[0] ?? "";
@@ -255,6 +273,8 @@ async function applyStep(userId: string, o: FullOpp, step: SimStep) {
     await db.interview.updateMany({ where: { opportunityId: o.id, round: o.status, status: { in: ["upcoming", "done"] }, OR: [{ scheduledAt: null }, { scheduledAt: { lte: step.at } }] }, data: { status: step.kind === "rejection" ? "failed" : "passed" } });
   }
   await backdate(userId, o.id, mark, step.at);
+  await releaseStep(o.id);
+  return true;
 }
 
 const ROUNDS = ["assessment", "recruiter", "hiring_manager", "technical", "final"];
@@ -291,7 +311,7 @@ export async function simulateEmployerActivity(userId: string, opts: { now?: Dat
       const step = nextStep(o);
       if (!step) continue;
       if (step.at > now) { if (!nextAt || step.at < nextAt) nextAt = step.at; continue; }
-      await applyStep(userId, o, step);
+      if (!(await applyStep(userId, o, step))) continue;
       steps++;
       progressed = true;
     }
@@ -307,8 +327,7 @@ export async function simulateEmployerActivity(userId: string, opts: { now?: Dat
 export async function playStep(userId: string, opportunityId: string, kind: SimKind, at: Date) {
   const [o] = await loadOpps(userId, opportunityId);
   if (!o) return false;
-  await applyStep(userId, o, { kind, at });
-  return true;
+  return applyStep(userId, o, { kind, at });
 }
 
 /**
@@ -320,8 +339,7 @@ export async function fastForwardEmployers(userId: string) {
   for (const o of await loadOpps(userId)) {
     const step = nextStep(o);
     if (!step) continue;
-    await applyStep(userId, o, { ...step, at: new Date() });
-    n++;
+    if (await applyStep(userId, o, { ...step, at: new Date() })) n++;
   }
   return n;
 }
@@ -331,33 +349,32 @@ export async function fastForwardEmployers(userId: string) {
 /** Note on a question or handoff closed because the agent no longer works on that role. */
 export const SIM_CLOSED_NOTE = "Вакансия больше не в работе — вопрос закрыт";
 
+/** Approval.status of an answer the agent gave on its own in simulation mode. Never a standing answer in live mode. */
+export const SIM_AUTO_STATUS = AUTO_ANSWER_STATUS;
+
 /**
- * Simulation mode keeps nothing on the user's plate: applications to live-feed vacancies (real companies) that were never
- * sent are removed (with their open questions / handoffs closed first); anything the user already marked as sent stays.
- * Every other open question gets the agent's standing answer (standingAnswer), every open handoff is closed, and packages
- * waiting on a shared question take the answer. Idempotent; no-op in live mode. Run by the seed, runTick and, lazily,
- * once per user per few minutes on page views (maybeSettleChores).
+ * Simulation mode keeps nothing on the user's plate. Only the fictional corpus is in scope: live-feed vacancies (real
+ * companies) and their questions / handoffs are never touched here — they are simply out of sight (visibleScope,
+ * pendingQueueWhere, agentQueue) and come back as they were in live mode. Every open question of a fictional role gets
+ * the agent's standing answer (standingAnswer, stored with status SIM_AUTO_STATUS so live mode never reuses it), every
+ * open handoff of one is closed, and packages waiting on a shared question take the answer. Idempotent; no-op in live
+ * mode. Run by the seed, runTick and, lazily, once per user per few minutes on page views (maybeSettleChores).
  */
 export async function settleSimulationChores(userId: string) {
-  const out = { removed: 0, answered: 0, closed: 0 };
+  const out = { answered: 0, closed: 0 };
   if (!isSimulation()) return out;
-  const live = await db.opportunity.findMany({
-    where: { campaign: { userId }, job: { source: { not: FICTIONAL_SOURCE } }, submittedAt: null, status: { notIn: APPLIED_OR_LATER } },
-    select: { id: true },
+  const pending = await db.approval.findMany({
+    where: { userId, status: "pending", OR: [{ opportunityId: null }, { opportunity: { job: { source: FICTIONAL_SOURCE } } }] },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, kind: true, question: true, proposed: true, opportunityId: true },
   });
-  const ids = live.map((o) => o.id);
-  if (ids.length) {
-    out.closed += (await db.approval.updateMany({ where: { opportunityId: { in: ids }, status: "pending" }, data: { status: "rejected", answer: SIM_CLOSED_NOTE, resolvedAt: new Date() } })).count;
-    out.removed = (await db.opportunity.deleteMany({ where: { id: { in: ids }, submittedAt: null } })).count;
-  }
-  const pending = await db.approval.findMany({ where: { userId, status: "pending" }, orderBy: { createdAt: "asc" }, select: { id: true, kind: true, question: true, proposed: true, opportunityId: true } });
   for (const a of pending) {
     if (a.kind === "handoff") {
       out.closed += (await db.approval.updateMany({ where: { id: a.id, status: "pending" }, data: { status: "rejected", answer: SIM_CLOSED_NOTE, resolvedAt: new Date() } })).count;
       continue;
     }
     const answer = await standingAnswer(userId, a);
-    const won = await db.approval.updateMany({ where: { id: a.id, status: "pending" }, data: { status: "approved", answer, resolvedAt: new Date() } });
+    const won = await db.approval.updateMany({ where: { id: a.id, status: "pending" }, data: { status: SIM_AUTO_STATUS, answer, resolvedAt: new Date() } });
     if (!won.count) continue;
     out.answered++;
     if (a.opportunityId) await patchPackageAnswer(a.opportunityId, a.question, answer, "approved");

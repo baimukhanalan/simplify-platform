@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { FICTIONAL_SOURCE, visibleJobsWhere, visibleOpportunities } from "../src/lib/mode";
-import { AUTONOMY_DEFAULTS, SENSITIVE_DECLINE, SIMULATION_AUTONOMY, readAutonomy } from "../src/lib/engine/autonomy";
+import { AUTONOMY_DEFAULTS, SENSITIVE_DECLINE, SIMULATION_AUTONOMY, mergeAutonomyForm, readAutonomy, readStoredAutonomy } from "../src/lib/engine/autonomy";
 import { scoreJob, DREAM_DECISION, type CandidateCtx, type JobCtx } from "../src/lib/engine/matching";
 
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-sim0-"));
@@ -17,7 +17,7 @@ process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.ANTHROPIC_AUTH_TOKEN;
 const MODE0 = process.env.SIMPLIFY_MODE;
-delete process.env.SIMPLIFY_MODE;
+process.env.SIMPLIFY_MODE = "simulation";
 
 type Db = typeof import("../src/lib/db").db;
 let db: Db;
@@ -39,7 +39,7 @@ after(async () => {
   if (MODE0 === undefined) delete process.env.SIMPLIFY_MODE; else process.env.SIMPLIFY_MODE = MODE0;
 });
 
-afterEach(() => { delete process.env.SIMPLIFY_MODE; });
+afterEach(() => { process.env.SIMPLIFY_MODE = "simulation"; });
 
 const live = () => { process.env.SIMPLIFY_MODE = "live"; };
 const DAY = 86400000;
@@ -103,6 +103,27 @@ describe("scope helpers and standing autonomy (pure)", () => {
     const b = readAutonomy(stored);
     assert.deepEqual([b.submitApplications, b.autoApplyMinMatch, b.sensitive, b.answerStandard], [false, 90, "ask", false]);
     assert.equal(readAutonomy(null).autoApplyMinMatch, 85);
+  });
+
+  test("the Agent form in simulation never overwrites the stored autonomy it does not show", () => {
+    const fd = (entries: [string, string][]) => { const f = new FormData(); for (const [k, v] of entries) f.set(k, v); return f; };
+    const stored = readStoredAutonomy(JSON.stringify({ submitApplications: false, autoApplyMinMatch: 92, sensitive: "ask", answerStandard: false, changeSalary: true, outsideCountries: true, belowSalaryFloor: false, findJobs: true, personalizeCv: true }));
+    // What the simulation form posts: only the switches it shows (findJobs, personalizeCv) — here findJobs turned off.
+    const form = fd([["personalizeCv", "on"]]);
+    const next = mergeAutonomyForm(stored, form, true);
+    assert.ok(!("error" in next));
+    if ("error" in next) return;
+    assert.deepEqual([next.submitApplications, next.autoApplyMinMatch, next.sensitive, next.answerStandard], [false, 92, "ask", false], "standing fields keep the stored values");
+    assert.deepEqual([next.changeSalary, next.outsideCountries, next.belowSalaryFloor], [true, true, false], "hidden «only with permission» switches keep the stored values");
+    assert.deepEqual([next.findJobs, next.personalizeCv], [false, true], "the shown switches are saved");
+    // The stored value, not the simulation overlay, is what writers start from.
+    assert.equal(readStoredAutonomy(JSON.stringify({ autoApplyMinMatch: 92 })).autoApplyMinMatch, 92);
+    assert.equal(readAutonomy(JSON.stringify({ autoApplyMinMatch: 92 })).autoApplyMinMatch, 70);
+    // Live mode: the full form is read and validated as before.
+    const liveForm = fd([["findJobs", "on"], ["submitApplications", "on"], ["autoApplyMinMatch", "77"], ["sensitive", "decline"]]);
+    const l = mergeAutonomyForm(stored, liveForm, false);
+    assert.ok(!("error" in l) && l.autoApplyMinMatch === 77 && l.submitApplications && l.sensitive === "decline" && !l.changeSalary);
+    assert.ok("error" in mergeAutonomyForm(stored, fd([["sensitive", "ask"]]), false), "live mode still requires a threshold");
   });
 
   test("dream-company level decisions: the agent decides (≥ 70 applies, below skips) in simulation; the user decides in live", () => {
@@ -181,7 +202,9 @@ describe("simulation: nothing waits for the user (DB)", () => {
     assert.ok(r && "submitted" in r && r.submitted >= 4, JSON.stringify(r));
     assert.equal(await db.approval.count({ where: { userId: user.id, status: "pending" } }), 0);
     assert.equal(await db.approval.count({ where: { userId: user.id, kind: "handoff" } }), 0);
-    assert.equal(await db.opportunity.count({ where: { id: liveOpp.id } }), 0, "the unsent live-feed role is gone");
+    const kept = await db.opportunity.findUnique({ where: { id: liveOpp.id }, include: { pkg: true } });
+    assert.equal(kept?.status, "prepared", "the unsent live-feed role is kept as it was (only hidden), with its package");
+    assert.ok(kept?.pkg);
     const sent = await db.opportunity.findMany({ where: { campaignId: campaign.id, submittedAt: { not: null } }, include: { job: true } });
     assert.ok(sent.every((o) => o.job.source === FICTIONAL_SOURCE));
     const n = await ops.needsYou(user.id);
@@ -189,10 +212,12 @@ describe("simulation: nothing waits for the user (DB)", () => {
     assert.equal(n.total, 0);
   });
 
-  test("settleSimulationChores: unsent live-feed roles removed, their handoffs closed, sent ones kept, open questions answered", async () => {
+  test("settleSimulationChores: live-feed roles and their handoffs are never deleted or touched (only hidden); fictional questions auto-answered", async () => {
     const { user, campaign } = await makeUser();
     const unsent = await opp(campaign.id, (await makeJob("lever")).id, { status: "prepared" });
-    await db.approval.create({ data: { userId: user.id, opportunityId: unsent.id, kind: "handoff", question: "Отправь заявку", proposed: "https://x" } });
+    await db.applicationPackage.create({ data: { opportunityId: unsent.id, cvVersion: "v1", cvText: "cv", summary: "", coverLetter: "" } });
+    const handoff = await db.approval.create({ data: { userId: user.id, opportunityId: unsent.id, kind: "handoff", question: "Отправь заявку", proposed: "https://x" } });
+    const liveQ = await db.approval.create({ data: { userId: user.id, opportunityId: unsent.id, kind: "sponsorship", question: "Need sponsorship?", proposed: "Yes" } });
     const sentByUser = await submittedOpp(campaign.id, (await makeJob("greenhouse")).id, 2);
     const fx = await opp(campaign.id, (await makeJob(FICTIONAL_SOURCE)).id, { status: "prepared" });
     await db.applicationPackage.create({ data: { opportunityId: fx.id, cvVersion: "v1", cvText: "cv", summary: "", coverLetter: "", answers: JSON.stringify([{ q: "Voluntary self-identification", a: "", category: "approval", status: "pending", kind: "sensitive" }, { q: "Notice?", a: "2 weeks", category: "approval", status: "pending", kind: "unknown_question" }]) } });
@@ -200,19 +225,66 @@ describe("simulation: nothing waits for the user (DB)", () => {
     await db.approval.create({ data: { userId: user.id, opportunityId: fx.id, kind: "unknown_question", question: "Notice?", proposed: "2 weeks" } });
 
     const r = await sim.settleSimulationChores(user.id);
-    assert.deepEqual(r, { removed: 1, answered: 2, closed: 1 });
-    assert.equal(await db.opportunity.count({ where: { id: unsent.id } }), 0);
+    assert.deepEqual(r, { answered: 2, closed: 0 });
+    const kept = await db.opportunity.findUnique({ where: { id: unsent.id }, include: { pkg: true } });
+    assert.equal(kept?.status, "prepared", "the unsent live-feed role stays, package included");
+    assert.ok(kept?.pkg);
     assert.equal(await db.opportunity.count({ where: { id: sentByUser.id } }), 1, "what the user already sent stays");
-    assert.equal(await db.approval.count({ where: { userId: user.id, status: "pending" } }), 0);
+    assert.equal((await db.approval.findUniqueOrThrow({ where: { id: handoff.id } })).status, "pending", "its handoff is untouched");
+    assert.equal((await db.approval.findUniqueOrThrow({ where: { id: liveQ.id } })).status, "pending", "its question is untouched");
+    assert.equal(await db.approval.count({ where: ops.pendingQueueWhere(user.id) }), 0, "nothing visible waits in simulation");
+    assert.deepEqual((await db.approval.findMany({ where: { opportunityId: fx.id } })).map((a) => a.status), [sim.SIM_AUTO_STATUS, sim.SIM_AUTO_STATUS], "auto-answers are marked as such");
     const answers = JSON.parse((await db.applicationPackage.findUniqueOrThrow({ where: { opportunityId: fx.id } })).answers) as { a: string; status: string }[];
     assert.deepEqual(answers.map((a) => [a.a, a.status]), [[SENSITIVE_DECLINE, "approved"], ["2 weeks", "approved"]]);
-    assert.deepEqual(await sim.settleSimulationChores(user.id), { removed: 0, answered: 0, closed: 0 }, "idempotent");
+    assert.deepEqual(await sim.settleSimulationChores(user.id), { answered: 0, closed: 0 }, "idempotent");
 
     live();
+    assert.equal(await db.approval.count({ where: ops.pendingQueueWhere(user.id) }), 2, "live mode: the live role's handoff and question are back as they were");
     const other = await makeUser();
     const keep = await opp(other.campaign.id, (await makeJob("lever")).id, { status: "prepared" });
-    assert.deepEqual(await sim.settleSimulationChores(other.user.id), { removed: 0, answered: 0, closed: 0 });
+    assert.deepEqual(await sim.settleSimulationChores(other.user.id), { answered: 0, closed: 0 });
     assert.equal(await db.opportunity.count({ where: { id: keep.id } }), 1, "live mode: nothing touched");
+  });
+
+  test("simulation auto-answers never become standing answers in live mode", async () => {
+    const { user, campaign } = await makeUser();
+    const fx = await opp(campaign.id, (await makeJob(FICTIONAL_SOURCE)).id, { status: "prepared" });
+    await db.approval.create({ data: { userId: user.id, opportunityId: fx.id, kind: "sponsorship", question: "Will you require visa sponsorship?", proposed: "No" } });
+    await sim.settleSimulationChores(user.id);
+    const auto = await db.approval.findFirstOrThrow({ where: { opportunityId: fx.id } });
+    assert.equal(auto.status, sim.SIM_AUTO_STATUS);
+    assert.equal(auto.answer, "No");
+    // Simulation itself keeps its answers consistent.
+    assert.equal(await agent.standingAnswer(user.id, { kind: "sponsorship", question: auto.question, proposed: "Yes" }), "No");
+
+    live();
+    // A live role asking the same standing question: the auto-answer is not reused — the question waits for the user.
+    const o = await opp(campaign.id, (await makeJob("greenhouse", { countries: ["US"] })).id);
+    await db.applicationPackage.create({ data: { opportunityId: o.id, cvVersion: "v1", cvText: "cv", summary: "", coverLetter: "", answers: JSON.stringify([{ q: auto.question, a: "Yes", category: "approval", status: "pending", kind: "sponsorship" }]) } });
+    await db.opportunity.update({ where: { id: o.id }, data: { status: "prepared" } });
+    await agent.settleSharedAnswers(user.id);
+    const pkg = JSON.parse((await db.applicationPackage.findUniqueOrThrow({ where: { opportunityId: o.id } })).answers) as { status: string }[];
+    assert.equal(pkg[0].status, "pending", "not answered from the simulation's auto-answer");
+    assert.equal(await db.approval.count({ where: { opportunityId: o.id, status: "pending", kind: "sponsorship" } }), 1, "asked as a real question");
+  });
+
+  test("needsYou: assessments are info only; auto-submit consent off is named; live-feed rounds and offers stay out", async () => {
+    const { user, campaign } = await makeUser();
+    const fx = await submittedOpp(campaign.id, (await makeJob(FICTIONAL_SOURCE)).id, 3, "assessment");
+    await db.interview.create({ data: { userId: user.id, opportunityId: fx.id, round: "assessment", scheduledAt: new Date(Date.now() + 2 * DAY) } });
+    const real = await submittedOpp(campaign.id, (await makeJob("greenhouse")).id, 3, "recruiter");
+    await db.interview.create({ data: { userId: user.id, opportunityId: real.id, round: "recruiter", scheduledAt: new Date(Date.now() + 5 * 3600000) } });
+    await db.offer.create({ data: { userId: user.id, opportunityId: real.id, company: "Real", role: "DA", base: 1 } });
+    let n = await ops.needsYou(user.id);
+    assert.deepEqual([n.assessments, n.interviews48h, n.offer, n.enableAutoSubmit, n.total], [0, 0, 0, 0, 0]);
+    const ic = await ops.interviewCounts(user.id);
+    assert.deepEqual([ic.assessments, ic.upcoming], [1, 0], "the assessment is still shown as info; the live-feed round is not");
+    await db.campaign.update({ where: { id: campaign.id }, data: { autoSubmit: false } });
+    n = await ops.needsYou(user.id);
+    assert.deepEqual([n.enableAutoSubmit, n.total], [1, 1], "«Включи автоподачу в настройках»");
+    live();
+    n = await ops.needsYou(user.id);
+    assert.deepEqual([n.assessments, n.interviews48h, n.offer, n.enableAutoSubmit], [1, 1, 1, 0]);
   });
 
   test("live mode unchanged: a live-feed role becomes a handoff and questions wait for the user", async () => {

@@ -1,11 +1,11 @@
+import { redirect } from "next/navigation";
+import { isSimulation } from "@/lib/mode";
 import type { Metadata } from "next";
 import { Check, Download, X } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { db, j } from "@/lib/db";
-import { revokeExtensionToken } from "@/lib/actions/extension";
 import { Card, Chip, Label, PageHeader, Script } from "@/components/ui";
-import { SubmitButton } from "@/components/client";
-import { TokenPanel } from "./_components/token-panel";
+import { RevokeKey, TokenPanel } from "./_components/token-panel";
 
 export const metadata: Metadata = { title: "Расширение Apply Assist" };
 
@@ -28,7 +28,7 @@ const STEPS = [
   { t: "Скачай архив", d: <>Кнопка ниже собирает свежую версию расширения. Распакуй архив — появится папка <span className="font-mono text-head">simplify-apply-assist</span>.</> },
   { t: "Открой chrome://extensions", d: <>Вставь адрес <span className="font-mono text-head">chrome://extensions</span> в строку браузера (Chrome, Edge, Brave, Arc) и включи «Режим разработчика» справа сверху.</> },
   { t: "Загрузи распакованное расширение", d: <>Нажми «Загрузить распакованное расширение» и выбери папку <span className="font-mono text-head">simplify-apply-assist</span>. Закрепи значок Simplify на панели.</> },
-  { t: "Вставь ключ", d: <>Создай ключ справа, открой настройки расширения (правый клик по значку → «Параметры») и вставь его. Адрес Simplify менять не нужно.</> },
+  { t: "Вставь ключ", d: <>Создай ключ на этой странице, открой настройки расширения (правый клик по значку → «Параметры») и вставь его. Адрес Simplify менять не нужно.</> },
   { t: "Подай заявку", d: <>Открой официальную форму вакансии из Simplify, нажми на значок → «Заполнить форму», проверь поля и отправь сам. Затем — «Заявка отправлена» в расширении.</> },
 ];
 
@@ -40,6 +40,8 @@ function when(iso?: string) {
 
 export default async function ExtensionPage() {
   const user = await requireUser();
+  // Simulation mode: the agent answers and sends everything itself — nothing to confirm or send by hand here.
+  if (isSimulation()) redirect("/app");
   const integ = await db.integration.findUnique({ where: { userId_provider: { userId: user.id, provider: "extension" } }, select: { tokenHash: true, meta: true } });
   const connected = Boolean(integ?.tokenHash);
   const meta = j<{ createdAt?: string; lastUsedAt?: string }>(integ?.meta, {});
@@ -119,7 +121,7 @@ export default async function ExtensionPage() {
           <Card strong className="flex flex-col gap-5">
             <div className="flex items-center justify-between gap-3">
               <h2 className="label">Ключ расширения</h2>
-              <Chip tone={connected ? "green" : "neutral"} dot>{connected ? "Подключено" : "Не подключено"}</Chip>
+              <Chip tone={connected ? "green" : "neutral"} dot>{connected ? (meta.lastUsedAt ? "Подключено" : "Ключ создан") : "Не подключено"}</Chip>
             </div>
             {connected ? (
               <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13.5px]">
@@ -131,15 +133,8 @@ export default async function ExtensionPage() {
             ) : (
               <p className="text-[14px] leading-relaxed text-ink-2">Ключ связывает расширение с твоим аккаунтом. Он даёт доступ только к данным для заявок: профилю, пакетам и CV.</p>
             )}
-            <TokenPanel connected={connected} />
-            {connected && (
-              <form action={revokeExtensionToken} className="border-t border-line pt-4">
-                <SubmitButton variant="ghost" size="sm" pendingText="Отзываем…" className="!h-10 !px-0 text-rose hover:!bg-transparent hover:underline">
-                  Отозвать ключ
-                </SubmitButton>
-                <p className="mt-1 text-[12.5px] text-ink-3">Расширение сразу потеряет доступ к твоему аккаунту.</p>
-              </form>
-            )}
+            <TokenPanel key={meta.createdAt ?? "none"} connected={connected} />
+            {connected && <RevokeKey />}
           </Card>
 
           <Card className="flex flex-col gap-2.5">

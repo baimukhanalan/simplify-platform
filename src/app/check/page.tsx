@@ -8,11 +8,11 @@ import { SiteHeader } from "../_components/site-header";
 import { LegalLinks } from "../_components/legal-page";
 import { CheckForm } from "./_components/check-form";
 
-export const metadata: Metadata = { title: "Бесплатная проверка CV", description: "Загрузи CV — узнай Readiness, сильные и слабые стороны, подходящие роли и реальную вакансию с Match и проверкой требований." };
+export const metadata: Metadata = { title: "Бесплатная проверка CV", description: "Загрузи CV — узнай Readiness, сильные и слабые стороны, подходящие роли и подходящую вакансию с Match и проверкой требований." };
 
 const GETS = [
   { icon: Gauge, title: "Оценка Readiness", text: "Насколько реалистична цель — по опыту, навыкам, языку, географии и зарплате." },
-  { icon: Search, title: "Реальная вакансия", text: "Лучшее совпадение из базы с Match %, причинами ✓/✕ и проверкой требований." },
+  { icon: Search, title: "Подходящая вакансия", text: "Лучшее совпадение под целевую роль с Match %, причинами ✓/✕ и проверкой требований." },
   { icon: Sparkles, title: "Пример позиционирования", text: "Как агент переформулирует вступление CV и порядок навыков под вакансию." },
   { icon: ShieldCheck, title: "Сильные и слабые стороны", text: "Что работает в твоём CV, чего не хватает и какие роли тебе подходят." },
 ];
@@ -28,7 +28,7 @@ export default async function CheckPage() {
           <div className="flex flex-col gap-3 animate-rise">
             <Label>Бесплатная проверка CV · без регистрации</Label>
             <h1 className="h-serif text-[clamp(34px,5vw,58px)]">Узнай, где ты <Script>сейчас</Script></h1>
-            <p className="max-w-xl text-[15.5px] text-ink-2">Загрузи CV — за несколько секунд покажем Readiness под целевую роль, сильные и слабые стороны, подходящие роли и одну реальную вакансию с разбором.</p>
+            <p className="max-w-xl text-[15.5px] text-ink-2">Загрузи CV — за несколько секунд покажем Readiness под целевую роль, сильные и слабые стороны, подходящие роли и подходящую вакансию с разбором.</p>
           </div>
           <Card strong className="animate-rise [animation-delay:80ms]">
             <CheckForm roles={roles} />

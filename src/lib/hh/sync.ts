@@ -17,14 +17,14 @@ export type HhSyncReport = { checked: number; moved: number; submitted: number; 
  * discards get an inbox message and a notification. A negotiation for a role Simplify prepared but the user sent on
  * hh.kz themselves marks it submitted and closes its handoff. Idempotent: nothing happens when the status didn't change.
  */
-export async function syncHhNegotiations(userId: string): Promise<HhSyncReport> {
+export async function syncHhNegotiations(userId: string, opts: { deadline?: number } = {}): Promise<HhSyncReport> {
   if (!hhEnabled()) return { checked: 0, moved: 0, submitted: 0, skipped: "disabled" };
   const row = await hhIntegration(userId);
   if (!row?.accessToken) return { checked: 0, moved: 0, submitted: 0, skipped: "not-connected" };
 
   let negotiations;
   try {
-    negotiations = await listNegotiations(userId);
+    negotiations = await listNegotiations(userId, 4, opts.deadline);
   } catch (e) {
     if (e instanceof HhAuthError) return { checked: 0, moved: 0, submitted: 0, skipped: "reconnect" };
     throw e;

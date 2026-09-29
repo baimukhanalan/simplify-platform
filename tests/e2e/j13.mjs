@@ -2,7 +2,7 @@
 // paused-past-endsAt expiry via cron, standing answers, preview side effects, /app/hired redirect, demo-tool gating,
 // the 3-per-24h mock payment cap and webhook timestamp skew in both directions.
 import { createHmac } from "node:crypto";
-import { Client, db, form, check, findings, ENV_TEXT, BASE } from "./lib.mjs";
+import { Client, db, form, check, findings, ENV_TEXT, BASE, isSim } from "./lib.mjs";
 import { newPaidUser, payInvoice } from "./j1.mjs";
 import { userWithApps, email, OFFER } from "./setup.mjs";
 
@@ -74,7 +74,9 @@ async function paidUser(label, opts) {
   const { c, camp } = await paidUser("j13exp");
   const pending0 = await db.approval.count({ where: { userId: c.user.id, status: "pending" } });
   const b0 = badge((await c.get("/app/insights")).text);
-  check(pending0 > 0 && b0 === pending0, "J13.badge.running", "nav badge = pending approvals of the running campaign", { pending0, b0 });
+  // Simulation mode: the agent answers every question itself — nothing is pending and the nav shows no badge.
+  if (isSim) check(pending0 === 0 && b0 === 0, "J13.badge.running", "simulation: no pending questions, no nav badge", { pending0, b0 });
+  else check(pending0 > 0 && b0 === pending0, "J13.badge.running", "nav badge = pending approvals of the running campaign", { pending0, b0 });
   await c.action("campaign.setCampaignStatus", [form({ status: "paused" })], { page: "/app/campaign" });
   await db.campaign.update({ where: { id: camp.id }, data: { endsAt: new Date(Date.now() - 60_000) } });
   const cp = visible((await c.get("/app/campaign")).text);
@@ -112,7 +114,8 @@ async function paidUser(label, opts) {
   check(r.status === 307 && r.location === "/app/offers", "J13.hired.redirect", "/app/hired with an unaccepted offer -> /app/offers", `${r.status} ${r.location}`);
 }
 
-// ——— 5. Demo tools: hidden and blocked for a regular user in production mode, visible for the demo account
+// ——— 5. Demo tools: hidden and blocked for a regular user in production mode. The «Демо-инструменты» panel itself was
+// removed for every account (791d307, neutral UI wording); simulateEmployers stays a staff action (src/lib/demo.ts).
 {
   const prodDemo = envVal("SIMPLIFY_DEMO_TOOLS");
   const { c } = await paidUser("j13demo");
@@ -127,7 +130,7 @@ async function paidUser(label, opts) {
   }
   const demoUser = await db.user.findUnique({ where: { email: "aruzhan@simplify.kz" } });
   const d = await new Client("demo").asUser(demoUser.id);
-  check(/Демо-инструменты/.test(visible((await d.get("/app")).text)), "J13.demo.shown", "demo account sees demo tools");
+  check(!/Демо-инструменты|Симулировать ответы/.test(visible((await d.get("/app")).text)), "J13.demo.nopanel", "no demo-tools panel for anyone, the showcase account included");
 }
 
 // ——— 6. Mock payments: at most 3 mock-paid campaigns per user per 24h

@@ -1,4 +1,4 @@
-import { MOCK_QUESTIONS, STRUCTURE_CUE_RU, STRUCTURE_OK, detectIntent, jdSkillsYouHave, scaffold, type FactLite, type StoryLite, type scoreAnswer } from "@/lib/engine/interview";
+import { INTRO_CUE_RU, MOCK_QUESTIONS, STRUCTURE_CUE_RU, STRUCTURE_OK, detectIntent, jdSkillsYouHave, scaffold, type FactLite, type StoryLite, type scoreAnswer } from "@/lib/engine/interview";
 
 // Local mock-interview question sets (English: the interview language). The engine ships recruiter /
 // hiring_manager / technical; behavioral and final live here.
@@ -32,14 +32,6 @@ export type MockCtx = {
 type Score = ReturnType<typeof scoreAnswer>;
 
 /**
- * "Who you are now" in an intro: "I'm a data analyst", "I am…", "currently…", "right now", "at Kaspi", "работаю…", "сейчас…".
- * "at X" needs a capitalised name after it ("at Kaspi", not "at the end").
- */
-const WHO_NOW_WORDS = /(?<![\p{L}])(?:i['’]m|i am|currently|right now|now i|these days|сейчас|работаю|я\s+—|я\s+-)(?![\p{L}])/iu;
-const AT_COMPANY = /(?<![\p{L}])at\s+\p{Lu}/u; // case-sensitive on purpose: "at Kaspi", not "at the end"
-const WHO_NOW = { test: (a: string) => WHO_NOW_WORDS.test(a) || AT_COMPANY.test(a) };
-
-/**
  * What the answer lacks, in plain words — beyond the engine's generic tips. Empty (→ «Все ключевые элементы на месте»)
  * only when the structure is really complete: a full STAR (+ the lesson) for behavioral questions, structure ≥ STRUCTURE_OK
  * otherwise; each missing structure cue is named.
@@ -54,11 +46,17 @@ export function missingPoints(question: string, answer: string, s: Score, ctx: M
     (Object.keys(names) as (keyof typeof names)[]).forEach((k) => !s.star[k] && out.push(names[k]));
     if (!/(learn|lesson|next time|вывод|научил|понял)/i.test(answer)) out.push("чему это научило");
   }
-  // Missing structure cues come after the content points (those are more specific to the question).
-  const structure = !star && s.structure < STRUCTURE_OK ? (Object.keys(STRUCTURE_CUE_RU) as (keyof typeof STRUCTURE_CUE_RU)[]).filter((k) => !s.cues[k] && !(k === "order" && intent === "technical")).map((k) => STRUCTURE_CUE_RU[k]) : [];
-  if (!/\d/.test(answer)) out.push("цифра результата (было → стало)");
+  // «Tell me about yourself»: its own present → past → future cues, never STAR or «конкретный пример».
+  if (intent === "intro" && s.introCues) {
+    (Object.keys(INTRO_CUE_RU) as (keyof typeof INTRO_CUE_RU)[]).forEach((k) => !s.introCues![k] && out.push(INTRO_CUE_RU[k]));
+    return out.slice(0, 4);
+  }
+  const hasNumber = /\d/.test(answer);
+  // Missing structure cues come after the content points (those are more specific to the question). A result with a
+  // number is a concrete example already — «конкретный пример» is not claimed missing then.
+  const structure = !star && s.structure < STRUCTURE_OK ? (Object.keys(STRUCTURE_CUE_RU) as (keyof typeof STRUCTURE_CUE_RU)[]).filter((k) => !s.cues[k] && !(k === "order" && intent === "technical") && !(k === "example" && hasNumber)).map((k) => STRUCTURE_CUE_RU[k]) : [];
+  if (!hasNumber) out.push("цифра результата (было → стало)");
   if ((intent === "motivation" || /why .*compan/i.test(question)) && !low.includes(ctx.company.toLowerCase())) out.push(`конкретика о ${ctx.company}`);
-  if (intent === "intro" && !WHO_NOW.test(answer)) out.push("кто ты сейчас");
   if (intent === "technical" && !/(first|then|step|сначала|затем)/i.test(answer)) out.push("пошаговый подход");
   if (intent === "closing" && !answer.includes("?")) out.push("1–2 твоих вопроса");
   const list = [...new Set([...out, ...structure])];
