@@ -10,7 +10,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const dir = mkdtempSync(path.join(tmpdir(), "simplify-referral-test-"));
-process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}`;
+// A slow CI runner needs longer than Prisma's default 5 s socket timeout for the SQLite write-lock races below.
+process.env.DATABASE_URL = `file:${path.join(dir, "test.db")}?socket_timeout=60`;
 process.env.KASPI_MODE = "mock";
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.ANTHROPIC_AUTH_TOKEN;

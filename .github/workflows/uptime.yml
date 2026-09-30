@@ -1,0 +1,30 @@
+name: Uptime
+
+# Every 10 minutes: the landing, the app login and the health check (app + database) must answer.
+# A failed run makes GitHub email the repository owner.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check production
+        run: |
+          set -u
+          fail=0
+          check() {
+            for attempt in 1 2 3; do
+              code=$(curl -s -o /tmp/body -w '%{http_code}' --max-time 20 "$1" || echo 000)
+              if [ "$code" = "200" ] && { [ -z "${2:-}" ] || grep -q "$2" /tmp/body; }; then echo "ok   $code $1"; return 0; fi
+              sleep 10
+            done
+            echo "FAIL $code $1"; fail=1
+          }
+          check https://wesimplify.works/
+          check https://app.wesimplify.works/login
+          check https://app.wesimplify.works/api/health '"db":"ok"'
+          exit $fail
