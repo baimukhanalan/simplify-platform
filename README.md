@@ -1,131 +1,160 @@
-# Simplify — AI Career Agent platform
+<div align="center">
 
-> Tell us what job you want. We handle the rest. **Stop applying. Start interviewing.**
+# Simplify
 
-Full-stack platform for the Simplify Career Campaign: one Career Profile → goal → autonomous
-60-day campaign (discovery, match & eligibility, ranking, tailored packages, execution, tracking,
-feedback loop) → Interview Room, Mock Interview, live Interview Copilot → Offer Desk → HIRED →
-Passive Career Mode.
+### Stop applying. Start interviewing. — your autonomous AI career agent
 
-## Run locally
+[![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?style=for-the-badge&logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
+[![Anthropic](https://img.shields.io/badge/Anthropic-Claude-D97757?style=for-the-badge&logo=anthropic&logoColor=white)](https://www.anthropic.com/)
 
-```bash
-npm install
-npx prisma db push      # creates prisma/dev.db (SQLite)
-npm run seed            # demo scenario: Data Analyst from Almaty
-npm run dev
+[![Live Demo](https://img.shields.io/badge/Live_Demo-▶_simplify--career--landing-000000?style=for-the-badge)](https://simplify-career-landing.vercel.app)
+
+</div>
+
+---
+
+## 📖 About
+
+**Simplify** is an autonomous AI career agent. You build one **Career Profile**, set a goal, and the agent runs a **60-day job campaign** on your behalf: it discovers roles, matches and ranks them by your real odds of an interview, assembles tailored application packages, prepares you through an **Interview Room**, **Mock Interview** and a live **Interview Copilot**, and helps you close in the **Offer Desk**.
+
+Everything is grounded in a **Truth Layer** — verified facts and STAR stories extracted from your CV and a short mini-interview — so the agent never invents experience. When an `ANTHROPIC_API_KEY` is present, Claude powers CV parsing, package generation and interview prep; without it, a deterministic engine runs the same flow end to end.
+
+The platform ships with **seed/demo data** and dedicated **admin** and **partner** roles for operating and distributing the product.
+
+## ✨ Features
+
+- 🔎 **Discovery** — ingests and normalizes live roles from Remotive, Arbeitnow, Greenhouse and Lever (plus a demo corpus), with dedupe and freshness tracking.
+- 🎯 **Matching & ranking** — separates *Match* from *Eligibility* (hard blockers like work authorization), then ranks each opportunity by an estimated **P(Interview)**.
+- 📦 **Tailored packages** — per-role CV rewrite, summary, cover letter and screening answers, with a Truth Check and an auto / rule / approval policy for every answer.
+- 🎙️ **Interview Room** — a room per round (recruiter, hiring manager, technical, final) with a prep pack and post-round debrief.
+- 🧪 **Mock Interview** — persona-driven mock sessions (recruiter / hiring manager / technical) with transcript and scored feedback.
+- 🤝 **Live Interview Copilot** — real-time support during interviews using the browser's speech recognition; no audio is stored, and it is disabled where the employer forbids external help.
+- 💼 **Offer Desk** — benchmarks offers against market ranges, tracks negotiation, and surfaces a Career Score.
+- 🛠️ **Admin & Partner roles** — operator dashboard (`/admin`) and partner/referral portal (`/partners`).
+
+## 🖼️ Screenshots
+
+<!-- Add product screenshots or a short demo GIF here, e.g. the dashboard, Interview Room and Offer Desk.
+     ![Dashboard](docs/screenshots/dashboard.png) -->
+
+> A live landing demo is available at **[simplify-career-landing.vercel.app](https://simplify-career-landing.vercel.app)**.
+
+## ⚙️ How it works
+
+The 60-day campaign runs as an autonomous loop, one cycle per active campaign:
+
+```
+Career Profile + Goal
+        │
+        ▼
+  Discover ──▶ Match & rank ──▶ Prepare package ──▶ Submit / handoff
+        ▲                                                   │
+        │                                                   ▼
+   Feedback loop ◀── Inbox intelligence ◀── Pipeline & interviews
+        │
+        ▼
+   Offer Desk ──▶ Hired 🎉
 ```
 
-Demo account: `aruzhan@simplify.kz` / `simplify2026` (active International campaign). Locally the seed also
-creates `admin@simplify.kz` (/admin) and `partner@amaskills.kz` (/partners) with the same password; against
-Postgres the seed requires `ALLOW_DEMO_SEED=1` and `ADMIN_PASSWORD` for those staff accounts.
+Live vacancies are prepared as **user-authorized handoffs** (the package is ready and you submit through the official form), while demo vacancies flow through a simulated ATS adapter — no credential storage and no ToS-violating automation.
 
-## Environment
+## 🧱 Tech Stack
 
-| Variable | Purpose |
+| Layer | Technology |
 |---|---|
-| `DATABASE_URL` | SQLite locally (`file:./dev.db`). For production switch the Prisma provider to `postgresql`. |
-| `SESSION_SECRET` | ≥32 random bytes, signs session JWTs. |
-| `ANTHROPIC_API_KEY` | Optional. Enables Claude for CV parsing, packages, interview packs. Without it the deterministic engine runs everything. |
-| `SIMPLIFY_MODEL` | Claude model id, default `claude-opus-5`. |
-| `SIMPLIFY_MODE` | `simulation` turns on the fictional-company corpus with automatic employer activity (showcase). **Unset or any other value = `live`** (the plain production engine), so a missing or mistyped value never starts the simulation. `.env` sets `simulation` for local dev. |
-| `SIMPLIFY_GREENHOUSE_BOARDS` / `SIMPLIFY_LEVER_COMPANIES` | Comma-separated public boards for live job ingestion. |
-| `CRON_SECRET` | Protects `GET /api/cron/tick` (one agent cycle for every active campaign). |
-| `SEED_TOKEN` | Optional, ≥32 chars. Enables `POST /api/admin/seed-demo` (Bearer). Unset = endpoint returns 404. |
-| `KASPI_MODE` | `mock` enables the built-in Kaspi Pay mock gateway (pay buttons on `/pay/kaspi/[id]`, `POST /api/payments/kaspi/mock/[id]/pay`). Default `mock` in development; **in production it must be set explicitly**, anything else = real flow (mock endpoints 404). |
-| `KASPI_MOCK_SECRET` | ≥32 chars, signs mock-gateway webhooks. Must differ from `KASPI_WEBHOOK_SECRET`. If unset in production, a dedicated key is derived from `SESSION_SECRET`. Mock-signed events are accepted only while `KASPI_MODE=mock`. |
-| `KASPI_WEBHOOK_SECRET` | ≥32 chars, real Kaspi Pay webhook key. Unset in production = real events are rejected. |
-| `APP_URL` | Public base URL (e.g. `https://simplify.example`). Used for the mock gateway's server-to-server webhook call; falls back to `VERCEL_PROJECT_PRODUCTION_URL`, and to the request origin only in development (the Host header is never trusted in production). |
-| `HH_CLIENT_ID` / `HH_CLIENT_SECRET` | hh.kz API app credentials (dev.hh.ru). **Both unset = the hh integration is off**: no hh search, the Agent screen shows «Скоро», hh vacancies are handoffs. |
-| `HH_REDIRECT_URI` | OAuth redirect URI; default `${APP_URL}/api/integrations/hh/callback`. Must match the value registered at dev.hh.ru exactly. |
-| `HH_USER_AGENT` | Sent as `HH-User-Agent` (and `User-Agent`) on every hh request; default `Simplify/1.0 (support@simplify.kz)`. hh requires a real app name + contact. |
-| `HH_APP_TOKEN` | Optional. The application token (client_credentials) issued once; recommended on serverless so cold starts don't re-issue it (hh rate-limits issuing and a new one can invalidate the old). Unset = issued on demand and cached in memory. |
-| `ENCRYPTION_KEY` | Optional, 32 bytes (hex/base64): AES-256-GCM key for third-party tokens at rest (hh). Default: derived from `SESSION_SECRET`. A malformed value fails loudly in production. **Rotating `SESSION_SECRET` while `ENCRYPTION_KEY` is unset makes every stored hh token undecryptable — users have to reconnect hh.** Set `ENCRYPTION_KEY` before rotating the session secret. |
-| `SIMPLIFY_EXTENSION_IDS` | Optional, comma-separated Chrome extension ids allowed to call `/api/extension/*` (CORS). Unset = any `chrome-extension://` origin; the `X-Simplify-Token` key is the credential either way. |
+| Framework | Next.js 16 (App Router) + React 19 |
+| Language | TypeScript 5 |
+| Database / ORM | Prisma 6 — SQLite for local dev, Postgres for production |
+| Styling | Tailwind CSS 4 |
+| AI | Anthropic SDK (Claude) with a deterministic engine fallback |
+| Auth | `jose` (signed session JWTs) + `bcryptjs` |
+| Supporting | `zod`, `unpdf` (CV parsing), `web-push` (PWA notifications) |
+| Hosting | Vercel |
 
-## Architecture
+## 🚀 Getting Started
 
-| Layer | Where |
-|---|---|
-| Identity & profile, Truth Layer | `prisma/schema.prisma` (User, Profile, Fact, Story, MiniInterviewAnswer), `src/lib/engine/profile.ts` |
-| Job ingestion (Remotive, Arbeitnow, Greenhouse, Lever + demo corpus), normalization, dedupe, freshness | `src/lib/engine/ingest.ts` |
-| Matching: Match vs Eligibility (hard blockers), P(Interview) ranking | `src/lib/engine/matching.ts` |
-| Readiness | `src/lib/engine/readiness.ts` |
-| Personalization + Truth Check + screening-answer policy (auto / rule / approval) | `src/lib/engine/personalize.ts` |
-| Orchestration: discover → rerank → prepare → submit / handoff, inbox → pipeline | `src/lib/engine/agent.ts` |
-| hh.kz: API client (app + user OAuth tokens, search, vacancy, resumes, negotiations), apply adapter, status sync, OAuth routes | `src/lib/hh/*`, `src/lib/sources/hh.ts`, `src/app/api/integrations/hh/*` |
-| Inbox Intelligence | `src/lib/engine/inbox.ts` |
-| Feedback loop / allocation | `src/lib/engine/insights.ts` |
-| Interview: intent, retrieval, scaffold, truth guard, packs, mock scoring | `src/lib/engine/interview.ts` (pure, runs in browser), `interview-ai.ts` |
-| Offer benchmark & negotiation, market ranges, Career Score | `offer.ts`, `market.ts`, `career.ts` |
-| Claude wrapper with engine fallback | `src/lib/ai.ts` |
+### Prerequisites
 
-### Honest boundaries
-- **Submission**: demo vacancies go through a simulated ATS adapter. Live vacancies are
-  user-authorized handoffs — the package is prepared and the user submits via the official form
-  (no credential storage, no ToS-violating automation). Official ATS integrations plug into `submit()`.
-- **Payments**: Kaspi Pay flow in `src/lib/payments/kaspi.ts` — invoice → payment → signed webhook → campaign.
-  The public demo runs the **mock gateway** (`KASPI_MODE=mock`, no money moves; max 3 mock-paid campaigns per
-  user per 24 h). Webhook contract: `X-Kaspi-Timestamp` (unix s, ±5 min) and `X-Kaspi-Signature: sha256=<hex>`
-  = HMAC-SHA256 of `"<timestamp>.<raw body>"`; replays are deduplicated on `transactionId`. Paying while a
-  campaign is running is refused (409); a payment that still arrives (late, duplicate, second invoice) is marked
-  `refund_due` in the payment's meta instead of being attached. Claim + campaign creation run in one transaction;
-  the first agent cycle runs after the webhook response (`after()`). Partner attribution comes only from the
-  account's `referredByCode`.
-- **hh.kz**: the user connects **their own** hh account (OAuth on hh.kz; Simplify never sees the password) and
-  picks one of their resumes on `/app/agent`. The agent then applies through `POST /negotiations` as the user, with that
-  resume and the package's cover letter — only inside the same consent / autonomy / daily-limit gates as any other
-  submission. Vacancies that require a test or questionnaire, an external application site, or a letter the package
-  lacks become handoffs (Approvals → the hh vacancy link); answers are never invented. 429 → backoff; hh's daily
-  negotiation limit pauses hh applications until the next day. Negotiation states (invitation / discard / …) are
-  synced by the cron into the pipeline (forward only), inbox, notifications and Interview Rooms. Vacancy search uses
-  the official API with an application token — no HTML scraping.
-- **Inbox**: paste or simulate; Gmail/Outlook OAuth is a planned integration.
-- **Salary data** are model estimates (`market.ts`), labeled as such.
-- **Copilot** uses the browser's speech recognition; Simplify stores no audio. It is disabled for
-  interviews where the employer forbids external help.
+- Node.js 20+
+- npm
 
-### hh.kz setup (owner)
-1. Sign in at https://dev.hh.ru with an hh account owned by the company and create an application
-   («Добавить приложение»). Name/description: Simplify — AI career agent; contact e-mail = the one in `HH_USER_AGENT`.
-2. Redirect URI: `https://<your domain>/api/integrations/hh/callback` (exactly, https, no trailing slash). For local
-   testing register a separate dev application with `http://localhost:3210/api/integrations/hh/callback` and use its
-   credentials locally (set `HH_REDIRECT_URI` to the same value).
-3. Wait for hh's moderation; copy Client ID and Client Secret into `HH_CLIENT_ID` / `HH_CLIENT_SECRET` (Vercel →
-   Environment Variables, Production + Preview), set `APP_URL` (or `HH_REDIRECT_URI`) and `HH_USER_AGENT`
-   (`Simplify/1.0 (<support e-mail>)`).
-4. Optional but recommended on Vercel: issue the application token once
-   (`curl -X POST https://api.hh.ru/token -H 'HH-User-Agent: <ua>' -d grant_type=client_credentials -d client_id=… -d client_secret=…`)
-   and store it as `HH_APP_TOKEN`.
-5. Redeploy. Check: `/app/agent` shows «hh.kz → Подключить», connect a test applicant account, pick a resume;
-   `/admin` → live ingest shows an `hh` row; the daily cron reports `hh.synced`.
+### Install
 
-## Browser extension — Simplify Apply Assist
+```bash
+git clone https://github.com/baimukhanalan/simplify-platform.git
+cd simplify-platform
+npm install
+```
 
-`extension/` is a Manifest V3 extension (plain JS, no build step) that pre-fills the **official** application form
-(Greenhouse, Lever, Ashby, Workable, hh.kz response form, generic forms) from the user's own Simplify package: profile
-contacts and links, the exact tailored CV (attached as a PDF), the cover letter, and screening answers that are filled
-or approved. It fills only when the user clicks «Заполнить форму», highlights every field it touched, lists what needs
-attention, and **never clicks Submit**. Sensitive / legal / EEO questions (gender, race, disability, veteran status,
-criminal record, consents, background checks) are never filled — they are highlighted for the user. No personas,
-stealth, captcha solving or proxies. Permissions: `activeTab`, `scripting`, `storage`, host access only for Simplify
-and the supported ATS domains (no `<all_urls>`, no content scripts running on their own).
+### Configure environment
 
-**Install (unpacked)**
-1. Signed in, open `/app/extension` → «Скачать расширение (.zip)» (served by `GET /api/extension/download`, zipped on the
-   fly from `extension/`), or use the `extension/` folder from this repo directly.
-2. `chrome://extensions` → enable *Developer mode* → *Load unpacked* → select the unzipped `simplify-apply-assist`
-   folder (or `extension/`).
+Create a `.env` file:
 
-**Pair**
-1. On `/app/extension` click «Создать ключ для расширения». The key is shown once; only its sha256 is stored
-   (`Integration` with `provider = "extension"`, `tokenHash`). A new key replaces the old one; «Отозвать ключ» deletes it.
-2. Extension → *Options*: paste the key; the Simplify URL defaults to `https://simplify-platform-tau.vercel.app`
-   (use `http://localhost:3210` for local dev). «Сохранить и проверить» calls `/api/extension/profile`.
+```bash
+DATABASE_URL="file:./dev.db"          # SQLite locally; switch the Prisma provider to postgresql for prod
+SESSION_SECRET="<at least 32 random bytes>"
+ANTHROPIC_API_KEY="<optional — enables Claude; omit to run the deterministic engine>"
+SIMPLIFY_MODEL="claude-opus-5"        # optional, Claude model id
+SIMPLIFY_MODE="simulation"            # optional showcase mode; unset = live engine
+```
 
-**API** (all require `X-Simplify-Token`; CORS only for `chrome-extension://` origins; rate-limited per key):
-`GET /api/extension/profile` · `GET /api/extension/match?url=` (Greenhouse job id / `gh_jid`, Lever and Ashby posting
-ids, Workable shortcode, hh vacancy id, else host + path) · `GET /api/extension/cv/:opportunityId` (same PDF as
-`/api/applications/[id]/cv`) · `POST /api/extension/mark-submitted {opportunityId}` — the user confirms they sent it;
-recorded through `submit(id, "user")`, the handoff approval is closed and «Заявка отправлена через расширение» is logged.
-Code: `src/app/api/extension/**`, `src/app/app/extension/`, `src/lib/actions/extension.ts`, tests in `tests/extension.test.ts`.
+### Set up the database and run
+
+```bash
+npm run db:push    # or: npx prisma db push — creates prisma/dev.db
+npm run seed       # demo scenario: Data Analyst from Almaty
+npm run dev        # http://localhost:3000
+```
+
+Other scripts: `npm run build`, `npm start`, `npm run lint`, `npm test`.
+
+### Demo accounts
+
+The local seed creates (password `simplify2026` for all):
+
+| Account | Role | Entry point |
+|---|---|---|
+| `aruzhan@simplify.kz` | user (active campaign) | `/app` |
+| `admin@simplify.kz` | admin | `/admin` |
+| `partner@amaskills.kz` | partner | `/partners` |
+
+> Against Postgres the seed is a no-op unless you set `ALLOW_DEMO_SEED=1`, and staff accounts require `ADMIN_PASSWORD`.
+
+## 🗂️ Project Structure
+
+```
+simplify-platform/
+├── prisma/
+│   ├── schema.prisma        # data model (SQLite); postgres/ holds the prod schema
+│   └── seed.ts              # demo data entrypoint
+├── src/
+│   ├── app/                 # Next.js App Router
+│   │   ├── app/             # authenticated product (agent, interviews, offers, pipeline, …)
+│   │   ├── admin/           # operator dashboard
+│   │   ├── partners/        # partner portal
+│   │   └── api/             # route handlers (cron, payments, integrations, extension, …)
+│   └── lib/
+│       ├── engine/          # discovery, matching, personalization, interview, offer logic
+│       ├── hh/ · sources/   # job sources and integrations
+│       └── ai.ts            # Claude wrapper with engine fallback
+└── extension/               # Manifest V3 "Apply Assist" browser extension
+```
+
+## 🗺️ Roadmap
+
+- [x] Autonomous 60-day campaign loop (discover → rank → prepare → handoff)
+- [x] Interview Room, Mock Interview and live Interview Copilot
+- [x] Offer Desk with market benchmarking and Career Score
+- [x] Manifest V3 "Apply Assist" extension for official application forms
+- [x] hh.kz OAuth integration (per-owner credentials required)
+- [ ] Gmail / Outlook inbox sync (currently paste-or-simulate)
+- [ ] Additional official ATS submission integrations
+- [ ] Expanded live job sources and regions
+
+## 📄 License
+
+Released under the [MIT License](LICENSE).
