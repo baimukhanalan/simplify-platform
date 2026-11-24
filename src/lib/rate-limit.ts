@@ -5,8 +5,8 @@ import { db } from "./db";
 // Fixed-window in-memory limiter (per instance). Swap for Redis/Upstash when running multiple instances.
 const hits = new Map<string, { n: number; reset: number }>();
 
-function hit(key: string, limit: number, windowMs: number) {
-  const now = Date.now();
+/** The fixed-window counter itself, for callers that already know their key (e.g. a client IP read once). */
+export function hit(key: string, limit: number, windowMs: number, now = Date.now()) {
   if (hits.size > 5000) for (const [k, v] of hits) if (v.reset < now) hits.delete(k);
   const cur = hits.get(key);
   if (!cur || cur.reset < now) {
@@ -19,12 +19,15 @@ function hit(key: string, limit: number, windowMs: number) {
 
 /** Per client IP (anonymous endpoints: login, signup, free Career Check). */
 export async function rateLimit(bucket: string, limit: number, windowMs: number) {
-  const h = await headers();
+  return hit(`${bucket}:${clientIpFrom(await headers())}`, limit, windowMs);
+}
+
+/** The client's IP as far as it can be trusted ("local" when unknown). */
+export function clientIpFrom(h: Headers) {
   // On Vercel these headers are set by the edge (client-supplied values are overwritten).
   // X-Forwarded-For is client-controlled unless a trusted proxy rewrites it: honour it only on Vercel or with TRUST_PROXY=1.
   const trustXff = Boolean(process.env.VERCEL) || process.env.TRUST_PROXY === "1";
-  const ip = h.get("x-vercel-forwarded-for")?.split(",")[0].trim() || (trustXff ? h.get("x-real-ip") || (h.get("x-forwarded-for") ?? "").split(",")[0].trim() : "") || "local";
-  return hit(`${bucket}:${ip}`, limit, windowMs);
+  return h.get("x-vercel-forwarded-for")?.split(",")[0].trim() || (trustXff ? h.get("x-real-ip") || (h.get("x-forwarded-for") ?? "").split(",")[0].trim() : "") || "local";
 }
 
 /**

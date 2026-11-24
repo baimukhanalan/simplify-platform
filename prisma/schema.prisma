@@ -501,3 +501,29 @@ model ErrorLog {
   createdAt   DateTime  @default(now())
   lastSeenAt  DateTime  @default(now())
 }
+
+// Applications from the public /apply form («Запусти свою кампанию» on the landing). Standalone: not linked to User,
+// an agent contacts the person. One row per email per 24 h — a repeat within that window updates the row.
+model Lead {
+  id                  String   @id @default(cuid())
+  fullName            String
+  email               String // lower-cased
+  phone               String // normalized: "+<digits>" (E.164-ish)
+  telegram            String? // username without "@"
+  englishLevel        String // A1 | A2 | B1 | B2 | C1 | C2 | native
+  specialization      String // key from src/lib/leads.ts SPECIALIZATIONS (… | other)
+  specializationOther String?
+  source              String   @default("direct") // landing | direct
+  ref                 String?
+  locale              String   @default("ru")
+  status              String   @default("new") // new | contacted | converted | rejected
+  adminNote           String   @default("")
+  ipHash              String   @default("") // sha256(ip + SESSION_SECRET) — abuse control only, never the raw address
+  userAgent           String   @default("")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([createdAt])
+  @@index([email])
+  @@index([status])
+}

@@ -4,9 +4,11 @@ import { requireAdmin } from "@/lib/auth";
 import { logout } from "@/lib/actions/auth";
 import { Chip, Logo } from "@/components/ui";
 import { AdminNav } from "./_components/admin-nav";
+import { newLeadsCount } from "@/lib/leads";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const user = await requireAdmin();
+  const leads = await newLeadsCount();
   return (
     <div className="min-h-dvh">
       <header className="sticky top-0 z-40 border-b border-line bg-mint-2/80 backdrop-blur-xl">
@@ -22,7 +24,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <button className="grid size-9 place-items-center rounded-full glass text-teal hover:text-head focus-visible:outline-2 focus-visible:outline-green" aria-label="Выйти" title="Выйти"><LogOut className="size-4" strokeWidth={1.7} /></button>
           </form>
         </div>
-        <div className="mx-auto max-w-[1180px] px-4 sm:px-8"><AdminNav /></div>
+        <div className="mx-auto max-w-[1180px] px-4 sm:px-8"><AdminNav badges={{ "/admin/leads": leads }} /></div>
       </header>
       <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-[1180px] px-4 pb-16 pt-8 sm:px-8">{children}</main>
     </div>

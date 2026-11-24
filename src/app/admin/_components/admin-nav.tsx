@@ -6,6 +6,7 @@ import { cx } from "@/components/ui";
 const ITEMS = [
   { href: "/admin", label: "Обзор" },
   { href: "/admin/funnel", label: "Воронка" },
+  { href: "/admin/leads", label: "Заявки" },
   { href: "/admin/users", label: "Пользователи" },
   { href: "/admin/payments", label: "Платежи" },
   { href: "/admin/campaigns", label: "Кампании" },
@@ -13,7 +14,8 @@ const ITEMS = [
   { href: "/admin/errors", label: "Ошибки" },
 ];
 
-export function AdminNav() {
+/** `badges`: a count shown next to an item (e.g. new leads), keyed by href. */
+export function AdminNav({ badges = {} }: { badges?: Record<string, number> }) {
   const path = usePathname();
   const active = (href: string) => (href === "/admin" ? path === "/admin" : path === href || path.startsWith(`${href}/`));
   return (
@@ -32,6 +34,12 @@ export function AdminNav() {
                 )}
               >
                 {it.label}
+                {badges[it.href] ? (
+                  <span className={cx("num ml-1.5 inline-grid h-5 min-w-5 place-items-center rounded-full px-1.5 text-[11px] leading-none", on ? "bg-white text-head" : "bg-green text-white")}>
+                    {badges[it.href] > 99 ? "99+" : badges[it.href]}
+                    <span className="sr-only"> новых</span>
+                  </span>
+                ) : null}
               </Link>
             </li>
           );

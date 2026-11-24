@@ -8,6 +8,7 @@ import { partCRu } from "./ru/part-c";
 import { partBRu } from "./ru/part-b";
 import { partARu } from "./ru/part-a";
 import { partFinalRu } from "./ru/part-final";
+import { applyPageRu } from "./ru/apply-page";
 
 export const ru = {
   common: {
@@ -651,6 +652,7 @@ export const ru = {
   ...partBRu,
   ...partARu,
   ...partFinalRu,
+  ...applyPageRu,
   globalError: globalErrorRu,
 };
 

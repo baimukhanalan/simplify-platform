@@ -6,6 +6,7 @@ import { db, noNul } from "../db";
 import { createSession, destroySession, hashPassword, verifyPassword, safeNext } from "../auth";
 import { rateLimit } from "../rate-limit";
 import { legalAcceptance } from "../legal";
+import { promoteIfAdminEmail, signupRole } from "../admin-emails";
 import { actionT } from "../i18n/action";
 import { entryLocale } from "../i18n/server";
 import { applyLocale } from "../i18n/persist";
@@ -26,6 +27,7 @@ export async function login(_: AuthState, form: FormData): Promise<AuthState> {
   const user = await db.user.findUnique({ where: { email } });
   const ok = await verifyPassword(password, user?.passwordHash ?? DUMMY_HASH);
   if (!user || !ok) return { error: "Неверный email или пароль" };
+  await promoteIfAdminEmail(user); // ADMIN_EMAILS (src/lib/admin-emails.ts): promotes, never demotes
   await createSession(user.id);
   redirect(safeNext(form.get("next")));
 }
@@ -50,7 +52,7 @@ export async function signup(_: AuthState, form: FormData): Promise<AuthState> {
   try {
     user = await db.user.create({
       data: {
-        name, email, passwordHash: await hashPassword(password), referredByCode: partner?.code ?? null, locale,
+        name, email, role: signupRole(email), passwordHash: await hashPassword(password), referredByCode: partner?.code ?? null, locale,
         consents: JSON.stringify({ terms: true, autoSubmit: true, emailScan: false, copilot: true, analytics: form.get("analytics") === "on", at: new Date().toISOString(), legal: legalAcceptance() }),
         profile: { create: {} }, goal: { create: {} },
       },

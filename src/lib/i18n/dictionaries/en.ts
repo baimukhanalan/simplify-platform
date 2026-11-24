@@ -6,6 +6,7 @@ import { partCEn } from "./en/part-c";
 import { partBEn } from "./en/part-b";
 import { partAEn } from "./en/part-a";
 import { partFinalEn } from "./en/part-final";
+import { applyPageEn } from "./en/apply-page";
 
 export const en: Dictionary = {
   common: {
@@ -634,5 +635,6 @@ export const en: Dictionary = {
   ...partBEn,
   ...partAEn,
   ...partFinalEn,
+  ...applyPageEn,
   globalError: globalErrorEn,
 };

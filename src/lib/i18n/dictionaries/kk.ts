@@ -8,6 +8,7 @@ import { partCKk } from "./kk/part-c";
 import { partBKk } from "./kk/part-b";
 import { partAKk } from "./kk/part-a";
 import { partFinalKk } from "./kk/part-final";
+import { applyPageKk } from "./kk/apply-page";
 
 export const kk: Dictionary = {
   common: {
@@ -636,5 +637,6 @@ export const kk: Dictionary = {
   ...partBKk,
   ...partAKk,
   ...partFinalKk,
+  ...applyPageKk,
   globalError: globalErrorKk,
 };

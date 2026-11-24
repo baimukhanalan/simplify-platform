@@ -9,6 +9,7 @@ import { requireAdmin } from "../auth";
 import { db } from "../db";
 import { runTick, logEvent } from "../engine/agent";
 import { ingestLive, type IngestReport } from "../engine/ingest";
+import { updateLeadAs } from "../leads";
 
 export async function adminRunTick(form: FormData) {
   const admin = await requireAdmin();
@@ -56,4 +57,18 @@ export async function adminUserSearch(form: FormData) {
 export async function adminRevealEmail(userId: string): Promise<{ email?: string; error?: string }> {
   const admin = await requireAdmin();
   return revealEmailFor(admin.id, userId);
+}
+
+/* ——— Admin panel: leads from /apply ——— */
+
+/** Inline edit on /admin/leads: status and/or the admin's note (fields that are absent from the form stay as they are). */
+export async function adminLeadUpdate(form: FormData) {
+  const admin = await requireAdmin();
+  const status = form.get("status");
+  const note = form.get("adminNote");
+  await updateLeadAs(admin, String(form.get("id") ?? ""), {
+    status: typeof status === "string" ? status : undefined,
+    adminNote: typeof note === "string" ? note : undefined,
+  });
+  revalidatePath("/admin", "layout"); // the «Заявки» badge in the admin nav counts new leads
 }
